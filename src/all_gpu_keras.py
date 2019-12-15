@@ -5,7 +5,14 @@ Created on Sat Dec 14 12:48:46 2019
 
 @author: agiovann
 """
-
+#%%
+from past.utils import old_div
+from skimage import io
+import tensorflow as tf
+import numpy as np
+import pylab as plt
+import tensorflow_addons as tfa
+import cv2
 #%%
 num_frames =100
 a = io.imread('Sue_2x_3000_40_-46.tif')
@@ -38,9 +45,18 @@ class TemplMatch(keras.layers.Layer):
     def call(self, X):
         img_zm = X - tf.reduce_mean(X, axis=[1,2], keepdims=True)
         localsum_sq = conv(tf.square(X), tf.ones_like(self.template_zm))
-        localsum = conv(img, ones)
+        localsum = conv(img, tf.ones_like(self.template_zm))
         img_var = localsum_sq - tf.square(localsum)/template_numel + epsilon
-        return self.activation(X @ self.kernel + self.bias)
+        # Remove small machine precision errors after subtraction
+        img_var = tf.where(img_var<0, tf.zeros_like(img_var), img_var)
+    
+        # compute 2D NCC
+        denominator = tf.sqrt(self.template_var * img_var)
+        numerator = self.conv(img_zm, template_zm)
+        out = tf.truediv(numerator, denominator)
+        # Remove any NaN in final output
+        out = tf.where(tf.math.is_nan(out), tf.zeros_like(out), out)
+        return out
 
     def compute_output_shape(self, batch_input_shape):
         return tf.TensorShape(batch_input_shape.as_list()[:-1] + [self.units])
