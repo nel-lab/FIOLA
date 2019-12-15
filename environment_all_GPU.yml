@@ -1,0 +1,15 @@
+channels:
+- conda-forge
+dependencies:
+- tensorflow # Must list before keras to preempt default keras backend
+- h5py
+- ipython
+- matplotlib
+- numpy
+- opencv
+- pims
+- scipy
+- scikit-image
+- scikit-learn
+- spyder
+- tifffile
