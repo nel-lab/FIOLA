@@ -114,7 +114,7 @@ def argmax_2d(tensor):
   # stack and return 2D coordinates
   return tf.cast(tf.stack((argmax_x, argmax_y), axis=1), tf.float32)
 #%%
-num_frames =3000
+num_frames =1000
 a = io.imread('Sue_2x_3000_40_-46.tif')
 template = np.median(a,axis=0)
 # plt.imshow(template)
@@ -174,3 +174,74 @@ for i in range(6):
     plt.imshow(tf.squeeze(aa_batch_shift[i]))
     plt.pause(.03)
     plt.cla()
+#%%
+strides=[1,1,1,1]
+padding='VALID'
+epsilon=0.00000001
+conv = lambda x, y: tf.nn.conv2d(x, y, padding=padding, strides=strides)
+    
+# subtract template and image mean across [height, width] dimension
+template_zm = temp - tf.reduce_mean(temp, axis=[0,1], keepdims=True)
+# compute template variance   
+template_var = tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon
+#%%
+# compute local image variance
+img = aa_batch
+img_zm = img - tf.reduce_mean(img, axis=[1,2], keepdims=True)
+#%%
+ones = tf.ones_like(temp)
+localsum_sq = conv(tf.square(img), ones)
+print(localsum_sq.shape)
+localsum = conv(img, ones)
+print(localsum.shape)
+img_var = localsum_sq - tf.square(localsum)/np.prod(temp.shape) + epsilon
+print(img_var.shape)
+#%%
+# Remove small machine precision errors after subtraction
+img_var = tf.where(img_var<0, tf.zeros_like(img_var), img_var)
+# compute 2D NCC
+denominator = tf.sqrt(template_var * img_var)
+print(denominator.shape)
+numerator = conv(img_zm, template_zm)
+print(numerator.shape)
+out = tf.truediv(numerator, denominator)
+# Remove any NaN in final output
+out = tf.where(tf.math.is_nan(out), tf.zeros_like(out), out)    
+#%%
+shifts_int = argmax_2d(out)
+shifts_int_cast = tf.cast(shifts_int,tf.int32)
+sh_x, sh_y = shifts_int_cast[:,0],shifts_int_cast[:,1]
+h_i, w_i,_,_ = temp.shape
+ms_h = 20
+ms_w = 20
+sh_x_n = tf.cast(-(sh_x - ms_h), tf.float32)
+sh_y_n = tf.cast(-(sh_y - ms_w), tf.float32)
+
+# shifts_int_n = tf.expand_dims(tf.convert_to_tensor([[ms_h,ms_w]]), axis=2) - shifts_int
+out_log = tf.math.log(out)      
+
+idx = tf.transpose(tf.stack([np.arange(out.shape[0]),tf.squeeze(sh_x-1),tf.squeeze(sh_y)]))
+log_xm1_y = tf.gather_nd(out_log, idx)
+idx = tf.transpose(tf.stack([np.arange(out.shape[0]),tf.squeeze(sh_x+1),tf.squeeze(sh_y)]))
+log_xp1_y = tf.gather_nd(out_log, idx)
+idx = tf.transpose(tf.stack([np.arange(out.shape[0]),tf.squeeze(sh_x),tf.squeeze(sh_y-1)]))
+log_x_ym1 = tf.gather_nd(out_log, idx)
+idx = tf.transpose(tf.stack([np.arange(out.shape[0]),tf.squeeze(sh_x),tf.squeeze(sh_y+1)]))
+log_x_yp1 =  tf.gather_nd(out_log, idx)
+idx = tf.transpose(tf.stack([np.arange(out.shape[0]),tf.squeeze(sh_x),tf.squeeze(sh_y)]))
+four_log_xy = 4 * tf.gather_nd(out_log, idx)
+
+sh_x_n = sh_x_n - tf.math.truediv((log_xm1_y - log_xp1_y), (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
+sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1 - log_x_yp1), (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
+# log_xm1_y_t = out_log[:,1:,:]
+# log_xp1_y_t = out_log[:,:-1, :]
+# log_x_ym1_t = out_log[:,:, 1:]
+# log_x_yp1_t = out_log[:,:, :-1]
+# four_log_xy_t = 4 * out_log
+# delta_x_t = -tf.math.divide((log_xm1_y_t - log_xp1_y_t), (2 * log_xm1_y_t - four_log_xy_t[:,:-1,:] + 2 * log_xp1_y_t))
+# delta_y_t = -tf.math.divide((log_x_ym1_t - log_x_yp1_t), (2 * log_x_ym1_t - four_log_xy_t[:,:,:-1] + 2 * log_x_yp1_t))
+# #%%
+# sh_x_n_t = sh_x_n - old_div((log_xm1_y - log_xp1_y), (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
+# sh_y_n_t = sh_y_n - old_div((log_x_ym1 - log_x_yp1), (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
+
+#%%
