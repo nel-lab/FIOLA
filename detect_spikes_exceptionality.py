@@ -11,7 +11,7 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 from scipy.signal import find_peaks
 import peakutils
-
+from scipy.signal import savgol_filter
 #%% relevant functions
 def distance_spikes(s1, s2, max_dist):
     """ Define distance matrix between two spike train.
@@ -318,16 +318,19 @@ def nan_helper(y):
     return np.isnan(y), lambda z: z.nonzero()[0]
 
 
-def estimate_subthreshold(signal, thres_STD = 5, spike_before=3, spike_after=4, kernel_size=21):
+def estimate_subthreshold(signal, thres_STD = 5, spike_before=3, spike_after=4, kernel_size=21, return_nans=False):
   delta_sig = np.diff(signal)
   index_exceptional, erf, z_sig = find_spikes(delta_sig, thres_STD=thres_STD)
   index_remove = np.concatenate([index_exceptional+ii for ii in range(-spike_before,spike_after)])
   sig_sub = signal.copy()
   sig_sub[np.minimum(index_remove,len(signal)-1)] = np.nan
-  nans, x= nan_helper(sig_sub)
-  sig_sub[nans]= np.interp(x(nans), x(~nans), sig_sub[~nans])
-  sig_sub = scipy.signal.medfilt(sig_sub, kernel_size=kernel_size)
-  return sig_sub
+  if return_nans:
+      return sig_sub
+  else:
+      nans, x= nan_helper(sig_sub)
+      sig_sub[nans]= np.interp(x(nans), x(~nans), sig_sub[~nans])
+      sig_sub = scipy.signal.medfilt(sig_sub, kernel_size=kernel_size)
+      return sig_sub
 
 def normalize(ss):
     aa = (ss-np.min(ss))/(np.max(ss)-np.min(ss))
@@ -359,13 +362,20 @@ N_opt = [2,2,2,2,2,2]
 #Thr_opt = [8.5,8.5, 5.5, 10.5, 6.5, 10.5, 6.5 ]
 #F1 = [0.97, 0.96, 0.82, 0.6, 0.39, 0.86, 0.67]
 all_f1_scores = []
+all_prec = []
+all_rec = []
+
 all_corr_subthr = []
+
+mode = 'minimum'
+mode = 'percentile'
+mode = 'v_sub'
 
 for file in file_list[:]:
     dict1 = np.load(file, allow_pickle=True)
     img = dict1['v_sg']
     print(np.diff( dict1['v_t']))
-    std_estimate = np.diff(np.percentile(img,[75,25]))/4
+    std_estimate = np.diff(np.percentile(img,[75,25]))/100
     for i in range(len(dict1['sweep_time']) - 1):
         idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]), dict1['v_t']<dict1['sweep_time'][i+1][0])])[1]
         img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
@@ -373,13 +383,28 @@ for file in file_list[:]:
     for i in range(len(dict1['sweep_time']) - 1):
         idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]-1), dict1['v_t']<dict1['sweep_time'][i][-1]-0.85)])[1]
         img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
-    
-    sub_1 = estimate_subthreshold(img, thres_STD=5)
+#    
+    sub_1 = estimate_subthreshold(img, thres_STD=5,  kernel_size=21)
     all_corr_subthr.append([np.corrcoef(normalize(dict1['e_sub']),normalize(sub_1))[0,1],np.corrcoef(normalize(dict1['e_sub']),normalize(dict1['v_sub']))[0,1]])
-#    delta_img = np.diff(img)
-    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']     
+    
+    frate = 1/np.median(np.diff(dict1['v_t']))
+    perc_window = 50
+    perc_stride = 25
+    if mode == 'v_sub':
+        signal_subthr = dict1['v_sub']
+    elif mode == 'percentile':
+        perc = np.array([np.percentile(el,20) for el in rolling_window(img.T[None,:], perc_window, perc_stride)])
+#        signal_subthr = np.concatenate([np.zeros(15),perc,np.zeros(14)]) #cv2.resize(perc, (1,img.shape[0])).squeeze()
+        signal_subthr =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
+    elif mode == 'minimum':
+        minima = np.array([np.min(el) for el in rolling_window(img.T[None,:], 15, 5)])
+        signal_subthr = cv2.resize(minima, (1,img.shape[0]),interpolation = cv2.INTER_CUBIC).squeeze()
+        
+    signal_no_subthr = img -  signal_subthr
+#    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
+    
     indexes, erf, z_signal = find_spikes(img, signal_no_subthr=signal_no_subthr, 
-                                         thres_STD=5, thres_STD_ampl=4, min_dist=1, 
+                                         thres_STD=4.5, thres_STD_ampl=4, min_dist=1, 
                                          N=2, win_size=20000, stride=5000, 
                                          spike_before=3, spike_after=4, 
                                          bidirectional=False)
@@ -406,6 +431,8 @@ for file in file_list[:]:
     
     
     all_f1_scores.append(np.array(F1).mean().round(2))
+    all_prec.append(np.array(precision).mean().round(2))
+    all_rec.append(np.array(recall).mean().round(2))
     continue 
     pr.append(np.array(precision).mean().round(2))
     re.append(np.array(recall).mean().round(2))
@@ -468,4 +495,25 @@ if False:
     sub_1 = estimate_subthreshold(img, thres_STD=3.5)
     plt.plot(normalize(dict1['e_sub']),'k')
     plt.plot(normalize(dict1['v_sub']))
-    plt.plot(normalize(sub_1))    
+    plt.plot(normalize(sub_1))  
+    
+    #%%
+    plt.plot(signal_no_subthr)
+
+    from scipy import zeros, signal, random
+    
+    data = img
+#    b, a = scipy.signal.butter(2, 0.1)
+#    filtered = scipy.signal.lfilter(b, a, data)
+#    result= data - filtered
+##    nans, x= nan_helper(data)
+##    data[nans]= np.intezrp(x(nans), x(~nans), data[~nans])
+##    data = scipy.signal.medfilt(data, kernel_size=21)
+##    data = img-data
+    b = signal.butter(15, 0.01, btype='lowpass', output='sos')
+    z = signal.sosfilt_zi(b)
+    result, z = signal.sosfilt(b, data, zi=z)
+#    plt.plot(result)
+    result = zeros(data.size)
+    for i, x in enumerate(data):
+        result[i], z = signal.sosfilt(b, [x], zi=z)
