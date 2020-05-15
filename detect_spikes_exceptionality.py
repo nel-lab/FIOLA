@@ -6,6 +6,7 @@ files for loading and analyzing proccessed Marton's data
 @author: caichangjia
 """
 #%% import library
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -305,12 +306,14 @@ def find_spikes(signal, signal_no_subthr=None, thres_STD=5, thres_STD_ampl=4,
     std_run = estimate_running_std(signal, win_size, stride,idx_exclude=index_remove, q_min=q_min, q_max=q_max)
     z_signal = signal/std_run 
     indexes, erf = extract_exceptional_events(z_signal, thres_STD=thres_STD, N=N, min_dist=min_dist, bidirectional=bidirectional)
+    
     # remove spikes that are not large peaks in the original signal
     if signal_no_subthr is not None:
         signal_no_subthr /= estimate_running_std(signal_no_subthr, 20000, 5000, 
                                                  q_min=q_min, q_max=q_max)
         
         indexes = np.intersect1d(indexes,np.where(signal_no_subthr[1:]>thres_STD_ampl))
+        #indexes = np.where(signal_no_subthr[1:]>thres_STD_ampl)
         
     return indexes, erf, z_signal
 #%%
@@ -338,14 +341,13 @@ def normalize(ss):
     aa /= estimate_running_std(aa)
     return aa
 #%%
-file_list = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/454597_Cell_0_40x_patch1_output.npz', 
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_3_40x_1xtube_10A2_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_3_40x_1xtube_10A3_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A5_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A7_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/462149_Cell_1_40x_1xtube_10A1_output.npz', 
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/462149_Cell_1_40x_1xtube_10A2_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A6_output.npz']
+base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
+lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
+             '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
+             '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
+             '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz', ]
+file_list = [os.path.join(base_folder, file)for file in lists]
 
 fig = plt.figure(figsize=(12,12))
 temp = file_list[0].split('/')[-1].split('_')
@@ -367,11 +369,9 @@ all_rec = []
 
 all_corr_subthr = []
 
-mode = 'minimum'
-mode = 'percentile'
-mode = 'v_sub'
+mode = ['minimum', 'percentile', 'v_sub'][2]
 
-for file in file_list[:]:
+for file in file_list[0:1]:
     dict1 = np.load(file, allow_pickle=True)
     img = dict1['v_sg']
     print(np.diff( dict1['v_t']))
@@ -433,7 +433,7 @@ for file in file_list[:]:
     all_f1_scores.append(np.array(F1).mean().round(2))
     all_prec.append(np.array(precision).mean().round(2))
     all_rec.append(np.array(recall).mean().round(2))
-    continue 
+    #continue 
     pr.append(np.array(precision).mean().round(2))
     re.append(np.array(recall).mean().round(2))
     F.append(np.array(F1).mean().round(2))
@@ -468,9 +468,26 @@ for file in file_list[:]:
 if False:    
     ax3.legend([f'precision:{pr}', f'recall: {re}', f'F1: {F}'])
     ax4.legend([f'corr:{sub}'])
+
 #%%
-print(np.mean(all_f1_scores))
-print(np.mean(all_corr_subthr,axis=0))
+
+plt.plot(dict1['v_t'], dict1['v_sg'], '.-', color='blue')#;plt.plot(dict1['v_t'], dict1['v_sg']-signal_subthr);
+plt.plot(dict1['v_t'][:-1], np.diff(dict1['v_sg']-signal_subthr)-10, '.-', color='orange')
+plt.vlines(dict1['e_sp'], dict1['v_sg'].min()-5, dict1['v_sg'].min(), color='black')
+plt.vlines(dict1_v_sp_, dict1['v_sg'].min()+3, dict1['v_sg'].min(), color='red')
+
+
+#%%
+#print(lists) 
+print(f'average_F1:{np.mean(all_f1_scores)}')
+print(f'average_sub:{np.mean(all_corr_subthr,axis=0)}')
+print(f'F1:{all_f1_scores}');print(f'prec:{all_prec}'); print(f'rec:{all_rec}')
+
+#%%
+
+plt.plot(all_f1_scores, label='F1'); plt.plot(all_prec, label='precision'); plt.plot(all_rec, label='recall')
+plt.xticks(list(range(len(lists))), lists); plt.legend()
+
 #%%
 if False:
     #indexes = peakutils.indexes(np.diff(img), thres=0.18, min_dist=3, thres_abs=True)
