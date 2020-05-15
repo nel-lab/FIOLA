@@ -5,6 +5,8 @@ Created on Sat Dec 14 12:48:46 2019
 
 @author: agiovann
 """
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 #%%
 import tensorflow as tf
 import tensorflow.keras as keras
@@ -173,8 +175,9 @@ class MotionCorrect(keras.layers.Layer):
 
 def enqueue(q, batch):
     # This function mocks incoming real time data and puts it on a queue
-    for i in range(num_frames):
-        q.put(tf.expand_dims(batch[i], 0))
+    for fr in batch:
+        q.put(tf.expand_dims(fr, 0))
+    return
 
 #%% load batch, initialize template and transform to tensor
 num_frames = 300
@@ -187,14 +190,18 @@ min_, max_ = -296.0, 1425.0
 #%% run motion correction one frame at a time
 mod = MotionCorrect(template)
 
-load_thread = Thread(target=enqueue, args=(mod.q, batch))
+load_thread = Thread(target=enqueue, args=(mod.q, batch), daemon=True)
 load_thread.start()
 
 dataset = tf.data.Dataset.from_generator(mod.generator, output_types=tf.float32)
+dataset = dataset.prefetch(1)
 for elt in dataset:
-    # batch = tf.convert_to_tensor(a[i,:,:,None])
-    # batch = tf.expand_dims(batch, 0)
-    benchmark(mov_corr = mod(elt))
+# for i in range(num_frames):
+    #batch = tf.convert_to_tensor(a[i,:,:,None])
+    #batch = tf.expand_dims(batch, 0)
+    start = timeit.default_timer()
+    mov_corr = mod(elt)
+    print(timeit.default_timer() - start)
     #%% visualize movie
     for fr, fr_raw in zip(mov_corr, elt):
         # Our operations on the frame come here
