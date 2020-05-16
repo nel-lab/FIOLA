@@ -14,6 +14,7 @@ from skimage import io
 import numpy as np
 import pylab as plt
 import cv2
+import timeit
 #%% 
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
@@ -170,7 +171,10 @@ template = np.median(a,axis=0)
 batch = tf.convert_to_tensor(a[:num_frames,:,:,None])
 #%% run motion correction on a batch
 mod = MotionCorrect(template)
+#%%
+start = timeit.default_timer()
 mov_corr = mod(batch)
+print(float(timeit.default_timer() - start)/num_frames)
 #%% visualie movie
 min_, max_ = np.min(batch), np.max(batch)
 for fr, fr_raw in zip(mov_corr, batch):
