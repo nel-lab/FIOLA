@@ -193,21 +193,20 @@ def create_estimates(counter):
 
 #%%
 #@profile
+# @tf.function
 def main(elt, newy, mod_nnls, tht2, x_old, y_old, counter): 
 
     if counter == 0:
-        b = tf.convert_to_tensor(Y_tot[:, counter][:, None].T, dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
-        (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old, x_old, tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
-        # print(tht2, y_new, x_new)
-    
-    b = tf.convert_to_tensor(Y_tot[:, counter][:, None].T, dtype=tf.float32)
-    print(tht2.shape)
+        b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
+        (y_new, x_new, kkk), tht2 = mod_nnls((tf.expand_dims(b, axis=0), y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
+
+    tht2 = tf.squeeze(tht2)[:, None]
+
+    b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)
     mod_nnls.layers[3].set_weights([tht2]) 
-    (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old, x_old, tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
+    (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
     
-    time_arr.append(float(timeit.default_timer())-start)
-    
-    return x_new, y_new, tht2
+    return tf.squeeze(x_new, 0), tf.squeeze(y_new, 0), tht2
 
     tf.keras.backend.clear_session()
         
@@ -231,11 +230,12 @@ if __name__ == "__main__":
     b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, 262144])) # num pixels => 1x512**2 
     
     Ab = np.concatenate([A_sp_full.toarray()[:], b_full], axis=1)
+    b = Y_tot[:, 0]
     AtA = Ab.T@Ab
-    Atb = Ab.T@b_full
+    Atb = Ab.T@b
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
-    theta_2 = (Atb/n_AtA)
+    theta_2 = (Atb/n_AtA)[:, None]
     
     c_th2 = compute_theta2(Ab, n_AtA)
     th2 = c_th2(b_in)
@@ -272,11 +272,10 @@ if __name__ == "__main__":
     
     x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
     y_old = tf.identity(x_old)
-    print(x_old, y_old)
+    #print(x_old, y_old)
     
     
     i=0
-    time_arr = []
     mov_corr = []
     cfnn = []
     
@@ -286,8 +285,22 @@ if __name__ == "__main__":
             break
         start = float(timeit.default_timer())
 
-        x_old, y_old = main(elt, newy, mod_nnls, tht2, x_old, y_old, i)
-        print(x_old, y_old, tht2)
+        x_old, y_old, tht2 = main(elt, newy, mod_nnls, tht2, x_old, y_old, i)
+        
+#        if counter == 0:
+#            b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
+#            (y_new, x_new, kkk), tht2 = mod_nnls((tf.expand_dims(b, axis=0), y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
+#    
+#        tht2 = tf.squeeze(tht2)[:, None]
+#    
+#        b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)
+#        mod_nnls.layers[3].set_weights([tht2]) 
+#        (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
+#        
+#        x_old, y_old = tf.squeeze(x_new, 0), tf.squeeze(y_new, 0)
+
+        
+        print(float(timeit.default_timer())-start)
 
         cfnn.append(x_old) # or whatever display/saving mechanism
         
