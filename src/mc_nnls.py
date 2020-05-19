@@ -164,7 +164,7 @@ with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3
 #%% 
 
 def create_estimates(counter):
-    A_sp, b, f, Y =  A_sp_full.toarray()[:], b_full, f_full[:, counter][:, None], Y_tot[:, counter][:, None]
+    f, Y =  f_full[:, counter][:, None], Y_tot[:, counter][:, None]
     YrA = YrA_full[:, counter][:, None]
     C = C_full[:, counter][:, None]
 
@@ -192,104 +192,28 @@ def create_estimates(counter):
     return x_old, y_old
 
 #%%
+#@profile
+def main(elt, newy, mod_nnls, tht2, x_old, y_old, counter): 
 
-def main(elt, newy, mod_nnls, tht2, counter): 
+    if counter == 0:
+        b = tf.convert_to_tensor(Y_tot[:, counter][:, None].T, dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
+        (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old, x_old, tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
+        # print(tht2, y_new, x_new)
     
-    for i in range(1):
-        if len(elt) == 0:
-            break
-        start = float(timeit.default_timer())
-        # motion correction
-#        mov_corr.append(mod_mc(elt))
-        # get frame-by-frame estimates
-#        A_sp, YrA, C, b, f, Y = create_estimates(i)
-        #A_sp_full, YrA_full[:, counter][:, None], C_full[:, counter][:, None], b_full, f_full[:, counter][:, None], Y_tot[:, counter][:, None]
-        # start prepping for NNLS ==> PREPROCESSING?
-#        Ab = np.concatenate([A_sp_full.toarray()[:],b_full], axis=1)
-#        Cf = np.concatenate([C_full[:, counter][:, None]+YrA_full[:, counter][:, None],f_full[:, counter][:, None]], axis=0)
-#        print(np.linalg.norm(Y_tot[:, counter][:, None]-Ab@Cf)/np.linalg.norm(Y_tot[:, counter][:, None]))
-        #A = Ab
-        #b = Y_tot[:, counter][:, None]
-#        AtA = A.T@A
-#        Atb = A.T@b
-#        n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-#        
-#        theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
-#        theta_2 = (Atb/n_AtA) 
-        
-
-        # print(np.linalg.norm(Y_tot[:, counter][:, None]-Ab@Cf_bc)/np.linalg.norm(Y_tot[:, counter][:, None]))
-        
-        ##### can take this out as init
-#        x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
-#        y_old = tf.identity(x_old)
-#        fr =  tf.convert_to_tensor(Y[:,0][None,:], dtype=tf.float32)
-#        
-#        y_in = tf.keras.layers.Input(shape=y_old.shape)
-#        x_in = tf.keras.layers.Input(shape=x_old.shape)
-#        k_in = tf.keras.layers.Input(shape=(1,))
-#        b_in = tf.keras.layers.Input(shape=fr.shape)
-        y_old, x_old = create_estimates(counter)
-        
-#        c_th2 = compute_theta2(Ab, n_AtA)
-#        th2 = c_th2(b_in)
-#        
-#        nnls = NNLS(theta_1, theta_2)
-#        x_kk = nnls([y_in, x_in, k_in])
-#        for k in range(1,10):    
-#            x_kk = nnls(x_kk)    
-        
-        #c_th2 = compute_theta2(A, n_AtA)
-        #th2 = c_th2(b_in) 
-        #print(th2.shape)
-        #del c_th2
-#        mod_nnls = keras.Model(inputs=[b_in, y_in, x_in, k_in], outputs=[x_kk, th2])
-#        newy = []
-        #if counter == 0:
-        Y=Y_tot[:, counter][:, None]
-        b = tf.convert_to_tensor(Y[:, None][:,0], dtype=tf.float32) 
-        (y_new, x_new, kkk), tht2 = mod_nnls((b, y_old, x_old, tf.convert_to_tensor(0, dtype=tf.int8)))   
-        
-        from time import time
-        t_0 = time()
-
-        #b = tf.convert_to_tensor(Y_tot[:, counter][:, None][:,0][None,:], dtype=tf.float32)   
-        #print(tht2.shape)
-        #mod_nnls.layers[3].set_weights([tht2])
-        #(y_new, x_new, kkk), tht2 = mod_nnls((b, y_old, x_old, tf.convert_to_tensor(0, dtype=tf.int8)))
-#        del Ab
-        #y_old, x_old = y_new, x_new
-        newy.append(x_new.numpy())
-        print(time()-t_0) 
-        
-        Cf_nn = np.array(newy[:]).T.squeeze()
-        print(Cf_nn.shape)
-        # cfnn.append(Cf_nn)
-         
-        print(np.linalg.norm(Y-Ab@Cf_nn)/np.linalg.norm(Y))
-        # print(np.linalg.norm(Y-Ab@Cf_bc)/np.linalg.norm(Y))
-        
-        time_arr.append(float(timeit.default_timer())-start)
-        # Ab, th2, y_new, x_new, kkk = 0, 0, 0, 0, 0
-        del y_new, x_new, kkk
+    b = tf.convert_to_tensor(Y_tot[:, counter][:, None].T, dtype=tf.float32)
+    print(tht2.shape)
+    mod_nnls.layers[3].set_weights([tht2]) 
+    (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old, x_old, tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
     
-        return Cf_nn
+    time_arr.append(float(timeit.default_timer())-start)
+    
+    return x_new, y_new, tht2
 
     tf.keras.backend.clear_session()
-#    for fr, fr_raw in zip(mov_corr, batch_init):
-#            # Our operations on the frame come here
-#            gray = np.concatenate((fr.numpy().squeeze(), fr_raw.numpy().squeeze()))
-#            # Display the resulting frame
-#            cv2.imshow('frame', (gray-min_)/(max_-min_)*10)
-#            if cv2.waitKey(1) == ord('q'):
-#                break
-#    load_thread.join()
-    #print(np.mean(time_arr[30:]))
-#    cv2.destroyAllWindows()
         
 if __name__ == "__main__":
 
-    num_frames = 20
+    num_frames = 5
     a = io.imread('Sue_2x_3000_40_-46.tif')
     template = np.median(a,axis=0)
     batch_init = tf.convert_to_tensor(a[:num_frames,:,:,None])
@@ -326,7 +250,30 @@ if __name__ == "__main__":
     
     groups = update_order_greedy(A_sp_full,flag_AA=False)[0]
 #    
+    f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
+    YrA = YrA_full[:, 0][:, None]
+    C = C_full[:, 0][:, None]
 
+    # Ab = np.concatenate([A_sp,b], axis=1)
+    Cf = np.concatenate([C+YrA,f], axis=0)
+    # print(np.linalg.norm(Y-Ab@Cf)/np.linalg.norm(Y))
+#    A = Ab
+#    b = Y
+#    AtA = A.T@A
+#    Atb = A.T@b
+#    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+    
+#    theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
+#    theta_2 = (Atb/n_AtA) 
+    
+    # groups = update_order_greedy(A_sp_full,flag_AA=False)[0]
+    Cf_bc = Cf.copy()
+    Cf_bc = HALS4activity(Y_tot[:, 0][:, None].T[0], Ab, noisyC = Cf_bc, AtA=AtA, iters=5, groups=None)[0]
+    
+    x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
+    y_old = tf.identity(x_old)
+    print(x_old, y_old)
+    
     
     i=0
     time_arr = []
@@ -339,8 +286,10 @@ if __name__ == "__main__":
             break
         start = float(timeit.default_timer())
 
+        x_old, y_old = main(elt, newy, mod_nnls, tht2, x_old, y_old, i)
+        print(x_old, y_old, tht2)
 
-        cfnn.append(main(elt, newy, mod_nnls, tht2, i))
+        cfnn.append(x_old) # or whatever display/saving mechanism
         
         i+= 1
     load_thread.join()
