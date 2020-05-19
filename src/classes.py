@@ -162,7 +162,11 @@ class MotionCorrect(keras.layers.Layer):
     
     def generator(self):
         while True:
-            yield self.q.get()
+            try:
+                yield self.q.get_nowait()
+            except:
+                break
+        return
     
     def enqueue(self, q, batch):
         for fr in batch:
@@ -329,6 +333,7 @@ class NNLS(keras.layers.Layer):
 #%%
 class compute_theta2(keras.layers.Layer):
     def __init__(self, A, n_AtA, **kwargs):
+        # tf.keras.backend.clear_session()
        
         super().__init__(**kwargs)
         self.A_ = A
