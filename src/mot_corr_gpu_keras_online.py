@@ -5,10 +5,14 @@ Created on Sat Dec 14 12:48:46 2019
 
 @author: agiovann
 """
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 #%%
 import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
+from queue import Queue
+from threading import Thread
 from past.utils import old_div
 from skimage import io
 import numpy as np
@@ -48,6 +52,7 @@ class MotionCorrect(keras.layers.Layer):
         self.padding = padding
         self.epsilon = epsilon
         self.template_numel = np.prod(self.template.shape)
+        self.q = Queue()
         ## normalize template
         self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
 
@@ -68,7 +73,6 @@ class MotionCorrect(keras.layers.Layer):
         # normalize images
         imgs_zm, imgs_var = self.normalize_image(X, self.template.shape, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)        
-        
         denominator = tf.sqrt(self.normalizer * imgs_var)
         numerator = tf.nn.conv2d(imgs_zm, self.kernel, padding=self.padding, 
                                  strides=self.strides)
@@ -78,11 +82,12 @@ class MotionCorrect(keras.layers.Layer):
         # Remove any NaN in final output
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
         
-        
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
-        
+
+        start = timeit.default_timer()
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys,xs], axis=1)),
                                                              interpolation="BILINEAR") 
+        # print(timeit.default_timer()-start)
         return X_corrected
 
 
@@ -90,7 +95,7 @@ class MotionCorrect(keras.layers.Layer):
         base_config = super().get_config()
         return {**base_config, "strides": self.strides,
                 "padding": self.padding, "epsilon": self.epsilon, 
-                                        "ms_h": self.ms_h,"ms_w": self.ms_w }
+                                        "ms_h": self.ms_h,"ms_w": self.ms_w }  
         
     def normalize_template(self, template, epsilon=0.00000001):
         # remove mean and divide by std
@@ -117,14 +122,11 @@ class MotionCorrect(keras.layers.Layer):
         
         # flatten the Tensor along the height and width axes
         flat_tensor = tf.reshape(tensor, (tf.shape(tensor)[0], -1, tf.shape(tensor)[3]))
-          
         # argmax of the flat tensor
         argmax = tf.cast(tf.argmax(flat_tensor, axis=1), tf.int32)
-          
         # convert indexes into 2D coordinates
         argmax_x = argmax // tf.shape(tensor)[2]
         argmax_y = argmax % tf.shape(tensor)[2]
-        
         # stack and return 2D coordinates
         return tf.cast(tf.stack((argmax_x, argmax_y), axis=1), tf.float32)
     
@@ -145,18 +147,18 @@ class MotionCorrect(keras.layers.Layer):
         sh_y_n = tf.cast(-(sh_y - ms_w), tf.float32)
         
         tensor_ncc_log = tf.math.log(tensor_ncc)      
-        
+
         n_batches = np.arange(tensor_ncc_log.shape[0])
-        
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x-1), tf.squeeze(sh_y)]))
+
+        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x-1, axis=0), tf.squeeze(sh_y, axis=0)]))
         log_xm1_y = tf.gather_nd(tensor_ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x+1), tf.squeeze(sh_y)]))
+        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x+1, axis=0), tf.squeeze(sh_y, axis=0)]))
         log_xp1_y = tf.gather_nd(tensor_ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x), tf.squeeze(sh_y-1)]))
+        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y-1, axis=0)]))
         log_x_ym1 = tf.gather_nd(tensor_ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x), tf.squeeze(sh_y+1)]))
+        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y+1, axis=0)]))
         log_x_yp1 =  tf.gather_nd(tensor_ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x), tf.squeeze(sh_y)]))
+        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0)]))
         four_log_xy = 4 * tf.gather_nd(tensor_ncc_log, idx)
         
         sh_x_n = sh_x_n - tf.math.truediv((log_xm1_y - log_xp1_y), (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
@@ -164,26 +166,50 @@ class MotionCorrect(keras.layers.Layer):
         
         return sh_x_n, sh_y_n
     
+    def generator(self):
+        while True:
+            yield self.q.get()
+    
+    
+#%%
+
+def enqueue(q, batch):
+    # This function mocks incoming real time data and puts it on a queue
+    for fr in batch:
+        q.put(tf.expand_dims(fr, 0))
+    return
+
 #%% load batch, initialize template and transform to tensor
 num_frames = 300
 a = io.imread('Sue_2x_3000_40_-46.tif')
 template = np.median(a,axis=0)
-batch = tf.convert_to_tensor(a[:num_frames,:,:,None])
-#%% run motion correction on a batch
+batch_init = tf.convert_to_tensor(a[:num_frames,:,:,None])
+batch = tf.convert_to_tensor(a[num_frames:2*num_frames,:,:,None])
+min_, max_ = -296.0, 1425.0
+
+#%% run motion correction one frame at a time
 mod = MotionCorrect(template)
-#%%
-start = timeit.default_timer()
-mov_corr = mod(batch)
-print(float(timeit.default_timer() - start)/num_frames)
-#%% visualie movie
-min_, max_ = np.min(batch), np.max(batch)
-for fr, fr_raw in zip(mov_corr, batch):
-    # Our operations on the frame come here
-    gray = np.concatenate((fr.numpy().squeeze(), fr_raw.numpy().squeeze()))
-    # Display the resulting frame
-    cv2.imshow('frame', (gray-min_)/(max_-min_)*10)
-    if cv2.waitKey(1) == ord('q'):
-        break
+
+load_thread = Thread(target=enqueue, args=(mod.q, batch), daemon=True)
+load_thread.start()
+
+dataset = tf.data.Dataset.from_generator(mod.generator, output_types=tf.float32)
+dataset = dataset.prefetch(1)
+for elt in dataset:
+# for i in range(num_frames):
+    #batch = tf.convert_to_tensor(a[i,:,:,None])
+    #batch = tf.expand_dims(batch, 0)
+    start = timeit.default_timer()
+    mov_corr = mod(elt)
+    print(timeit.default_timer() - start)
+    #%% visualize movie
+    for fr, fr_raw in zip(mov_corr, elt):
+        # Our operations on the frame come here
+        gray = np.concatenate((fr.numpy().squeeze(), fr_raw.numpy().squeeze()))
+        # Display the resulting frame
+        cv2.imshow('frame', (gray-min_)/(max_-min_)*10)
+        if cv2.waitKey(1) == ord('q'):
+            break
 cv2.destroyAllWindows()
     
     

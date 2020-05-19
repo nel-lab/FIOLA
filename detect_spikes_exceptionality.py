@@ -6,12 +6,15 @@ files for loading and analyzing proccessed Marton's data
 @author: caichangjia
 """
 #%% import library
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 from scipy.signal import find_peaks
 import peakutils
+from scipy import signal
 from scipy.signal import savgol_filter
+from time import time
 #%% relevant functions
 def distance_spikes(s1, s2, max_dist):
     """ Define distance matrix between two spike train.
@@ -305,12 +308,14 @@ def find_spikes(signal, signal_no_subthr=None, thres_STD=5, thres_STD_ampl=4,
     std_run = estimate_running_std(signal, win_size, stride,idx_exclude=index_remove, q_min=q_min, q_max=q_max)
     z_signal = signal/std_run 
     indexes, erf = extract_exceptional_events(z_signal, thres_STD=thres_STD, N=N, min_dist=min_dist, bidirectional=bidirectional)
+
     # remove spikes that are not large peaks in the original signal
     if signal_no_subthr is not None:
         signal_no_subthr /= estimate_running_std(signal_no_subthr, 20000, 5000, 
                                                  q_min=q_min, q_max=q_max)
         
         indexes = np.intersect1d(indexes,np.where(signal_no_subthr[1:]>thres_STD_ampl))
+        #indexes = np.where(signal_no_subthr[1:]>thres_STD_ampl)
         
     return indexes, erf, z_signal
 #%%
@@ -337,15 +342,149 @@ def normalize(ss):
     aa -= np.median(aa)
     aa /= estimate_running_std(aa)
     return aa
+
 #%%
-file_list = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/454597_Cell_0_40x_patch1_output.npz', 
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_3_40x_1xtube_10A2_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_3_40x_1xtube_10A3_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A5_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A7_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/462149_Cell_1_40x_1xtube_10A1_output.npz', 
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/462149_Cell_1_40x_1xtube_10A2_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A6_output.npz']
+def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
+    """ Find spikes based on the relative height of peaks online
+    Args:
+        t: 1-D array
+            one dimensional signal
+            
+        thresh height: int
+            selected threshold
+            
+        window: int
+            window for updating statistics including median, thresh_sub, std
+            
+        step: int
+            step for updating statistics including median, thresh_sub, std
+
+            
+    Returns:
+        index: 1-D array
+            index of spikes
+    """
+    
+    def compute_std(peak_height, median):
+        data = peak_height - median
+        ff1 = -data * (data < 0)
+        Ns = np.sum(ff1 > 0)
+        std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
+        return std      
+
+    _, thresh_sub_init, thresh_init, peak_height1, median_init = find_spikes_rh(t[:20000], thresh_height)
+    t_init = time()
+    window_length = 2
+    peak_height = np.array([])
+    index = []
+    median = [median_init]
+    thresh_sub = [thresh_sub_init]
+    thresh = [thresh_init]
+    ts = np.zeros(t.shape)
+    time_all = [] 
+    
+    for i in range(len(t)):
+        if i > 2 * window_length:  
+            ts[i] = t[i] - median[-1]
+            # Estimate thresh_sub
+            if (i > window) and (i % step == 0):
+                tt = -ts[i - window : i][ts[i - window : i] < 0]  
+                thresh_sub.append(np.percentile(tt, 99))
+                print(f'{i} frames processed')
+            
+            if (i > window) and (i % step == 100):
+                tt = t[i - window : i]  
+                median.append(np.percentile(tt, 50))
+            
+            
+            if (i > window) and (i % step == 200):
+                length = len(peak_height)
+                if length % 2 == 0:
+                    temp_median = peak_height[int(length / 2) - 1]
+                else:
+                    temp_median = peak_height[int((length-1) / 2)]
+                thresh.append(compute_std(peak_height, temp_median) * thresh_height)
+                
+            # decide if two frames ago it is a peak
+            temp = ts[i - 2] - ts[(i - 4) : (i+1)]
+            if (temp[1] > 0) and (temp[3] > 0):
+                left = np.max((temp[0], temp[1]))
+                right = np.max((temp[3], temp[4]))
+                height = np.single(1 / (1 / left + 1 / right))
+                indices = np.searchsorted(peak_height, height)
+                peak_height = np.insert(peak_height, indices, height)
+                
+                if ts[i - 2] > thresh_sub[-1]:
+                    if height > thresh[-1]:
+                        index.append(i - 2)
+        t_c = time()
+        time_all.append(t_c)
+                
+    print(f'{1000*(time() - t_init) / t.shape[0]} ms per frame')  
+    print(f'{1000*np.diff(time_all).max()} ms for maximum per frame')  
+    
+    #plt.figure()
+    #plt.plot(np.diff(np.array(time_all)))
+    
+    return index
+
+#%%
+def find_spikes_rh(t, thresh_height):
+    """ Find spikes based on the relative height of peaks
+    Args:
+        t: 1-D array
+            one dimensional signal
+            
+        thresh height: int
+            selected threshold
+            
+    Returns:
+        index: 1-D array
+            index of spikes
+    """
+        
+    # List peaks based on their relative peak heights
+    #t = img.copy()
+    median = np.median(t) 
+    t = t - median
+    window_length = 2
+    window = np.int64(np.arange(-window_length, window_length + 1, 1))
+    index = signal.find_peaks(t, height=None)[0]
+    index = index[np.logical_and(index > (-window[0]), index < (len(t) - window[-1]))]
+    matrix = t[index[:, np.newaxis]+window]
+    left = np.maximum((matrix[:,2] - matrix[:,1]), (matrix[:,2] - matrix[:,0]))  
+    right = np.maximum((matrix[:,2] - matrix[:,3]), (matrix[:,2] - matrix[:,4]))  
+    peak_height = 1 / (1 / left + 1 / right)
+    
+    # Thresholding
+    data = peak_height - np.median(peak_height)
+    ff1 = -data * (data < 0)
+    Ns = np.sum(ff1 > 0)
+    std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
+    thresh = thresh_height * std
+    index = index[peak_height > thresh]
+
+    # Only select peaks above subthreshold
+    tt = -t[t<0]
+    thresh_sub = np.percentile(tt, 99)
+    index_sub = np.where(t > thresh_sub)[0]
+    index = np.intersect1d(index,index_sub)
+
+    #plt.hist(peak_height, 500)
+    #plt.vlines(thresh, peak_height.min(), peak_height.max(), color='red')
+    #plt.figure()
+    #plt.plot(dict1['v_t'], t); plt.vlines(dict1['v_t'][index], t.min()-5, t.min(), color='red');
+    #plt.vlines(dict1['e_sp'], t.min()-10, t.min()-5, color='black') 
+    
+    return index, thresh_sub, thresh, peak_height, median
+#%%
+base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
+lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
+             '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
+             '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
+             '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz', ]
+file_list = [os.path.join(base_folder, file)for file in lists]
 
 fig = plt.figure(figsize=(12,12))
 temp = file_list[0].split('/')[-1].split('_')
@@ -367,22 +506,25 @@ all_rec = []
 
 all_corr_subthr = []
 
-mode = 'minimum'
-mode = 'percentile'
-mode = 'v_sub'
+mode = ['minimum', 'percentile', 'v_sub', 'low_pass', 'double'][2]
 
-for file in file_list[:]:
-    dict1 = np.load(file, allow_pickle=True)
+for k in np.array(list(range(0,8))):
+    if (k == 6) or (k==3):
+        thresh_height = 7
+    else:
+        thresh_height = 4
+    dict1 = np.load(file_list[k], allow_pickle=True)
     img = dict1['v_sg']
     print(np.diff( dict1['v_t']))
     std_estimate = np.diff(np.percentile(img,[75,25]))/100
-    for i in range(len(dict1['sweep_time']) - 1):
-        idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]), dict1['v_t']<dict1['sweep_time'][i+1][0])])[1]
-        img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
+    ### I comment it due to it will influence peak distribution
+    #for i in range(len(dict1['sweep_time']) - 1):
+    #    idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]), dict1['v_t']<dict1['sweep_time'][i+1][0])])[1]
+    #    img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
     
-    for i in range(len(dict1['sweep_time']) - 1):
-        idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]-1), dict1['v_t']<dict1['sweep_time'][i][-1]-0.85)])[1]
-        img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
+    #for i in range(len(dict1['sweep_time']) - 1):
+    #    idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]-1), dict1['v_t']<dict1['sweep_time'][i][-1]-0.85)])[1]
+    #    img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
 #    
     sub_1 = estimate_subthreshold(img, thres_STD=5,  kernel_size=21)
     all_corr_subthr.append([np.corrcoef(normalize(dict1['e_sub']),normalize(sub_1))[0,1],np.corrcoef(normalize(dict1['e_sub']),normalize(dict1['v_sub']))[0,1]])
@@ -397,17 +539,35 @@ for file in file_list[:]:
 #        signal_subthr = np.concatenate([np.zeros(15),perc,np.zeros(14)]) #cv2.resize(perc, (1,img.shape[0])).squeeze()
         signal_subthr =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
     elif mode == 'minimum':
-        minima = np.array([np.min(el) for el in rolling_window(img.T[None,:], 15, 5)])
+        minima = np.array([np.min(el) for el in rolling_window(img.T[None,:], 10, 5)])
         signal_subthr = cv2.resize(minima, (1,img.shape[0]),interpolation = cv2.INTER_CUBIC).squeeze()
+    elif mode == 'low_pass':
+        if ((k == 6) or (k==7)):
+            signal_subthr = signal_filter(dict1['v_sg'], 15, fr=1000, order=5, mode='low')
+        else:
+            signal_subthr = signal_filter(dict1['v_sg'], 15, fr=400, order=5, mode='low')
+    elif mode == 'double':
+        if ((k == 6) or (k==7)):
+            subthr1 = signal_filter(dict1['v_sg'], 10, fr=1000, order=5, mode='low')
+        else:
+            subthr1 = signal_filter(dict1['v_sg'], 10, fr=400, order=5, mode='low')
+        perc = np.array([np.percentile(el,20) for el in rolling_window((img-subthr1).T[None,:], perc_window, perc_stride)])
+#        signal_subthr = np.concatenate([np.zeros(15),perc,np.zeros(14)]) #cv2.resize(perc, (1,img.shape[0])).squeeze()
+        subthr2 =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
+        signal_subthr = subthr1 + subthr2        
         
     signal_no_subthr = img -  signal_subthr
 #    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
     
-    indexes, erf, z_signal = find_spikes(img, signal_no_subthr=signal_no_subthr, 
-                                         thres_STD=4.5, thres_STD_ampl=4, min_dist=1, 
-                                         N=2, win_size=20000, stride=5000, 
-                                         spike_before=3, spike_after=4, 
-                                         bidirectional=False)
+    #indexes, erf, z_signal = find_spikes(img, signal_no_subthr=signal_no_subthr, 
+    #                                     thres_STD=4.5, thres_STD_ampl=4, min_dist=1, 
+    #                                     N=2, win_size=20000, stride=5000, 
+    #                                     spike_before=3, spike_after=4, 
+    #                                     bidirectional=False)
+    
+    #indexes = find_spikes_tm(img, signal_subthr, thresh_height)
+    #indexes = find_spikes_rh(img, thresh_height)[0]
+    indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
     
     dict1_v_sp_ = dict1['v_t'][indexes]
     
@@ -468,9 +628,32 @@ for file in file_list[:]:
 if False:    
     ax3.legend([f'precision:{pr}', f'recall: {re}', f'F1: {F}'])
     ax4.legend([f'corr:{sub}'])
+
 #%%
-print(np.mean(all_f1_scores))
-print(np.mean(all_corr_subthr,axis=0))
+#plt.plot(dict1['v_t'], dict1['v_sg'], '.-', color='blue')#;plt.plot(dict1['v_t'], dict1['v_sg']-signal_subthr);
+#plt.plot(dict1['v_t'][:-1], np.diff(dict1['v_sg']-signal_subthr)-10, '.-', color='orange')
+#plt.plot(dict1['e_t'], dict1['e_sg'])
+plt.plot(dict1['v_t'], img)
+#plt.plot(dict1['v_t'], t_s)
+#plt.plot(dict1['v_t'], signal_subthr, label='quan');
+#plt.plot(dict1['v_t'], dict1['v_sub'], label='vsub');
+#plt.plot(dict1['v_t'], signal_subthr, label='subthr');
+#plt.plot(dict1['v_t'], img - signal_subthr, label='processed');
+#plt.plot(dict1['v_t'], t_s, label='tm');
+
+#plt.plot(dict1['v_t'], sub_20, label='low_pass_20');
+#plt.plot(dict1['v_t'], sub_15, label='low_pass_15');
+plt.legend()
+plt.vlines(dict1['e_sp'], img.min()-5, img.min(), color='black')
+plt.vlines(dict1_v_sp_, img.min()-10, img.min()-5, color='red')
+
+
+#%%
+#print(lists) 
+print(f'average_F1:{np.mean(all_f1_scores)}')
+print(f'average_sub:{np.mean(all_corr_subthr,axis=0)}')
+print(f'F1:{all_f1_scores}');print(f'prec:{all_prec}'); print(f'rec:{all_rec}')
+
 #%%
 if False:
     #indexes = peakutils.indexes(np.diff(img), thres=0.18, min_dist=3, thres_abs=True)
@@ -517,3 +700,201 @@ if False:
     result = zeros(data.size)
     for i, x in enumerate(data):
         result[i], z = signal.sosfilt(b, [x], zi=z)
+
+#%%
+def find_spikes_tm(img, signal_subthr, thresh_height=3.5):
+    from caiman.source_extraction.volpy.spikepursuit import signal_filter
+    from caiman.source_extraction.volpy.spikepursuit import get_thresh
+    from scipy import signal
+    t = img - signal_subthr
+    t = t - np.median(t)
+    std_run = estimate_running_std(t, 20000, 5000, q_min=25, q_max=75)
+    t = t/std_run
+    
+    window_chunk = 30000
+    T = len(t)
+    n = int(np.floor(T / window_chunk))
+    mv_std = []
+    index = []
+    
+    window_chunk_length = 2
+    for i in range(n):
+        if i < n - 1:
+            data = t[window_chunk * i: window_chunk * i + window_chunk]
+        else:
+            data = t[window_chunk * i:]
+    
+        data = data - np.median(data)
+        ff1 = -data * (data < 0)
+        Ns = np.sum(ff1 > 0)
+        std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
+        thresh = 4 * std
+        idx = signal.find_peaks(data, height=thresh)[0]
+        
+        #plt.plot(t); plt.vlines(idx, t.min()-5, t.min(), color='red')
+        
+        window = np.int64(np.arange(-window_length, window_length + 1, 1))
+        idx = idx[np.logical_and(idx > (-window[0]), idx < (len(data) - window[-1]))]
+        PTD = data[(idx[:, np.newaxis] + window)]
+        #PTA = np.mean(PTD, 0)
+        PTA = np.median(PTD, 0)
+        PTA = PTA
+        #plt.figure()
+        #plt.plot(PTA)
+        #templates = PTA
+      
+        t_s = np.convolve(data, np.flipud(PTA), 'same')
+        t_s = t_s / t_s.max() * data.max()
+        data = t_s
+        data = data - np.median(data)
+        pks2 = data[signal.find_peaks(data, height=None)[0]]
+        thresh2, falsePosRate, detectionRate, _ = get_thresh(pks2, clip=0, pnorm=0.5, min_spikes=30)
+        index.append(signal.find_peaks(data, height=thresh2)[0] + i * window_chunk)
+    index = np.concatenate(index)
+    """
+    plt.figure()
+    plt.hist(pks2, 500)
+    plt.axvline(x=thresh2, c='r')
+    plt.title('after matched filter')
+    plt.tight_layout()
+    plt.show()    
+    """
+    return index    
+
+#%%    
+def find_spikes_tm(img, signal_subthr, thresh_height=3.5):
+    from caiman.source_extraction.volpy.spikepursuit import signal_filter
+    from caiman.source_extraction.volpy.spikepursuit import get_thresh
+    from scipy import signal
+    t = img - signal_subthr
+    t = t - np.median(t)
+    std_run = estimate_running_std(t, 20000, 5000, q_min=25, q_max=75)
+    t = t/std_run
+    
+    window_length = 2
+    data = t[:20000]
+    data = data - np.median(data)
+    ff1 = -data * (data < 0)
+    Ns = np.sum(ff1 > 0)
+    std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
+    thresh = 4 * std
+    index = signal.find_peaks(data, height=thresh)[0]
+    
+    #plt.plot(t); plt.vlines(index, t.min()-5, t.min(), color='red')
+    
+    window = np.int64(np.arange(-window_length, window_length + 1, 1))
+    index = index[np.logical_and(index > (-window[0]), index < (len(data) - window[-1]))]
+    PTD = data[(index[:, np.newaxis] + window)]
+    #PTA = np.mean(PTD, 0)
+    PTA = np.median(PTD, 0)
+    PTA = PTA
+    #plt.figure()
+    #plt.plot(PTA)
+    #templates = PTA
+    
+    """
+    plt.figure()
+    plt.plot(np.transpose(PTD), c=[0.5, 0.5, 0.5])
+    plt.plot(PTA, c='black', linewidth=2)
+    plt.title('Peak-triggered average')
+    plt.show()
+    """
+  
+    t_s = np.convolve(t, np.flipud(PTA), 'same')
+    t_s = t_s / t_s.max() * t.max()
+    
+    """
+    data = t_s
+    data = data - np.median(data)
+    ff1 = -data * (data < 0)
+    Ns = np.sum(ff1 > 0)
+    std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
+    thresh = thresh_height * std
+    index = signal.find_peaks(data, height=thresh)[0]
+    #plt.plot(t+5, label='orig'); plt.plot(t_s, label='template');plt.legend()
+    """
+    
+    window = 30000
+    T = len(t_s)
+    n = int(np.floor(T / window))
+    mv_std = []
+    index = []
+    
+    for i in range(n):
+        if i < n - 1:
+            data = t_s[window * i: window * i + window]
+        else:
+            data = t_s[window * i:]
+        data = data - np.median(data)
+        ff1 = -data * (data < 0)
+        Ns = np.sum(ff1 > 0)
+        mv_std.append(np.sqrt(np.divide(np.sum(ff1**2), Ns)))
+        thresh2 = thresh_height * mv_std[-1]
+        spike = signal.find_peaks(data, height=thresh2)[0] + i *window
+        index.append(spike)
+    index = np.concatenate(index) 
+    """
+    for i in range(n):
+        if i < n - 1:
+            data = t_s[window * i: window * i + window]
+        else:
+            data = t_s[window * i:]
+        data = data - np.median(data)
+        pks2 = data[signal.find_peaks(data, height=None)[0]]
+        thresh2, falsePosRate, detectionRate, _ = get_thresh(pks2, clip=0, pnorm=0.5, min_spikes=30)
+        
+        index.append(signal.find_peaks(data, height=thresh2)[0] + i * window)
+    index = np.concatenate(index)
+    
+    plt.figure()
+    plt.hist(pks2, 500)
+    plt.axvline(x=thresh2, c='r')
+    plt.title('after matched filter')
+    plt.tight_layout()
+    plt.show()    
+    """
+    return index
+
+#%%
+plt.plot(img, '.-')
+#%%
+plt.plot(img); plt.plot(signal_subthr);plt.plot(dict1['v_sub'])
+plt.plot(t, label='orig');plt.plot(t_s, label='processed');plt.hlines(thresh2, 0, len(t));plt.legend()
+
+#%%
+from caiman.source_extraction.volpy.spikepursuit import signal_filter
+sub_20 = signal_filter(dict1['v_sg'], 20, fr=400, order=5, mode='low')
+sub_15 = signal_filter(dict1['v_sg'], 15, fr=400, order=5, mode='low')
+sub_10 = signal_filter(dict1['v_sg'], 10, fr=400, order=5, mode='low')
+sub_15_order3 = signal_filter(dict1['v_sg'], 15, fr=400, order=3, mode='low')
+sub_15_order1 = signal_filter(dict1['v_sg'], 15, fr=400, order=1, mode='low')
+sub_5 = signal_filter(dict1['v_sg'], 5, fr=400, order=5, mode='low')
+sub_1 = signal_filter(dict1['v_sg'], 1, fr=400, order=5, mode='low')
+ 
+ 
+#%%
+plt.plot(img);
+#plt.plot(signal_subthr, label='subthr');
+plt.plot(dict1['v_sub'], label='vsub');
+#plt.plot(minimal, label='minimal');
+#plt.plot(sub_20, label='low_pass_20');
+plt.plot(sub_10, label='low_pass_1');
+
+#plt.plot(sub_1, label='low_pass_1');
+perc = np.array([np.percentile(el,20) for el in rolling_window((img-sub_10).T[None,:], perc_window, perc_stride)])
+#        signal_subthr = np.concatenate([np.zeros(15),perc,np.zeros(14)]) #cv2.resize(perc, (1,img.shape[0])).squeeze()
+signal_subthr =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
+plt.plot(sub_10+signal_subthr, label='remove twice')
+
+#plt.plot(sub_15_order3, label='low_pass_15_3');
+#plt.plot(sub_15_order1, label='low_pass_15_1');
+#plt.plot(minimum, label='minimum')
+#plt.plot(img - sub_15-signal_subthr, label='remove twice')
+#plt.plot(minimal, label='minimal')
+#plt.plot(sub_5, label='low_pass_5');
+perc = np.array([np.percentile(el,20) for el in rolling_window((img).T[None,:], perc_window, perc_stride)])
+#        signal_subthr = np.concatenate([np.zeros(15),perc,np.zeros(14)]) #cv2.resize(perc, (1,img.shape[0])).squeeze()
+signal_subthr =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
+plt.plot(signal_subthr, label='remove once')
+
+plt.legend()

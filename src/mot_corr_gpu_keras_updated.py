@@ -9,12 +9,11 @@ Created on Sat Dec 14 12:48:46 2019
 import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
-from past.utils import old_div
 from skimage import io
 import numpy as np
 import pylab as plt
+#%%
 import cv2
-import timeit
 #%% 
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
@@ -165,16 +164,13 @@ class MotionCorrect(keras.layers.Layer):
         return sh_x_n, sh_y_n
     
 #%% load batch, initialize template and transform to tensor
-num_frames = 300
-a = io.imread('Sue_2x_3000_40_-46.tif')
+num_frames = 3000
+a = io.imread('/home/nellab/caiman_data/example_movies/demoMovie.tif').astype(np.float32)
 template = np.median(a,axis=0)
 batch = tf.convert_to_tensor(a[:num_frames,:,:,None])
 #%% run motion correction on a batch
 mod = MotionCorrect(template)
-#%%
-start = timeit.default_timer()
 mov_corr = mod(batch)
-print(float(timeit.default_timer() - start)/num_frames)
 #%% visualie movie
 min_, max_ = np.min(batch), np.max(batch)
 for fr, fr_raw in zip(mov_corr, batch):
@@ -185,5 +181,4 @@ for fr, fr_raw in zip(mov_corr, batch):
     if cv2.waitKey(1) == ord('q'):
         break
 cv2.destroyAllWindows()
-    
     
