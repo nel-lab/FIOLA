@@ -59,6 +59,7 @@ def spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist, save=
     # Distance matrix and find matches
     D = distance_spikes(s1=e_sp, s2=v_sp, max_dist=max_dist)
     index_gt, index_method = find_matches(D)
+    spike = [e_sp, v_sp]
     match = [e_sp[index_gt], v_sp[index_method]]
     height = np.max(np.array(e_sg.max(), v_sg.max()))
     
@@ -102,7 +103,7 @@ def spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist, save=
         plt.legend(prop={'size': 6})
         plt.tight_layout()
         plt.savefig(f'{volpy_path}/spike_sweep{i}_{vpy.params.volspike["threshold_method"]}.pdf')
-    return precision, recall, F1, match
+    return precision, recall, F1, match, spike
 
 # Compute subthreshold correlation coefficents
 def sub_correlation(i, v_t, e_sub, v_sub, scope, save=False):
@@ -125,18 +126,20 @@ def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=Fals
     mean_time = []
     e_match = []
     v_match = []
+    e_spike_aligned = []
+    v_spike_aligned = []
     
     for i in range(len(sweep_time)):
         print(f'sweep{i}')
         if i == 0:
-            scope = [np.ceil(max([e_t.min(), v_t.min()])), sweep_time[i][-1]]
+            scope = [max([e_t.min(), v_t.min()]), sweep_time[i][-1]]
         elif i == len(sweep_time) - 1:
-            scope = [sweep_time[i][0], np.floor(min([e_t.max(), v_t.max()]))]
+            scope = [sweep_time[i][0], min([e_t.max(), v_t.max()])]
         else:
             scope = [sweep_time[i][0], sweep_time[i][-1]]
         mean_time.append(1 / 2 * (scope[0] + scope[-1]))
         
-        pr, re, F, match = spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.05, save=save)
+        pr, re, F, match, spike = spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.05, save=save)
         corr = sub_correlation(i, v_t, e_sub, v_sub, scope, save=save)
         precision.append(pr)
         recall.append(re)
@@ -144,11 +147,16 @@ def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=Fals
         sub_corr.append(corr)
         e_match.append(match[0])
         v_match.append(match[1])
-    
+        e_spike_aligned.append(spike[0])
+        v_spike_aligned.append(spike[1])
+        
     e_match = np.concatenate(e_match)
     v_match = np.concatenate(v_match)
+    e_spike_aligned = np.concatenate(e_spike_aligned)
+    v_spike_aligned = np.concatenate(v_spike_aligned)
 
-    return precision, recall, F1, sub_corr, e_match, v_match, mean_time
+
+    return precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned
 
 #%%
 from caiman.base.movies import rolling_window
@@ -396,7 +404,6 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
                 tt = t[i - window : i]  
                 median.append(np.percentile(tt, 50))
             
-            
             if (i > window) and (i % step == 200):
                 length = len(peak_height)
                 if length % 2 == 0:
@@ -454,7 +461,8 @@ def find_spikes_rh(t, thresh_height):
     matrix = t[index[:, np.newaxis]+window]
     left = np.maximum((matrix[:,2] - matrix[:,1]), (matrix[:,2] - matrix[:,0]))  
     right = np.maximum((matrix[:,2] - matrix[:,3]), (matrix[:,2] - matrix[:,4]))  
-    peak_height = 1 / (1 / left + 1 / right)
+    peak_height = 1 / (1 / left + 1 / right) #1/2*(left + right)#
+    #peak_height_absolute = t[index]
     
     # Thresholding
     data = peak_height - np.median(peak_height)
@@ -462,14 +470,15 @@ def find_spikes_rh(t, thresh_height):
     Ns = np.sum(ff1 > 0)
     std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
     thresh = thresh_height * std
-    index = index[peak_height > thresh]
+    index_peak = index[peak_height > thresh]
 
     # Only select peaks above subthreshold
     tt = -t[t<0]
     thresh_sub = np.percentile(tt, 99)
     index_sub = np.where(t > thresh_sub)[0]
-    index = np.intersect1d(index,index_sub)
+    index = np.intersect1d(index_peak,index_sub)
 
+    #plt.figure()
     #plt.hist(peak_height, 500)
     #plt.vlines(thresh, peak_height.min(), peak_height.max(), color='red')
     #plt.figure()
@@ -477,6 +486,8 @@ def find_spikes_rh(t, thresh_height):
     #plt.vlines(dict1['e_sp'], t.min()-10, t.min()-5, color='black') 
     
     return index, thresh_sub, thresh, peak_height, median
+
+
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
                '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
@@ -509,10 +520,10 @@ all_corr_subthr = []
 mode = ['minimum', 'percentile', 'v_sub', 'low_pass', 'double'][2]
 
 for k in np.array(list(range(0,8))):
-    if (k == 6) or (k==3):
-        thresh_height = 7
-    else:
-        thresh_height = 4
+    #if (k == 6) or (k==3):
+    #    thresh_height = 7
+    #else:
+    thresh_height = 4
     dict1 = np.load(file_list[k], allow_pickle=True)
     img = dict1['v_sg']
     print(np.diff( dict1['v_t']))
@@ -583,7 +594,7 @@ for k in np.array(list(range(0,8))):
 #                                                                          dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
 #                                                                          dict1['v_sg'], dict1['v_sp'], 
 #                                                                          dict1['v_t'], dict1['v_sub'],save=False)
-    precision, recall, F1, sub_corr, e_match, v_match, mean_time = metric(dict1['sweep_time'], dict1['e_sg'], 
+    precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned = metric(dict1['sweep_time'], dict1['e_sg'], 
                                                                           dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
                                                                           dict1['v_sg'], dict1_v_sp_ , 
                                                                           dict1['v_t'], dict1['v_sub'],save=False)
@@ -593,7 +604,7 @@ for k in np.array(list(range(0,8))):
     all_f1_scores.append(np.array(F1).mean().round(2))
     all_prec.append(np.array(precision).mean().round(2))
     all_rec.append(np.array(recall).mean().round(2))
-    continue 
+    #continue 
     pr.append(np.array(precision).mean().round(2))
     re.append(np.array(recall).mean().round(2))
     F.append(np.array(F1).mean().round(2))
@@ -601,8 +612,8 @@ for k in np.array(list(range(0,8))):
     ax1 = fig.add_axes([0.05, 0.8, 0.9, 0.15])
     
     
-    e_fr = np.unique(np.floor(dict1['e_sp']), return_counts=True)
-    v_fr = np.unique(np.floor(dict1_v_sp_), return_counts=True)
+    e_fr = np.unique(np.floor(e_spike_aligned), return_counts=True)
+    v_fr = np.unique(np.floor(v_spike_aligned), return_counts=True)
     ax1.plot(e_fr[0], e_fr[1], color='black')
     ax1.plot(v_fr[0], v_fr[1], color='g')
     ax1.legend(['ephys','voltage'])
@@ -610,10 +621,10 @@ for k in np.array(list(range(0,8))):
     
     
     ax2 = fig.add_axes([0.05, 0.6, 0.9, 0.15])
-    ax2.vlines(list(set(dict1_v_sp_)-set(v_match)), 2.75,3.25, color='red')
-    ax2.vlines(dict1_v_sp_, 1.75,2.25, color='green')
-    ax2.vlines(dict1['e_sp'], 0.75,1.25, color='black')
-    ax2.vlines(list(set(dict1['e_sp'])-set(e_match)), -0.25,0.25, color='red')
+    ax2.vlines(list(set(v_spike_aligned)-set(v_match)), 2.75,3.25, color='red')
+    ax2.vlines(v_spike_aligned, 1.75,2.25, color='green')
+    ax2.vlines(e_spike_aligned, 0.75,1.25, color='black')
+    ax2.vlines(list(set(e_spike_aligned)-set(e_match)), -0.25,0.25, color='red')
     plt.yticks(np.arange(4), ['False Negative', 'Ephys', 'Voltage', 'False Positive'])
     
     ax3 = fig.add_axes([0.05, 0.2, 0.9, 0.35])
@@ -633,7 +644,7 @@ if False:
 #plt.plot(dict1['v_t'], dict1['v_sg'], '.-', color='blue')#;plt.plot(dict1['v_t'], dict1['v_sg']-signal_subthr);
 #plt.plot(dict1['v_t'][:-1], np.diff(dict1['v_sg']-signal_subthr)-10, '.-', color='orange')
 #plt.plot(dict1['e_t'], dict1['e_sg'])
-plt.plot(dict1['v_t'], img)
+plt.plot(dict1['v_t'], img, '.-')
 #plt.plot(dict1['v_t'], t_s)
 #plt.plot(dict1['v_t'], signal_subthr, label='quan');
 #plt.plot(dict1['v_t'], dict1['v_sub'], label='vsub');
