@@ -75,7 +75,7 @@ class MotionCorrect(keras.layers.Layer):
 #            initializer=tf.constant_initializer(self.n_AtA_)) 
         super().build(batch_input_shape) # must be at the end
 
-
+    @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         # normalize images
@@ -132,6 +132,7 @@ class MotionCorrect(keras.layers.Layer):
         imgs_var = localsum_sq - tf.square(localsum)/np.prod(shape_template) + epsilon
         # Remove small machine precision errors after subtraction
         imgs_var = tf.where(imgs_var<0, tf.zeros_like(imgs_var), imgs_var)
+        del localsum_sq, localsum
         return imgs_zm, imgs_var
     
     def argmax_2d(self, tensor):
@@ -196,7 +197,7 @@ class MotionCorrect(keras.layers.Layer):
     
     def enqueue(self, q, batch):
         for fr in batch:
-            q.put(tf.expand_dims(fr, 0))
+            q.put(fr)
         return
 
 #%%

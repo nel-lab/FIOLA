@@ -17,12 +17,12 @@ import caiman as cm
 import multiprocessing as mp
 
 physical_devices = tf.config.list_physical_devices('GPU')
-try:
-  tf.config.experimental.set_memory_growth(physical_devices[0], True)
-except:
-  # Invalid device or cannot modify virtual devices once initialized.
-  print("pass")
-  pass
+#try:
+#  tf.config.experimental.set_memory_growth(physical_devices[0], True)
+#except:
+#  # Invalid device or cannot modify virtual devices once initialized.
+#  print("pass")
+#  pass
 # from NNLS_keras_fast_online import compute_theta2, NNLS
 
 #%% HELPER FUNCTIONS
@@ -174,16 +174,21 @@ def generator():
             break
     return
     
-def enqueue(q, batch):
-    for fr in batch:
-        q.put(tf.expand_dims(fr, 0))
+def enqueue(q, count):
+    for i in range(count):
+        t = tf.convert_to_tensor(a[i, :, :, None])
+        try:
+            q.put(t[None, :])
+        except:
+            print("what?")
     return
 
 #%%
 # tf.compat.v1.disable_eager_execution()
+tf.keras.backend.clear_session()
 if __name__ == "__main__":
 
-    num_frames = 5
+    num_frames = 100
     #a = io.imread('Sue_2x_3000_40_-46.tif')
 #    a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
     shape = a.shape
@@ -194,7 +199,7 @@ if __name__ == "__main__":
     y_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) #num comps x 1fr
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) # num components x fr
     k_in = tf.keras.layers.Input(shape=(1,))
-    b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, shape[-1]**2])) # num pixels => 1x512**2
+    #b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, shape[-1]**2])) # num pixels => 1x512**2
     mc_0 = tf.reshape(a[0, :, :], [1, 512, 512, 1]) # initial input tensor for the motion correction layer
     #mc_in = tf.keras.layers.Input(tensor=tf.convert_to_tensor(tf.reshape(a[0, :, :], [512, 512, 1])))
     mc_in = tf.keras.layers.Input(shape=tf.TensorShape([512, 512, 1]))
@@ -210,15 +215,14 @@ if __name__ == "__main__":
     
     mod_mc = MotionCorrect(template) #initialize motion correction layer
 
-    load_thread = Thread(target=mod_mc.enqueue, args=(mod_mc.q, batch_init), daemon=True)
+    load_thread = Thread(target=enqueue, args=(q, num_frames), daemon=True)
     load_thread.start() #thread puts frames on queue
     
-    dataset = tf.data.Dataset.from_generator(mod_mc.generator, output_types=tf.float32)
-#    th2 = mod_mc(mc_in) #first call
-    #import pdb; pdb.set_trace()
+    dataset = tf.data.Dataset.from_generator(generator, output_types=tf.float32)
+    dataset = dataset.prefetch(1)
+
     mc = mod_mc(mc_in)
-    
-    
+        
     c_th2 = compute_theta2(Ab, n_AtA)
     th2 = c_th2(mc)
     nnls = NNLS(theta_1, theta_2)
@@ -242,35 +246,26 @@ if __name__ == "__main__":
     
     x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
     y_old = tf.identity(x_old)
-    #print(x_old, y_old)
+
+    (y_new, x_new, kkk), tht2 = mod_nnls((mc_0, y_old[None, :], x_old[None, :], tf.convert_to_tensor([[0]], dtype=tf.int8)))
+    tht2 = tf.squeeze(tht2)[:, None]
     
-    
-    i=0
-    mov_corr = []
     cfnn = []
     
+    load_thread.join()
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
     # tf.compat.v1.get_default_graph().finalize()
+    start = float(timeit.default_timer())
+    zero_tensor = tf.convert_to_tensor([[0]], dtype=tf.int8)
     for elt in dataset:
         if len(elt) == 0:
             break
-        start = float(timeit.default_timer())
-        mc = tf.reshape(tf.squeeze(elt), [shape[1], shape[1], 1])
-        
-        if i == 0:
-            #b = tf.convert_to_tensor(mc, dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
-            (y_new, x_new, kkk), tht2 = mod_nnls((mc[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
-            tht2 = tf.squeeze(tht2)[:, None]
-    
-        #b = tf.convert_to_tensor(mc, dtype=tf.float32)
         mod_nnls.layers[3].set_weights([tht2]) 
-        (y_new, x_new, kkk), tht2 = mod_nnls((mc[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
-        
+        (y_new, x_new, kkk), tht2 = mod_nnls((elt, y_old[None, :], x_old[None, :], zero_tensor), callbacks=[tensorboard_callback])   
         x_old, y_old = tf.squeeze(x_new, 0), tf.squeeze(y_new, 0)
 
-        
-        print(float(timeit.default_timer())-start, "finish nnls")
-
-        cfnn.append(x_old) # or whatever display/saving mechanism
-        
-        i+= 1
-    load_thread.join()
+        cfnn.append(x_old)        
+    tf.print(float(timeit.default_timer())-start, "finish nnls")
+    
+#if __name__ == "__main__":
+#    main()
