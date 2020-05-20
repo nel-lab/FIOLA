@@ -71,24 +71,23 @@ def spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist, save=
     FP = len(v_sp) - TP
     FN = len(e_sp) - TP
     
-    try:    
-        precision = TP / (TP + FP)
-    except ZeroDivisionError:
-        if len(v_sp) == 0:
-            precision = 1
-        else:    
+    if len(e_sp) == 0:
+        F1 = np.nan
+        precision = np.nan
+        recall = np.nan
+    else:
+        try:    
+            precision = TP / (TP + FP)
+        except ZeroDivisionError:
             precision = 0
-
-    try:    
+    
         recall = TP / (TP + FN)
-    except ZeroDivisionError:
-        recall = 1
-
-    try:
-        F1 = 2 * (precision * recall) / (precision + recall) 
-    except ZeroDivisionError:
-        F1 = 0
-
+    
+        try:
+            F1 = 2 * (precision * recall) / (precision + recall) 
+        except ZeroDivisionError:
+            F1 = 0
+ 
     print('precision:',precision)
     print('recall:',recall)
     print('F1:',F1)      
@@ -573,7 +572,7 @@ all_corr_subthr = []
 
 mode = ['minimum', 'percentile', 'v_sub', 'low_pass', 'double'][2]
 
-for k in np.array(list(range(5,6))):
+for k in np.array(list(range(0,8))):
     if (k == 6) or (k==3):
         thresh_height = None#4
     else:
@@ -655,14 +654,14 @@ for k in np.array(list(range(5,6))):
     
     
     
-    all_f1_scores.append(np.array(F1).mean().round(2))
-    all_prec.append(np.array(precision).mean().round(2))
-    all_rec.append(np.array(recall).mean().round(2))
+    all_f1_scores.append(np.nanmean(np.array(F1)).round(2))
+    all_prec.append(np.nanmean(np.array(precision)).round(2))
+    all_rec.append(np.nanmean(np.array(recall)).round(2))
      
     continue
-    pr.append(np.array(precision).mean().round(2))
-    re.append(np.array(recall).mean().round(2))
-    F.append(np.array(F1).mean().round(2))
+    pr.append(np.nanmean(np.array(precision)).round(2))
+    re.append(np.nanmean(np.array(recall)).round(2))
+    F.append(np.nanmean(np.array(F1)).round(2))
     sub.append(np.array(sub_corr).mean().round(2))
     
     fig = plt.figure()
@@ -724,8 +723,8 @@ plt.plot(dict1['v_t'], img, '.-')
 #plt.plot(dict1['v_t'], sub_20, label='low_pass_20');
 #plt.plot(dict1['v_t'], sub_15, label='low_pass_15');
 plt.legend()
-plt.vlines(dict1['e_sp'], img.min()-5, img.min(), color='black')
-plt.vlines(dict1_v_sp_, img.min()-10, img.min()-5, color='red')
+plt.vlines(e_spike_aligned, img.min()-5, img.min(), color='black')
+plt.vlines(v_spike_aligned, img.min()-10, img.min()-5, color='red')
 
 
 #%%
