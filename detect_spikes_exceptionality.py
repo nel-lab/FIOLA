@@ -15,6 +15,9 @@ import peakutils
 from scipy import signal
 from scipy.signal import savgol_filter
 from time import time
+from caiman.components_evaluation import mode_robust_fast
+from scipy.signal import argrelextrema
+from scipy import stats
 #%% relevant functions
 def distance_spikes(s1, s2, max_dist):
     """ Define distance matrix between two spike train.
@@ -67,10 +70,11 @@ def spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist, save=
     TP = len(index_gt)
     FP = len(v_sp) - TP
     FN = len(e_sp) - TP
+    
     try:    
         precision = TP / (TP + FP)
     except ZeroDivisionError:
-        if v_sp == 0:
+        if len(v_sp) == 0:
             precision = 1
         else:    
             precision = 0
@@ -350,7 +354,56 @@ def normalize(ss):
     aa -= np.median(aa)
     aa /= estimate_running_std(aa)
     return aa
+#%%
+#def compute_thresh(peak_height, prev_thresh=None, delta_max=np.inf):
+#    mode = mode_robust_fast(peak_height)
+#    peak_height -= mode
+#    std = np.abs(2*np.percentile(peak_height,25))/1.35
+#    kernel = stats.gaussian_kde(peak_height)
+#    x_val = np.arange(0,np.max(peak_height),0.05)-mode
+#    pdf = kernel(x_val)
+#    
+#    
+#    return thresh   
+#%%
+def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_before=1):
+        kernel = stats.gaussian_kde(peak_height)
+        x_val = np.linspace(0,np.max(peak_height),1000)
+        pdf = kernel(x_val)
+        second_der = np.diff(pdf,2)
+        mean = np.mean(peak_height)
+        min_idx = argrelextrema(kernel(x_val), np.less)
 
+        minima = x_val[min_idx]
+        minima = minima[minima>mean]
+        minima_2nd = argrelextrema(second_der, np.greater)
+        minima_2nd = x_val[minima_2nd]
+
+        if prev_thresh is None:
+            delta_max = np.inf
+            prev_thresh = mean
+            plt.figure()
+                        
+        
+        thresh = prev_thresh 
+
+        if (len(minima)>0) and (np.abs(minima[0]-prev_thresh)< delta_max):
+            thresh = minima[0]
+            mnt = (minima_2nd-thresh)
+            mnt = mnt[mnt<0]
+            thresh += mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]             
+        
+        """    
+        plt.figure()
+        plt.plot(x_val, pdf,'c')    
+#        plt.plot(x_val[1:], np.diff(pdf,1)*50,'k')  
+        plt.plot(x_val[2:],second_der*500,'r')  
+
+        plt.plot(thresh,0, '*')   
+#        plt.ylim([-.2,1])
+        plt.pause(0.1)
+        """
+        return thresh
 #%%
 def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
     """ Find spikes based on the relative height of peaks online
@@ -380,6 +433,7 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
         std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
         return std      
 
+    
     _, thresh_sub_init, thresh_init, peak_height1, median_init = find_spikes_rh(t[:20000], thresh_height)
     t_init = time()
     window_length = 2
@@ -410,14 +464,18 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
                     temp_median = peak_height[int(length / 2) - 1]
                 else:
                     temp_median = peak_height[int((length-1) / 2)]
-                thresh.append(compute_std(peak_height, temp_median) * thresh_height)
+                
+                if thresh_height is None:
+                    thresh.append(compute_thresh(peak_height, thresh[-1]))                    
+                else:
+                    thresh.append(compute_std(peak_height, temp_median) * thresh_height)
                 
             # decide if two frames ago it is a peak
             temp = ts[i - 2] - ts[(i - 4) : (i+1)]
             if (temp[1] > 0) and (temp[3] > 0):
                 left = np.max((temp[0], temp[1]))
                 right = np.max((temp[3], temp[4]))
-                height = np.single(1 / (1 / left + 1 / right))
+                height = np.single(1 / (1 / left + 0.7 / right))
                 indices = np.searchsorted(peak_height, height)
                 peak_height = np.insert(peak_height, indices, height)
                 
@@ -461,24 +519,27 @@ def find_spikes_rh(t, thresh_height):
     matrix = t[index[:, np.newaxis]+window]
     left = np.maximum((matrix[:,2] - matrix[:,1]), (matrix[:,2] - matrix[:,0]))  
     right = np.maximum((matrix[:,2] - matrix[:,3]), (matrix[:,2] - matrix[:,4]))  
-    peak_height = 1 / (1 / left + 1 / right) #1/2*(left + right)#
-    #peak_height_absolute = t[index]
+#    peak_height = 1 / (1 / left + 0.7 / right)
+    peak_height = 1 / (1 / left + 0.7 / right)
     
     # Thresholding
     data = peak_height - np.median(peak_height)
     ff1 = -data * (data < 0)
     Ns = np.sum(ff1 > 0)
     std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-    thresh = thresh_height * std
-    index_peak = index[peak_height > thresh]
+    if thresh_height is not None:
+        thresh = thresh_height * std
+    else:
+        thresh = compute_thresh(peak_height)
+        
+    index = index[peak_height > thresh]
 
     # Only select peaks above subthreshold
     tt = -t[t<0]
     thresh_sub = np.percentile(tt, 99)
     index_sub = np.where(t > thresh_sub)[0]
-    index = np.intersect1d(index_peak,index_sub)
-
-    #plt.figure()
+    index = np.intersect1d(index,index_sub)
+    
     #plt.hist(peak_height, 500)
     #plt.vlines(thresh, peak_height.min(), peak_height.max(), color='red')
     #plt.figure()
@@ -497,20 +558,13 @@ lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_o
              '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz', ]
 file_list = [os.path.join(base_folder, file)for file in lists]
 
-fig = plt.figure(figsize=(12,12))
 temp = file_list[0].split('/')[-1].split('_')
-fig.suptitle(f'subject_id:{temp[0]}  Cell number:{temp[2]}')
 
 pr= []
 re = []
 F = []
 sub = []
 N_opt = [2,2,2,2,2,2]
-#new_Thr_opt = [8.5,8, 5.5, 10.5, 6.5, 10.5, 6.5, 6.5]
-#new_F1 = [0.97,0.96, 0.82, 0.6, 0.39, 0.86, 0.67, 0.76]
-#
-#Thr_opt = [8.5,8.5, 5.5, 10.5, 6.5, 10.5, 6.5 ]
-#F1 = [0.97, 0.96, 0.82, 0.6, 0.39, 0.86, 0.67]
 all_f1_scores = []
 all_prec = []
 all_rec = []
@@ -519,14 +573,14 @@ all_corr_subthr = []
 
 mode = ['minimum', 'percentile', 'v_sub', 'low_pass', 'double'][2]
 
-for k in np.array(list(range(0,8))):
-    #if (k == 6) or (k==3):
-    #    thresh_height = 7
-    #else:
-    thresh_height = 4
+for k in np.array(list(range(5,6))):
+    if (k == 6) or (k==3):
+        thresh_height = None#4
+    else:
+        thresh_height = None#4
     dict1 = np.load(file_list[k], allow_pickle=True)
     img = dict1['v_sg']
-    print(np.diff( dict1['v_t']))
+    img /= estimate_running_std(img, q_min=0.1, q_max=99.9)
     std_estimate = np.diff(np.percentile(img,[75,25]))/100
     ### I comment it due to it will influence peak distribution
     #for i in range(len(dict1['sweep_time']) - 1):
@@ -604,14 +658,15 @@ for k in np.array(list(range(0,8))):
     all_f1_scores.append(np.array(F1).mean().round(2))
     all_prec.append(np.array(precision).mean().round(2))
     all_rec.append(np.array(recall).mean().round(2))
-    #continue 
+     
+    continue
     pr.append(np.array(precision).mean().round(2))
     re.append(np.array(recall).mean().round(2))
     F.append(np.array(F1).mean().round(2))
     sub.append(np.array(sub_corr).mean().round(2))
+    
+    fig = plt.figure()
     ax1 = fig.add_axes([0.05, 0.8, 0.9, 0.15])
-    
-    
     e_fr = np.unique(np.floor(e_spike_aligned), return_counts=True)
     v_fr = np.unique(np.floor(v_spike_aligned), return_counts=True)
     ax1.plot(e_fr[0], e_fr[1], color='black')
@@ -641,6 +696,20 @@ if False:
     ax4.legend([f'corr:{sub}'])
 
 #%%
+all_f1_scores.append(np.array(F1).round(2))
+all_prec.append(np.array(precision).round(2))
+all_rec.append(np.array(recall).round(2))
+
+print(f'average_F1:{np.mean([np.mean(fsc) for fsc in all_f1_scores])}')
+print(f'average_sub:{np.mean(all_corr_subthr,axis=0)}')
+print(f'F1:{np.array([np.mean(fsc) for fsc in all_f1_scores]).round(2)}')
+print(f'prec:{np.array([np.mean(fsc) for fsc in all_prec]).round(2)}'); 
+print(f'rec:{np.array([np.mean(fsc) for fsc in all_rec]).round(2)}')
+
+
+#%%
+[plt.plot(fsc,'-.') for fsc in all_rec]
+plt.legend(lists)
 #plt.plot(dict1['v_t'], dict1['v_sg'], '.-', color='blue')#;plt.plot(dict1['v_t'], dict1['v_sg']-signal_subthr);
 #plt.plot(dict1['v_t'][:-1], np.diff(dict1['v_sg']-signal_subthr)-10, '.-', color='orange')
 #plt.plot(dict1['e_t'], dict1['e_sg'])
@@ -661,9 +730,6 @@ plt.vlines(dict1_v_sp_, img.min()-10, img.min()-5, color='red')
 
 #%%
 #print(lists) 
-print(f'average_F1:{np.mean(all_f1_scores)}')
-print(f'average_sub:{np.mean(all_corr_subthr,axis=0)}')
-print(f'F1:{all_f1_scores}');print(f'prec:{all_prec}'); print(f'rec:{all_rec}')
 
 #%%
 if False:
