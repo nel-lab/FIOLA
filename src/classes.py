@@ -63,6 +63,7 @@ class MotionCorrect(keras.layers.Layer):
             initializer=tf.constant_initializer(self.template_var.numpy()))   
         super().build(batch_input_shape) # must be at the end
 
+    #@tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         # normalize images
@@ -82,7 +83,7 @@ class MotionCorrect(keras.layers.Layer):
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                           interpolation="BILINEAR") 
         # print(timeit.default_timer()-start)
-        return X_corrected
+        return tf.reshape(tf.squeeze(X_corrected), [1, X_corrected.shape[-2]**2])
 
 
     def get_config(self):

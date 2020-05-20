@@ -13,6 +13,8 @@ import pylab as plt
 import cv2
 import timeit
 from classes import MotionCorrect, compute_theta2, NNLS
+import caiman as cm
+import multiprocessing as mp
 
 physical_devices = tf.config.list_physical_devices('GPU')
 try:
@@ -159,75 +161,46 @@ with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
 
-    #b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, 262144]))
+#%%
+q = mp.Queue()
+def generator():
+    while True:
+        try:
+            yield q.get_nowait()
+        except:
+            break
+    return
     
-#%% 
-
-def create_estimates(counter):
-    f, Y =  f_full[:, counter][:, None], Y_tot[:, counter][:, None]
-    YrA = YrA_full[:, counter][:, None]
-    C = C_full[:, counter][:, None]
-
-    # Ab = np.concatenate([A_sp,b], axis=1)
-    Cf = np.concatenate([C+YrA,f], axis=0)
-    print(np.linalg.norm(Y-Ab@Cf)/np.linalg.norm(Y))
-#    A = Ab
-#    b = Y
-#    AtA = A.T@A
-#    Atb = A.T@b
-#    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-    
-#    theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
-#    theta_2 = (Atb/n_AtA) 
-    
-    # groups = update_order_greedy(A_sp_full,flag_AA=False)[0]
-    Cf_bc = Cf.copy()
-    Cf_bc = HALS4activity(Y_tot[:, counter][:, None].T[0], Ab, noisyC = Cf_bc, AtA=AtA, iters=5, groups=None)[0]
-    
-    x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
-    y_old = tf.identity(x_old)
-    
-#    c_th2 = compute_theta2(A, n_AtA)
-
-    return x_old, y_old
+def enqueue(q, batch):
+    for fr in batch:
+        q.put(tf.expand_dims(fr, 0))
+    return
 
 #%%
-#@profile
-# @tf.function
-def main(elt, newy, mod_nnls, tht2, x_old, y_old, counter): 
-
-    if counter == 0:
-        b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
-        (y_new, x_new, kkk), tht2 = mod_nnls((tf.expand_dims(b, axis=0), y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
-
-    tht2 = tf.squeeze(tht2)[:, None]
-
-    b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)
-    mod_nnls.layers[3].set_weights([tht2]) 
-    (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
-    
-    return tf.squeeze(x_new, 0), tf.squeeze(y_new, 0), tht2
-
-    tf.keras.backend.clear_session()
-        
+#tf.compat.v1.disable_eager_execution()
 if __name__ == "__main__":
 
     num_frames = 5
-    a = io.imread('Sue_2x_3000_40_-46.tif')
+    #a = io.imread('Sue_2x_3000_40_-46.tif')
+    a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
+    shape = a.shape
     template = np.median(a,axis=0)
     batch_init = tf.convert_to_tensor(a[:num_frames,:,:,None])
-    
-    mod_mc = MotionCorrect(template)
-    
-    load_thread = Thread(target=mod_mc.enqueue, args=(mod_mc.q, batch_init), daemon=True)
-    load_thread.start()
-    
-    dataset = tf.data.Dataset.from_generator(mod_mc.generator, output_types=tf.float32)
+
     # min_, max_ = -296.0, 1425.0
     y_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) #num comps x 1fr
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) # num components x fr
     k_in = tf.keras.layers.Input(shape=(1,))
-    b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, 262144])) # num pixels => 1x512**2 
+    b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, shape[-1]**2])) # num pixels => 1x512**2
+    mc_in = tf.reshape(a[0, :, :], [1, 512, 512, 1])
+    # mc_in = tf.keras.layers.Input(tensor=tf.convert_to_tensor(tf.reshape(a[0, :, :], [512, 512, 1])))
+    
+    mod_mc = MotionCorrect(template)(mc_in)
+
+    load_thread = Thread(target=enqueue, args=(q, batch_init), daemon=True)
+    load_thread.start()
+    
+    dataset = tf.data.Dataset.from_generator(generator, output_types=tf.float32)
     
     Ab = np.concatenate([A_sp_full.toarray()[:], b_full], axis=1)
     b = Y_tot[:, 0]
@@ -237,14 +210,15 @@ if __name__ == "__main__":
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
     theta_2 = (Atb/n_AtA)[:, None]
     
+    
     c_th2 = compute_theta2(Ab, n_AtA)
-    th2 = c_th2(b_in)
+    th2 = c_th2(mod_mc)
     nnls = NNLS(theta_1, theta_2)
     x_kk = nnls([y_in, x_in, k_in])
     for k in range(1, 10):
         x_kk = nnls(x_kk)
     
-    mod_nnls = keras.Model(inputs=[b_in, y_in, x_in, k_in], outputs=[x_kk, th2])
+    mod_nnls = keras.Model(inputs=[mc_in, y_in, x_in, k_in], outputs=[x_kk, th2])
     newy = []
     tht2 = 0
     
@@ -254,19 +228,7 @@ if __name__ == "__main__":
     YrA = YrA_full[:, 0][:, None]
     C = C_full[:, 0][:, None]
 
-    # Ab = np.concatenate([A_sp,b], axis=1)
     Cf = np.concatenate([C+YrA,f], axis=0)
-    # print(np.linalg.norm(Y-Ab@Cf)/np.linalg.norm(Y))
-#    A = Ab
-#    b = Y
-#    AtA = A.T@A
-#    Atb = A.T@b
-#    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-    
-#    theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
-#    theta_2 = (Atb/n_AtA) 
-    
-    # groups = update_order_greedy(A_sp_full,flag_AA=False)[0]
     Cf_bc = Cf.copy()
     Cf_bc = HALS4activity(Y_tot[:, 0][:, None].T[0], Ab, noisyC = Cf_bc, AtA=AtA, iters=5, groups=None)[0]
     
@@ -285,22 +247,26 @@ if __name__ == "__main__":
             break
         start = float(timeit.default_timer())
 
-        x_old, y_old, tht2 = main(elt, newy, mod_nnls, tht2, x_old, y_old, i)
+#        x_old, y_old, tht2 = main(elt, newy, mod_nnls, tht2, x_old, y_old, i)
+        #mc = mod_mc(elt)
+        print(float(timeit.default_timer())-start, "finish mc")
+        mc = tf.reshape(tf.squeeze(elt), [1, shape[1]**2])
+        print(float(timeit.default_timer())-start, "fin translation")
         
-#        if counter == 0:
-#            b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
-#            (y_new, x_new, kkk), tht2 = mod_nnls((tf.expand_dims(b, axis=0), y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
-#    
-#        tht2 = tf.squeeze(tht2)[:, None]
-#    
-#        b = tf.convert_to_tensor(Y_tot[:, counter][None, :], dtype=tf.float32)
-#        mod_nnls.layers[3].set_weights([tht2]) 
-#        (y_new, x_new, kkk), tht2 = mod_nnls((b[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
-#        
-#        x_old, y_old = tf.squeeze(x_new, 0), tf.squeeze(y_new, 0)
+        if i == 0:
+            #b = tf.convert_to_tensor(mc, dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
+            (y_new, x_new, kkk), tht2 = mod_nnls((mc[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
+    
+        tht2 = tf.squeeze(tht2)[:, None]
+    
+        #b = tf.convert_to_tensor(mc, dtype=tf.float32)
+        mod_nnls.layers[3].set_weights([tht2]) 
+        (y_new, x_new, kkk), tht2 = mod_nnls((mc[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))   
+        
+        x_old, y_old = tf.squeeze(x_new, 0), tf.squeeze(y_new, 0)
 
         
-        print(float(timeit.default_timer())-start)
+        print(float(timeit.default_timer())-start, "finish nnls")
 
         cfnn.append(x_old) # or whatever display/saving mechanism
         
