@@ -160,6 +160,9 @@ with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3
     A_sp_full = A_sp_full[:,idx_components ]
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
+#%%
+a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
+
 
 #%%
 q = mp.Queue()
@@ -177,12 +180,12 @@ def enqueue(q, batch):
     return
 
 #%%
-#tf.compat.v1.disable_eager_execution()
+# tf.compat.v1.disable_eager_execution()
 if __name__ == "__main__":
 
     num_frames = 5
     #a = io.imread('Sue_2x_3000_40_-46.tif')
-    a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
+#    a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
     shape = a.shape
     template = np.median(a,axis=0)
     batch_init = tf.convert_to_tensor(a[:num_frames,:,:,None])
@@ -192,15 +195,10 @@ if __name__ == "__main__":
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) # num components x fr
     k_in = tf.keras.layers.Input(shape=(1,))
     b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, shape[-1]**2])) # num pixels => 1x512**2
-    mc_in = tf.reshape(a[0, :, :], [1, 512, 512, 1])
-    # mc_in = tf.keras.layers.Input(tensor=tf.convert_to_tensor(tf.reshape(a[0, :, :], [512, 512, 1])))
+    mc_0 = tf.reshape(a[0, :, :], [1, 512, 512, 1]) # initial input tensor for the motion correction layer
+    #mc_in = tf.keras.layers.Input(tensor=tf.convert_to_tensor(tf.reshape(a[0, :, :], [512, 512, 1])))
+    mc_in = tf.keras.layers.Input(shape=tf.TensorShape([512, 512, 1]))
     
-    mod_mc = MotionCorrect(template)(mc_in)
-
-    load_thread = Thread(target=enqueue, args=(q, batch_init), daemon=True)
-    load_thread.start()
-    
-    dataset = tf.data.Dataset.from_generator(generator, output_types=tf.float32)
     
     Ab = np.concatenate([A_sp_full.toarray()[:], b_full], axis=1)
     b = Y_tot[:, 0]
@@ -210,9 +208,19 @@ if __name__ == "__main__":
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
     theta_2 = (Atb/n_AtA)[:, None]
     
+    mod_mc = MotionCorrect(template) #initialize motion correction layer
+
+    load_thread = Thread(target=mod_mc.enqueue, args=(mod_mc.q, batch_init), daemon=True)
+    load_thread.start() #thread puts frames on queue
+    
+    dataset = tf.data.Dataset.from_generator(mod_mc.generator, output_types=tf.float32)
+#    th2 = mod_mc(mc_in) #first call
+    #import pdb; pdb.set_trace()
+    mc = mod_mc(mc_in)
+    
     
     c_th2 = compute_theta2(Ab, n_AtA)
-    th2 = c_th2(mod_mc)
+    th2 = c_th2(mc)
     nnls = NNLS(theta_1, theta_2)
     x_kk = nnls([y_in, x_in, k_in])
     for k in range(1, 10):
@@ -246,18 +254,12 @@ if __name__ == "__main__":
         if len(elt) == 0:
             break
         start = float(timeit.default_timer())
-
-#        x_old, y_old, tht2 = main(elt, newy, mod_nnls, tht2, x_old, y_old, i)
-        #mc = mod_mc(elt)
-        print(float(timeit.default_timer())-start, "finish mc")
-        mc = tf.reshape(tf.squeeze(elt), [1, shape[1]**2])
-        print(float(timeit.default_timer())-start, "fin translation")
+        mc = tf.reshape(tf.squeeze(elt), [shape[1], shape[1], 1])
         
         if i == 0:
             #b = tf.convert_to_tensor(mc, dtype=tf.float32)  # tensor of the frame in question => CHANGE TO IMAGE
             (y_new, x_new, kkk), tht2 = mod_nnls((mc[None, :], y_old[None, :], x_old[None, :], tf.expand_dims(tf.convert_to_tensor(0, dtype=tf.int8), axis=0)[None, :]))
-    
-        tht2 = tf.squeeze(tht2)[:, None]
+            tht2 = tf.squeeze(tht2)[:, None]
     
         #b = tf.convert_to_tensor(mc, dtype=tf.float32)
         mod_nnls.layers[3].set_weights([tht2]) 

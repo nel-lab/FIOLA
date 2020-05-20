@@ -48,6 +48,8 @@ class MotionCorrect(keras.layers.Layer):
         self.epsilon = epsilon
         self.template_numel = np.prod(self.template.shape)
         self.q = Queue()
+#        self.A_ = Ab
+#        self.n_AtA_ = n_AtA
         ## normalize template
         self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
 
@@ -56,14 +58,24 @@ class MotionCorrect(keras.layers.Layer):
         # want to use the online algorithm
         self.kernel = self.add_weight(
             name="kernel", shape=[*self.template_zm.shape.as_list()],
+#            initializer=tf.constant_initializer(np.ndarray(self.template_zm)))
             initializer=tf.constant_initializer(self.template_zm.numpy()))
+
         # the normalizer also needs to be updated if the template is updated
         self.normalizer = self.add_weight(
             name="normalizer", shape=[*self.template_var.shape.as_list()],
-            initializer=tf.constant_initializer(self.template_var.numpy()))   
+            #initializer=tf.constant_initializer(np.ndarray(self.template_var) 
+            initializer=tf.constant_initializer(self.template_var.numpy())) 
+#        self.A = self.add_weight(
+#            name="A", shape=[*self.A_.shape],
+#            initializer=tf.constant_initializer(self.A_))
+#        # theta_2 param in https://angms.science/doc/NMF/nnls_pgd.pdf
+#        self.n_AtA = self.add_weight(
+#            name="n_AtA", shape=[*self.n_AtA_.shape],
+#            initializer=tf.constant_initializer(self.n_AtA_)) 
         super().build(batch_input_shape) # must be at the end
 
-    #@tf.function
+
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         # normalize images
@@ -79,11 +91,21 @@ class MotionCorrect(keras.layers.Layer):
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
         
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
-
-        X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
-                                          interpolation="BILINEAR") 
+        try:
+            X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
+                                            interpolation="BILINEAR")
+        except:
+            n_shape = tensor_ncc.shape
+            xs, ys = self.extract_fractional_peak(tf.reshape(tensor_ncc, [1, n_shape[1], n_shape[2], n_shape[3]]), ms_h=self.ms_h, ms_w=self.ms_w)
+            X_corrected = tfa.image.translate(tf.reshape(X, [1, 512, 512, 1]), tf.squeeze(tf.stack([ys, xs], axis=1)), 
+                                            interpolation="BILINEAR")
         # print(timeit.default_timer()-start)
         return tf.reshape(tf.squeeze(X_corrected), [1, X_corrected.shape[-2]**2])
+    
+#        Y = tf.matmul(X_corr_translated, self.A) 
+#        Y = tf.divide(Y,self.n_AtA)
+#        Y = tf.transpose(Y)
+#        return Y
 
 
     def get_config(self):
@@ -143,7 +165,10 @@ class MotionCorrect(keras.layers.Layer):
         
         tensor_ncc_log = tf.math.log(tensor_ncc)      
 
-        n_batches = np.arange(tensor_ncc_log.shape[0])
+        try:
+            n_batches = np.arange(tensor_ncc_log.shape[0])
+        except:
+            n_batches = np.arange(tensor_ncc_log.shape[1])
 
         idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x-1, axis=0), tf.squeeze(sh_y, axis=0)]))
         log_xm1_y = tf.gather_nd(tensor_ncc_log, idx)
