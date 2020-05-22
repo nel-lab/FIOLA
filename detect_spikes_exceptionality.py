@@ -392,7 +392,7 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_
             mnt = mnt[mnt<0]
             thresh += mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]             
         
-        """    
+          
         plt.figure()
         plt.plot(x_val, pdf,'c')    
 #        plt.plot(x_val[1:], np.diff(pdf,1)*50,'k')  
@@ -401,7 +401,8 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_
         plt.plot(thresh,0, '*')   
 #        plt.ylim([-.2,1])
         plt.pause(0.1)
-        """
+        
+        print(thresh)
         return thresh
 #%%
 def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
@@ -433,7 +434,7 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
         return std      
 
     
-    _, thresh_sub_init, thresh_init, peak_height1, median_init = find_spikes_rh(t[:20000], thresh_height)
+    _, thresh_sub_init, thresh_init, peak_height, median_init = find_spikes_rh(t[:20000], thresh_height)
     t_init = time()
     window_length = 2
     peak_height = np.array([])
@@ -574,9 +575,9 @@ mode = ['minimum', 'percentile', 'v_sub', 'low_pass', 'double'][2]
 
 for k in np.array(list(range(0,8))):
     if (k == 6) or (k==3):
-        thresh_height = None#4
+        thresh_height = None
     else:
-        thresh_height = None#4
+        thresh_height = 6
     dict1 = np.load(file_list[k], allow_pickle=True)
     img = dict1['v_sg']
     img /= estimate_running_std(img, q_min=0.1, q_max=99.9)
@@ -631,7 +632,14 @@ for k in np.array(list(range(0,8))):
     
     #indexes = find_spikes_tm(img, signal_subthr, thresh_height)
     #indexes = find_spikes_rh(img, thresh_height)[0]
-    indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
+    #indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
+    
+    sao = SignalAnalysisOnline()
+    img = img[np.newaxis, :]
+    sao.fit(img[:, :20000])
+    for n in range(20000, img.shape[1]):
+        sao.fit_next(img[:, n: n+1], n)
+    indexes = sao.index[0]    
     
     dict1_v_sp_ = dict1['v_t'][indexes]
     
@@ -699,6 +707,7 @@ all_f1_scores.append(np.array(F1).round(2))
 all_prec.append(np.array(precision).round(2))
 all_rec.append(np.array(recall).round(2))
 
+#%%
 print(f'average_F1:{np.mean([np.mean(fsc) for fsc in all_f1_scores])}')
 print(f'average_sub:{np.mean(all_corr_subthr,axis=0)}')
 print(f'F1:{np.array([np.mean(fsc) for fsc in all_f1_scores]).round(2)}')
