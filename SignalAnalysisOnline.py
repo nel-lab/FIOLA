@@ -14,11 +14,19 @@ from scipy.signal import argrelextrema
 from time import time
 
 #%%
+trace = np.stack([img, img])
+trace[1] = trace[1] + np.random.rand(trace[1].shape[0])/1000
+img1 = img/estimate_running_std(img, q_min=0.1, q_max=99.9)
+
+#%%
 sao = SignalAnalysisOnline()
 sao.fit(trace[:, :20000])
 for n in range(20000, 100000):
     sao.fit_next(trace[:, n: n+1], n)
-
+    
+#%%
+plt.figure();plt.plot(sao.trace_rm[0]);plt.plot(img1)
+sao.scale
 #%%
 class SignalAnalysisOnline(object):
     def __init__(self, params=None, estimates=None, dview=None):
@@ -34,13 +42,14 @@ class SignalAnalysisOnline(object):
         self.trace = trace
         self.trace_rm = np.zeros((trace.shape)) 
         self.median = np.array(np.zeros((trace.shape[0],1)))
+        self.scale = np.array(np.zeros((trace.shape[0],1)))
         self.thresh = np.array(np.zeros((trace.shape[0],1)))
         self.thresh_sub = np.array(np.zeros((trace.shape[0],1)))
         self.index = [np.array([], dtype=int) for i in range(trace.shape[0])]
         self.peak_height = [np.array([], dtype=int) for i in range(trace.shape[0])]
         for idx, tr in enumerate(trace):        
             self.trace_rm[idx], self.index[idx], self.thresh_sub[idx], \
-            self.thresh[idx], self.peak_height[idx], self.median[idx] \
+            self.thresh[idx], self.peak_height[idx], self.median[idx], self.scale[idx] \
             = find_spikes_rh(tr, self.thresh_height)
         return self
 
@@ -48,14 +57,14 @@ class SignalAnalysisOnline(object):
         t_start = time()
         # Estimate thresh_sub, median, thresh        
         if (n > self.window) and (n % self.step == 0):
-            self.update_thresh_sub()
+            self.update_median_scale()
             print(f'now processing frame{n}')
         if (n > self.window) and (n % self.step == 100):
-            self.update_median()
+            self.update_thresh_sub()
         if (n > self.window) and (n % self.step == 200):
             self.update_thresh()
         self.trace, self.trace_rm, self.index, self.peak_height = find_spikes_rh_multiple \
-        (self.trace, self.trace_rm, trace_in, self.median, self.thresh, \
+        (self.trace, self.trace_rm, trace_in, self.median, self.scale, self.thresh, \
          self.thresh_sub, self.index, self.peak_height)
         self.t_detect.append(time() - t_start)
         return self       
@@ -68,16 +77,17 @@ class SignalAnalysisOnline(object):
         self.thresh_sub = np.append(self.thresh_sub, thresh_sub_new, axis=1)
         return self    
     
-    def update_median(self):
-        tt = self.trace[:, -self.window:]
+    def update_median_scale(self):
+        tt = self.trace[:, np.int(-self.window*2.5):]
         self.median = np.append(self.median, np.percentile(tt, 50, axis=1)[:, np.newaxis], axis=1)
+        self.scale = np.append(self.scale, np.percentile(tt, 99.9, axis=1)[:, np.newaxis], axis=1)
         return self
 
     def update_thresh(self):
         thresh_new = np.zeros((self.trace.shape[0], 1))
         for idx, peaks in enumerate(self.peak_height):
             if self.thresh_height is None:
-                thresh_new[idx] = compute_thresh(peaks, self.thresh[idx, -1])
+                thresh_new[idx] = compute_thresh(peaks[-15000:], self.thresh[idx, -1])
             else:
                 thresh_new[idx] = compute_std(peaks) * self.thresh_height
         self.thresh = np.append(self.thresh, thresh_new, axis=1)
@@ -91,7 +101,7 @@ def compute_std(peak_height):
     std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
     return std                  
 
-def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_before=1):
+def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_before=1):
     kernel = stats.gaussian_kde(peak_height)
     x_val = np.linspace(0,np.max(peak_height),1000)
     pdf = kernel(x_val)
@@ -107,32 +117,39 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_
     if prev_thresh is None:
         delta_max = np.inf
         prev_thresh = mean
-        #plt.figure()
+        plt.figure()
                     
     
     thresh = prev_thresh 
+
+    print(f'previous thresh {prev_thresh}')
+    print(f'minimal point {minima[0]}')
 
     if (len(minima)>0) and (np.abs(minima[0]-prev_thresh)< delta_max):
         thresh = minima[0]
         mnt = (minima_2nd-thresh)
         mnt = mnt[mnt<0]
-        thresh += mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]             
+        thresh += mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]
+        print(f'adjust {mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]}')
+        #thresh = 1 / 2 * (thresh + mnt[np.maximum(-len(mnt)+1,-number_maxima_before)] + thresh)
+        
+    print(f'after adjust thresh {thresh}')
     
-    """   
     plt.figure()
     plt.plot(x_val, pdf,'c')    
-    plt.plot(x_val[1:], np.diff(pdf,1)*50,'k')  
+#        plt.plot(x_val[1:], np.diff(pdf,1)*50,'k')  
     plt.plot(x_val[2:],second_der*500,'r')  
 
     plt.plot(thresh,0, '*')   
-    plt.ylim([-.2,1])
+#        plt.ylim([-.2,1])
     plt.pause(0.1)
-    """
-    return thresh            
-       
-def find_spikes_rh_multiple(t, t_rm, t_in, median, thresh, thresh_sub, index, peak_height):
+    
+    return thresh
+    
+    
+def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub, index, peak_height):
     t = np.append(t, t_in, axis=1)
-    t_in = t_in - median[:, -1:]
+    t_in = (t_in - median[:, -1:]) / scale[:, -1:]
     t_rm = np.append(t_rm, t_in, axis=1)
     temp = t_rm[:, -3:-2] - t_rm[:, -5:]
     
@@ -164,6 +181,8 @@ def find_spikes_rh(t, thresh_height=None):
     #t = img.copy()
     median = np.median(t) 
     t = t - median
+    scale = np.percentile(t, 99.9)  
+    t = t / scale
     window_length = 2
     window = np.int64(np.arange(-window_length, window_length + 1, 1))
     index = signal.find_peaks(t, height=None)[0]
@@ -198,7 +217,7 @@ def find_spikes_rh(t, thresh_height=None):
     #plt.plot(dict1['v_t'], t); plt.vlines(dict1['v_t'][index], t.min()-5, t.min(), color='red');
     #plt.vlines(dict1['e_sp'], t.min()-10, t.min()-5, color='black') 
     
-    return t, index, thresh_sub, thresh, peak_height, median
+    return t, index, thresh_sub, thresh, peak_height, median, scale
     
 def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
     """ Find spikes based on the relative height of peaks online

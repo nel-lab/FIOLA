@@ -7,13 +7,13 @@ Created on Thu May 21 13:46:15 2020
 """
 #%%
 import time
-import _thread
 import numpy as np
 from scipy import stats
 import time 
 from multiprocessing import Queue
 from threading import Thread
 from multiprocessing import Process as Thread
+from multiprocessing import Pool, Semaphore
 import pylab as plt
 from scipy.signal import argrelextrema
 import os 
@@ -27,7 +27,8 @@ lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_o
              '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz', ]
 file_list = [os.path.join(base_folder, file)for file in lists]
 dict1 = np.load(file_list[0], allow_pickle=True)
-img = dict1['v_sg']
+img = dict1['v_sg'][:50000]
+#img = img.astype(np.float32)
 #img /= estimate_running_std(img, q_min=0.1, q_max=99.9)
 
 #%%
@@ -78,23 +79,25 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_
         
     return thresh, pdf, x_val
             
-def thread_compute_thresh(queue_in, queue_out, num_timesteps, delta_max, number_maxima_before):
-   
+def thread_compute_thresh(queue_in, queue_out, num_timesteps, delta_max, 
+                          number_maxima_before, sema):
+   os.nice(19)
    peak_height = []
    prev_thresh = None
    while True:       
        el = queue_in.get()
        if el is None:
            break
-       peak_height.append(el)
-       if len(peak_height)>=num_timesteps:
-           t0 = time.time()
+       peak_height += list(el)
+       if len(peak_height)>=num_timesteps:           
+           sema.acquire()
            (prev_thresh, pdf, x_val) = compute_thresh(peak_height, prev_thresh=prev_thresh, 
                                         delta_max=delta_max, 
                                         number_maxima_before=number_maxima_before)
            queue_out.put((prev_thresh, pdf, x_val))
            peak_height = []
-           print('ADDED:'+ str(time.time()-t0))
+           sema.release()
+#           print('ADDED:'+ str(time.time()-t0))
    
    print('Finished')  
    return None
@@ -103,45 +106,58 @@ if __name__ == "__main__":
     num_timesteps = 20000
     delta_max = 0.03
     number_maxima_before = 1
-#    t0 = time()
-#    c = []
-#    for i in range(3000000):
-#        c.append(np.random.random(1))
-#    print('**' + str(time()-t0))
-#    peak_height = np.random.random(300000)
-#    x_val = np.linspace(0,np.max(peak_height),1000)
+
     if True:
         times_tot = []
         threads = []        
         queues_in = []
         queues_out = [] 
-        num_proc = 1
+        num_proc = 3
+        num_neurons = 50
+        sema = Semaphore(num_proc)
         
-        for i in range(num_proc):            
+        for i in range(num_neurons):            
             queues_in.append(Queue(maxsize=-1))
             queues_out.append(Queue(maxsize=-1))
+        
+#        p = Pool(num_proc)
+#        p.starmap_async(thread_compute_thresh, [(queues_in[i], queues_out[i], 
+#                                                num_timesteps, delta_max, 
+#                                                number_maxima_before) for i in range(num_neurons)])
+        
             t = Thread(target=thread_compute_thresh, args=(queues_in[i], queues_out[i], 
                                                            num_timesteps, delta_max, 
-                                                           number_maxima_before))
+                                                           number_maxima_before, sema))
             threads.append(t)
             t.start()
- 
+
+# 
         t0 = time.time()
-        pdfs = []
+        pdfs = [[] for i in range(num_neurons)]
+        count_update = 0
         for i in range(len(img)):
-            if i%1000==0:
-                print(i)            
-            np.sum(np.random.random(10000))
-            for j in range(num_proc):
-                if not queues_out[j].empty():
-                    pdfs.append(queues_out[j].get())
-                if queues_in[j].full():
-                    print('FULL!')
-                else:
-                    queues_in[j].put(img[i])
+            np.sum(np.random.random(45000))
+            if i%5000 ==0: 
+                print(i)                                 
+                for j in range(num_neurons):
+                    if not queues_out[j].empty():
+                        pdfs[j].append(queues_out[j].get())
+                        count_update += 1
+                        print('updated!'+str(count_update))
+                        
+            if i%2500==0:                           
+                for j in range(num_neurons):                        
+                    if queues_in[j].full():
+                        print('FULL!')
+                    else:
+                        queues_in[j].put(img[i-2500:i])
+
             times_tot.append(time.time()-t0)
         
-        for j in range(num_proc):
+        for j in range(num_neurons):
             queues_in[j].put(None)
             
         print('**' + str(time.time()-t0))
+
+plt.plot(np.diff(times_tot),'.')
+plt.pause(5)

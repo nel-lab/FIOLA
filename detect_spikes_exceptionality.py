@@ -464,6 +464,8 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
                     temp_median = peak_height[int(length / 2) - 1]
                 else:
                     temp_median = peak_height[int((length-1) / 2)]
+                    
+                
                 
                 if thresh_height is None:
                     thresh.append(compute_thresh(peak_height, thresh[-1]))                    
@@ -573,15 +575,15 @@ all_corr_subthr = []
 
 mode = ['minimum', 'percentile', 'v_sub', 'low_pass', 'double'][2]
 
-for k in np.array(list(range(0,8))):
+for k in np.array(list(range(0, 8))):
     if (k == 6) or (k==3):
         thresh_height = None
     else:
         thresh_height = 6
     dict1 = np.load(file_list[k], allow_pickle=True)
     img = dict1['v_sg']
-    img /= estimate_running_std(img, q_min=0.1, q_max=99.9)
-    std_estimate = np.diff(np.percentile(img,[75,25]))/100
+    #img /= estimate_running_std(img, q_min=0.1, q_max=99.9)
+    #std_estimate = np.diff(np.percentile(img,[75,25]))/100
     ### I comment it due to it will influence peak distribution
     #for i in range(len(dict1['sweep_time']) - 1):
     #    idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]), dict1['v_t']<dict1['sweep_time'][i+1][0])])[1]
@@ -639,6 +641,7 @@ for k in np.array(list(range(0,8))):
     sao.fit(img[:, :20000])
     for n in range(20000, img.shape[1]):
         sao.fit_next(img[:, n: n+1], n)
+    print(sao.thresh)
     indexes = sao.index[0]    
     
     dict1_v_sp_ = dict1['v_t'][indexes]
@@ -983,3 +986,13 @@ signal_subthr =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
 plt.plot(signal_subthr, label='remove once')
 
 plt.legend()
+
+
+        peak_height_index_new = np.array([len(self.peak_height[idx]) \
+                                          for peaks in self.peak_height])[:,np.newaxis]
+        self.peak_height_index = np.append(self.peak_height_index, peak_height_index_new, axis=1) 
+        
+                self.peak_height_index = np.array(np.zeros((trace.shape[0],1)),dtype=np.int32)
+                
+                            self.peak_height_index[idx] = len(self.peak_height[idx]) 
+
