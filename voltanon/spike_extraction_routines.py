@@ -244,7 +244,6 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
     else: 
         scale = None
         
-    window_length = 2
     window = np.int64(np.arange(-window_length, window_length + 1, 1))
     index = signal.find_peaks(t, height=None)[0]
     index = index[np.logical_and(index > (-window[0]), index < (len(t) - window[-1]))]
