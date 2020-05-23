@@ -61,7 +61,8 @@ def compute_std(peak_height):
     ff1 = -data * (data < 0)
     Ns = np.sum(ff1 > 0)
     std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-    return std                  
+    return std            
+ 
 
 def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_before=1):
     kernel = stats.gaussian_kde(peak_height)

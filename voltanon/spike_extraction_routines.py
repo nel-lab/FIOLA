@@ -18,8 +18,10 @@ from running_statistics import estimate_running_std
 import peakutils
 from scipy import signal
 from running_statistics import compute_thresh
+from running_statistics import compute_std
 from sklearn.covariance import EllipticEnvelope
 from scipy.stats import multivariate_normal
+
 #%%
 def extract_exceptional_events(z_signal, input_erf=False, thres_STD=5, N=2, min_dist=1, bidirectional=False):
     """
@@ -59,8 +61,7 @@ def extract_exceptional_events(z_signal, input_erf=False, thres_STD=5, N=2, min_
         else:
             erf = scipy.special.log_ndtr(-z_signal)
     
-    if N>0:
-        
+    if N>0:        
         erf = np.cumsum(erf)
         erf[N:] -= erf[:-N]
         # compensate for delay
@@ -68,9 +69,6 @@ def extract_exceptional_events(z_signal, input_erf=False, thres_STD=5, N=2, min_
     #indexes = np.where(-erf>=thres_STD)[0]
     indexes = peakutils.indexes(-erf, thres=thres_STD, min_dist=min_dist, thres_abs=True)
     return indexes, erf
-#%%
-    
-#%%     
 #%%        
 def find_spikes(signal_orig, signal_no_subthr=None, normalize_signal=False, thres_STD=3.5, thres_STD_ampl=4, 
                 mode='anomaly', only_rising=False, samples_covariance=10000, min_dist=1, N=2, 
@@ -191,8 +189,11 @@ def find_spikes(signal_orig, signal_no_subthr=None, normalize_signal=False, thre
                                                   N=N, min_dist=min_dist, 
                                                   bidirectional=bidirectional)
     elif mode == 'multi_peak':
-        t, indexes, thresh_sub, thresh, peak_height, median, scale = \
-                                    find_spikes_rh(signal_orig, do_scale=False)
+        # changjia HERE
+        win_size, stride = 10000, 5000
+        indexes = find_spikes_rh_online(signal_orig, thresh_height=thres_STD, 
+                                        window=win_size, step=stride, do_scale=False)
+        erf, z_signal, estimator = [None]*3
         
     return indexes, erf, z_signal, estimator
 #%%
@@ -215,95 +216,7 @@ def nan_helper(y):
 #      return sig_sub
   
 #%%
-def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
-    """ Find spikes based on the relative height of peaks online
-    Args:
-        t: 1-D array
-            one dimensional signal
-            
-        thresh height: int
-            selected threshold
-            
-        window: int
-            window for updating statistics including median, thresh_sub, std
-            
-        step: int
-            step for updating statistics including median, thresh_sub, std
 
-            
-    Returns:
-        index: 1-D array
-            index of spikes
-    """
-    
-    def compute_std(peak_height, median):
-        data = peak_height - median
-        ff1 = -data * (data < 0)
-        Ns = np.sum(ff1 > 0)
-        std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-        return std      
-
-    
-    _, thresh_sub_init, thresh_init, peak_height, median_init = find_spikes_rh(t[:20000], thresh_height)
-    t_init = time()
-    window_length = 2
-    peak_height = np.array([])
-    index = []
-    median = [median_init]
-    thresh_sub = [thresh_sub_init]
-    thresh = [thresh_init]
-    ts = np.zeros(t.shape)
-    time_all = [] 
-    
-    for i in range(len(t)):
-        if i > 2 * window_length:  
-            ts[i] = t[i] - median[-1]
-            # Estimate thresh_sub
-            if (i > window) and (i % step == 0):
-                tt = -ts[i - window : i][ts[i - window : i] < 0]  
-                thresh_sub.append(np.percentile(tt, 99))
-                print(f'{i} frames processed')
-            
-            if (i > window) and (i % step == 100):
-                tt = t[i - window : i]  
-                median.append(np.percentile(tt, 50))
-            
-            if (i > window) and (i % step == 200):
-                length = len(peak_height)
-                if length % 2 == 0:
-                    temp_median = peak_height[int(length / 2) - 1]
-                else:
-                    temp_median = peak_height[int((length-1) / 2)]
-                    
-                
-                
-                if thresh_height is None:
-                    thresh.append(compute_thresh(peak_height, thresh[-1]))                    
-                else:
-                    thresh.append(compute_std(peak_height, temp_median) * thresh_height)
-                
-            # decide if two frames ago it is a peak
-            temp = ts[i - 2] - ts[(i - 4) : (i+1)]
-            if (temp[1] > 0) and (temp[3] > 0):
-                left = np.max((temp[0], temp[1]))
-                right = np.max((temp[3], temp[4]))
-                height = np.single(1 / (1 / left + 0.7 / right))
-                indices = np.searchsorted(peak_height, height)
-                peak_height = np.insert(peak_height, indices, height)
-                
-                if ts[i - 2] > thresh_sub[-1]:
-                    if height > thresh[-1]:
-                        index.append(i - 2)
-        t_c = time()
-        time_all.append(t_c)
-                
-    print(f'{1000*(time() - t_init) / t.shape[0]} ms per frame')  
-    print(f'{1000*np.diff(time_all).max()} ms for maximum per frame')  
-    
-    #plt.figure()
-    #plt.plot(np.diff(np.array(time_all)))
-    
-    return index
 
 #%%
 def find_spikes_rh(t, thresh_height=None, window_length = 2, 
@@ -361,59 +274,7 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
 
     return t, index, thresh_sub, thresh, peak_height, median, scale   
 
-#def find_spikes_rh_noscale(t, thresh_height):
-#    """ Find spikes based on the relative height of peaks
-#    Args:
-#        t: 1-D array
-#            one dimensional signal
-#            
-#        thresh height: int
-#            selected threshold
-#            
-#    Returns:
-#        index: 1-D array
-#            index of spikes
-#    """
-#        
-#    # List peaks based on their relative peak heights
-#    #t = img.copy()
-#    median = np.median(t) 
-#    t = t - median
-#    window_length = 2
-#    window = np.int64(np.arange(-window_length, window_length + 1, 1))
-#    index = signal.find_peaks(t, height=None)[0]
-#    index = index[np.logical_and(index > (-window[0]), index < (len(t) - window[-1]))]
-#    matrix = t[index[:, np.newaxis]+window]
-#    left = np.maximum((matrix[:,2] - matrix[:,1]), (matrix[:,2] - matrix[:,0]))  
-#    right = np.maximum((matrix[:,2] - matrix[:,3]), (matrix[:,2] - matrix[:,4]))  
-##    peak_height = 1 / (1 / left + 0.7 / right)
-#    peak_height = 1 / (1 / left + 0.7 / right)
-#    
-#    # Thresholding
-#    data = peak_height - np.median(peak_height)
-#    ff1 = -data * (data < 0)
-#    Ns = np.sum(ff1 > 0)
-#    std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-#    if thresh_height is not None:
-#        thresh = thresh_height * std
-#    else:
-#        thresh = compute_thresh(peak_height)
-#        
-#    index = index[peak_height > thresh]
-#
-#    # Only select peaks above subthreshold
-#    tt = -t[t<0]
-#    thresh_sub = np.percentile(tt, 99)
-#    index_sub = np.where(t > thresh_sub)[0]
-#    index = np.intersect1d(index,index_sub)
-#    
-#    #plt.hist(peak_height, 500)
-#    #plt.vlines(thresh, peak_height.min(), peak_height.max(), color='red')
-#    #plt.figure()
-#    #plt.plot(dict1['v_t'], t); plt.vlines(dict1['v_t'][index], t.min()-5, t.min(), color='red');
-#    #plt.vlines(dict1['e_sp'], t.min()-10, t.min()-5, color='black') 
-#    
-#    return index, thresh_sub, thresh, peak_height, median
+
 
 def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub, index, peak_height):
     t = np.append(t, t_in, axis=1)
@@ -432,9 +293,8 @@ def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub, in
     return t, t_rm, index, peak_height
 
 
-
-    
-def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
+  #%%  
+def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=True):
     """ Find spikes based on the relative height of peaks online
     Args:
         t: 1-D array
@@ -455,15 +315,11 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000):
             index of spikes
     """
     
-    def compute_std(peak_height, median):
-        data = peak_height - median
-        ff1 = -data * (data < 0)
-        Ns = np.sum(ff1 > 0)
-        std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-        return std      
+     
 
     
-    _, thresh_sub_init, thresh_init, peak_height, median_init = find_spikes_rh(t[:], thresh_height)
+    _, index, thresh_sub_init, thresh_init, peak_height, median_init, scale = find_spikes_rh(t[:], 
+                                                                       thresh_height, do_scale=do_scale)  
     t_init = time()
     window_length = 2
     peak_height = np.array([])
