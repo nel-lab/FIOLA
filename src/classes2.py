@@ -99,8 +99,8 @@ class MotionCorrect(keras.layers.Layer):
         numerator = tf.nn.conv2d(imgs_zm, self.kernel, padding=self.padding, 
                                  strides=self.strides)
         tensor_ncc = tf.truediv(numerator, denominator)
-        self.kernel*0
-        self.normalizer*0
+        self.kernel = self.kernel*1
+        self.normalizer = self.normalizer*1
        
         # Remove any NaN in final output
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
@@ -111,7 +111,6 @@ class MotionCorrect(keras.layers.Layer):
             X = tf.reshape(X, [1, X.shape[1], X.shape[2], 1])
 
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
-        print(xs.shape, ys.shape)
 
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
@@ -122,7 +121,6 @@ class MotionCorrect(keras.layers.Layer):
 #                                            interpolation="BILINEAR")
 
         #return X_corrected
-        print(X_corrected.shape)
 
         t = tf.reshape(tf.squeeze(X_corrected), [1, 512**2])
         return t
@@ -372,6 +370,7 @@ class NNLS(keras.layers.Layer):
         super().__init__(**kwargs)
         self.th1 = tf.convert_to_tensor(theta_1, dtype=np.float32)
         self.theta_2 = theta_2
+        print(type(self.th1), type(self.theta_2))
         
 
     def build(self, batch_input_shape):
@@ -395,6 +394,7 @@ class NNLS(keras.layers.Layer):
 
         Y_new = new_X + (k - 1)/(k + 2)*(new_X-X_old)  
         k += 1
+        
         return (Y_new, new_X, k)
     
     def get_config(self):
@@ -403,24 +403,31 @@ class NNLS(keras.layers.Layer):
     
 #%%
 class compute_theta2(keras.layers.Layer):
-    def __init__(self, A, n_AtA, **kwargs):
+    def __init__(self, A, n_AtA,t1, **kwargs):
         # tf.keras.backend.clear_session()
        
         super().__init__(**kwargs)
         self.A_ = A
         self.n_AtA_ = n_AtA
+        self.t1 = t1
+        tf.print(self.A_.dtype)
+        print(self.A_.dtype, self.n_AtA_.dtype, type(self.A_), type(self.n_AtA_), type(self.t1))
         
 
     def build(self, batch_input_shape):
         # theta_1 param in https://angms.science/doc/NMF/nnls_pgd.pdf
-#        tf.print(self.A_.dtype)
-        self.A = self.add_weight(
-            name="A", shape=[*self.A_.shape],
-            initializer=tf.constant_initializer(tf.keras.backend.get_value(self.A_)))
+        try:
+            self.A = self.add_weight(
+                name="A", shape=[*self.A_.shape],
+                initializer=tf.constant_initializer(self.A_))
+        except:
+            self.A = self.add_weight(
+                name="A", shape=[*self.A_.shape],
+                initializer=tf.constant_initializer(self.A_))
         # theta_2 param in https://angms.science/doc/NMF/nnls_pgd.pdf
         self.n_AtA = self.add_weight(
             name="n_AtA", shape=[*self.n_AtA_.shape],
-            initializer=tf.constant_initializer(tf.keras.backend.get_value(self.n_AtA_)))
+            initializer=tf.constant_initializer(self.n_AtA_))
         super().build(batch_input_shape) # must be at the end
     
     @tf.function
@@ -428,10 +435,13 @@ class compute_theta2(keras.layers.Layer):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
+        self.t1=self.t1*1
         return self.temp(X)
     
     def temp(self, X):
-        tf.compat.v1.disable_v2_behavior()
+#        tf.compat.v1.disable_v2_behavior()
+        self.A = self.A*1
+        self.n_AtA = self.n_AtA*1
         Y = tf.matmul(X, self.A) 
         Y = tf.divide(Y,self.n_AtA)
         Y = tf.transpose(Y)
@@ -439,4 +449,4 @@ class compute_theta2(keras.layers.Layer):
     
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config, "A":self.A, "n_AtA":self.n_AtA}
+        return {**base_config, "A":self.A, "n_AtA":self.n_AtA, "t1":self.t1}

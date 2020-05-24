@@ -81,21 +81,22 @@ def get_model():
     print(type(Ab), type(n_AtA))
     print(type(theta_1))
     print(n_AtA)
-    
+###########This is for the MOTION CORRECTION LAYER    
 #    mc_layer = MotionCorrect(template, template_zm, template_var)   
 #    mc = mc_layer(mc_in)
 #    mod = keras.Model(inputs=[mc_in], outputs=[mc])
-    
+ #########This is for the COMPUTE_THETA2 LAYER   
     c_th2 = compute_theta2(Ab, n_AtA, theta_1)
     th2 = c_th2(b_in)
     mod = keras.Model(inputs=[b_in], outputs=[th2])
+########THIS IS FOR THE NNLS LAYER ONLY####### => Note: I haven't reconfigured the Spikes object for the other layers yet
 #    nnls = NNLS(theta_1, theta_2)
 #    x_kk = nnls([y_in, x_in, k_in])
 #    for k in range(1, 10):
 #        x_kk = nnls(x_kk)
+#    mod = keras.Model(inputs=[y_in, x_in, k_in], outputs=[x_kk])
 #    
 ##    mod_nnls = keras.Model(inputs=[mc_in, y_in, x_in, k_in], outputs=[x_kk, th2])
-#    mod = keras.Model(inputs=[y_in, x_in, k_in], outputs=[x_kk])
 
 #    
 #    f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
