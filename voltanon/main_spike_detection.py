@@ -34,19 +34,25 @@ all_corr_subthr = []
 mode = 'minimum'
 mode = 'percentile'
 #mode = 'v_sub'
-mode_spikes = 'anomaly'
-mode_spikes = 'exceptionality'
+#mode_spikes = 'anomaly'
+#mode_spikes = 'exceptionality'
+mode_spikes = 'multi_peak'
 if mode_spikes == 'anomaly':
     N=0
     thres_STD = 5
     only_rising = False
-
-elif mode == 'exceptionality':
+    normalize_signal = True 
+elif mode_spikes == 'exceptionality':
     N=1
     thres_STD = 3.5    
     only_rising = True
-elif mode == 'multi_peak': 
-    
+    normalize_signal = True
+
+elif mode_spikes == 'multi_peak': 
+    thres_STD = None  
+    only_rising = None
+    N = None
+    normalize_signal = False
 else:
     raise Exception()
     
@@ -67,10 +73,9 @@ for thres_STD in [thres_STD]:#range(23,24,1):
         else:
             img = dict1['v_sg']            
             img /= estimate_running_std(img, q_min=0.1, q_max=99.9, win_size=20000, stride=5000)
-            idx_to_remove_estimate = []
+            
             print(np.diff( dict1['v_t']))
-            std_estimate = np.diff(np.percentile(img,[75,25]))/100
-           
+            idx_to_remove_estimate = []
             for i in range(len(dict1['sweep_time']) - 1):
                 idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]), dict1['v_t']<dict1['sweep_time'][i+1][0])])[1]
                # img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
@@ -78,7 +83,6 @@ for thres_STD in [thres_STD]:#range(23,24,1):
 
             for i in range(len(dict1['sweep_time']) - 1):
                 idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]-1), dict1['v_t']<dict1['sweep_time'][i][-1]-0.85)])[1]
-#                img[idx_to_rem] = np.random.normal(0,1,len(idx_to_rem))*std_estimate
                 idx_to_remove_estimate.append(idx_to_rem)
                 
             idx_good_estimate = np.setdiff1d(range(len(img)),np.concatenate(idx_to_remove_estimate))
@@ -98,7 +102,7 @@ for thres_STD in [thres_STD]:#range(23,24,1):
         #    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
             
             indexes, erf, z_signal, estimator = find_spikes(img, signal_no_subthr=signal_no_subthr, 
-                                                 mode=mode_spikes, only_rising=only_rising, normalize_signal=True, 
+                                                 mode=mode_spikes, only_rising=only_rising, normalize_signal=normalize_signal, 
                                                  samples_covariance=10000, thres_STD=thres_STD, #thres_STD=3.5, 
                                                  thres_STD_ampl=4, min_dist=1, 
                                                  N=N, win_size=20000, stride=5000)
