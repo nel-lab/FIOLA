@@ -16,7 +16,7 @@ from metrics import metric
 from visualization import plot_marton
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
-               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][0]
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
              '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
              '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
@@ -42,7 +42,7 @@ for k in np.array(list(range(0, 8))):
     if (k == 6) or (k==3):
         thresh_height = None
     else:
-        thresh_height = 6
+        thresh_height = None
     dict1 = np.load(file_list[k], allow_pickle=True)
     img = dict1['v_sg']
     #img /= estimate_running_std(img, q_min=0.1, q_max=99.9)
@@ -87,8 +87,9 @@ for k in np.array(list(range(0, 8))):
 #        signal_subthr = np.concatenate([np.zeros(15),perc,np.zeros(14)]) #cv2.resize(perc, (1,img.shape[0])).squeeze()
         subthr2 =  cv2.resize(perc, (1,img.shape[0]),cv2.INTER_CUBIC).squeeze()
         signal_subthr = subthr1 + subthr2        
-        
-    signal_no_subthr = img -  signal_subthr
+    
+    if signal_subthr is not None:    
+        signal_no_subthr = img -  signal_subthr
 #    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
     
     #indexes, erf, z_signal = find_spikes(img, signal_no_subthr=signal_no_subthr, 
@@ -100,14 +101,14 @@ for k in np.array(list(range(0, 8))):
     #indexes = find_spikes_tm(img, signal_subthr, thresh_height)
     #indexes = find_spikes_rh(img, thresh_height)[0]
     #indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
-    
-    sao = SignalAnalysisOnline()
-    img = img[np.newaxis, :]
-    sao.fit(img[:, :20000])
-    for n in range(20000, img.shape[1]):
-        sao.fit_next(img[:, n: n+1], n)
-    print(sao.thresh)
-    indexes = sao.index[0]    
+    img = img.astype(np.float32)
+    sao = SignalAnalysisOnline(thresh_STD=None)
+    trace = img[np.newaxis, :]
+    #trace = np.array([img for i in range(500)])
+    sao.fit(trace[:, :20000], num_frames=100000)
+    for n in range(20000, img.shape[0]):
+        sao.fit_next(trace[:, n: n+1], n)
+    indexes = np.array((list(set(sao.index[0]) - set([0]))))  
     
     dict1_v_sp_ = dict1['v_t'][indexes]
     

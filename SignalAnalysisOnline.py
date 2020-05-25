@@ -20,7 +20,7 @@ img1 = img/estimate_running_std(img, q_min=0.1, q_max=99.9)
 
 #%%
 sao = SignalAnalysisOnline()
-sao.fit(trace[:, :20000])
+sao.fit(trace[:, :])
 for n in range(20000, 100000):
     sao.fit_next(trace[:, n: n+1], n)
     
@@ -80,7 +80,7 @@ class SignalAnalysisOnline(object):
     def update_median_scale(self):
         tt = self.trace[:, np.int(-self.window*2.5):]
         self.median = np.append(self.median, np.percentile(tt, 50, axis=1)[:, np.newaxis], axis=1)
-        self.scale = np.append(self.scale, np.percentile(tt, 99.9, axis=1)[:, np.newaxis], axis=1)
+        #self.scale = np.append(self.scale, np.percentile(tt, 99.9, axis=1)[:, np.newaxis], axis=1)
         return self
 
     def update_thresh(self):
@@ -101,7 +101,7 @@ def compute_std(peak_height):
     std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
     return std                  
 
-def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_before=1):
+def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_before=1):
     kernel = stats.gaussian_kde(peak_height)
     x_val = np.linspace(0,np.max(peak_height),1000)
     pdf = kernel(x_val)
@@ -149,7 +149,7 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_
     
 def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub, index, peak_height):
     t = np.append(t, t_in, axis=1)
-    t_in = (t_in - median[:, -1:]) / scale[:, -1:]
+    t_in = (t_in - median[:, -1:]) #/ scale[:, -1:]
     t_rm = np.append(t_rm, t_in, axis=1)
     temp = t_rm[:, -3:-2] - t_rm[:, -5:]
     
@@ -182,7 +182,7 @@ def find_spikes_rh(t, thresh_height=None):
     median = np.median(t) 
     t = t - median
     scale = np.percentile(t, 99.9)  
-    t = t / scale
+    #t = t / scale
     window_length = 2
     window = np.int64(np.arange(-window_length, window_length + 1, 1))
     index = signal.find_peaks(t, height=None)[0]
