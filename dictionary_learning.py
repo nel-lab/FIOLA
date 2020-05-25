@@ -307,12 +307,12 @@ fnames = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_r
 '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/456462_Cell_5_40x_1xtube_10A6.tif',
 '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/456462_Cell_5_40x_1xtube_10A7.tif']
 #'/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/462149_Cell_1_40x_1xtube_10A1_10A2.tif']
-#x_shifts = [3,-3]
-#y_shifts = [3,-3]
-#name_set = fnames[1:3]
-x_shifts = [0]
-y_shifts = [0]
-name_set = fnames[1:2]
+x_shifts = [3,-3]
+y_shifts = [3,-3]
+name_set = fnames[1:3]
+#x_shifts = [0]
+#y_shifts = [0]
+#name_set = fnames[1:2]
 num_frames = 80000
 frate = 400
 all_coeffs = []
@@ -324,7 +324,8 @@ for idx in range(1):#fnames:
                                                               weights=None)
          
     mcr_mc = mcr_orig
-    mcr = -mcr_mc    
+    mcr = -mcr_mc   
+    ycr_orig = mcr.to_2D()
     ycr = mcr.to_2D() 
     ycr_filt = signal_filter(ycr.T,freq = 1/3, fr=frate).T
     ycr = ycr_filt
@@ -345,7 +346,7 @@ for idx in range(1):#fnames:
     #%%
     n_comps = len(x_shifts)
 #    n_comps = 2
-    num_frames = 10000
+    num_frames = 20000
     y_now = ycr[:num_frames,:].copy()
     W_tot = []
     H_tot = []
@@ -369,8 +370,16 @@ for idx in range(1):#fnames:
     #%%
     fe = slice(0,None)
     from scipy.optimize import nnls
-    Cf = np.array([nnls(H.T,y)[0] for y in (ycr-ycr.min())[fe]])
-    trr = Cf[:,:]
+    Cf_pref = np.array([nnls(H.T,y)[0] for y in (ycr-ycr.min())[fe]])
+    trr_pref = Cf_pref[:,:]
+    trr_pref -= np.min(trr_pref, axis=0)
+    Cf_postf = np.array([nnls(H.T,y)[0] for y in -ycr_orig[fe]])
+    trr_postf = signal_filter(-Cf_postf.T,freq = 1/3, fr=frate).T
+    trr_postf -= np.min(trr_postf, axis=0)
+    #%%
+    plt.plot(trr_postf)
+    plt.plot(trr_pref+0.1)
+    
     #%%
     count = 0
     for trep, eph, time_v, time_e in list(zip(volt, ephs, times_v, times_e)):
