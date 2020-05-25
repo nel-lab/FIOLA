@@ -17,7 +17,7 @@ import numpy as np
 #import time as time
 #%%
 class MotionCorrect(keras.layers.Layer):
-    def __init__(self, template, template_zm, template_var, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
+    def __init__(self, template, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
         """
         Tenforflow layer which perform motion correction on batches of frames. Notice that the input must be a 
         tensorflow tensor with dimension batch x width x height x channel
@@ -54,43 +54,34 @@ class MotionCorrect(keras.layers.Layer):
 #        self.A_ = Ab
 #        self.n_AtA_ = n_AtA
         ## normalize template
-#        self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
-        self.template_zm = template_zm
-        self.template_var = template_var
+        self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
+#        self.template_zm = tf.Variable(template_zm)
+#        self.template_var = tf.Variable(template_var)
+        self.kernel = self.template_zm
+        self.normalizer = self.template_var
 
-    def build(self, batch_input_shape):
-        # weights here represent the template, so that we can update in case we 
-        # want to use the online algorithm
-        #print(self.template_zm)
-#        temp_zm = tf.py_function(func=self.to_numpy, inp=[self.template_zm], Tout=float).numpy()
-#        tf.print(temp_zm.dtype)
-        self.kernel = self.add_weight(
-            name="kernel", shape=[*list(self.template_zm.shape)],
-            initializer=tf.constant_initializer(self.template_zm))
-#            initializer=tf.constant_initializer(np.array(self.template_zm)))
+#    def build(self, batch_input_shape):
+#        # weights here represent the template, so that we can update in case we 
+#        # want to use the online algorithm
+#        #print(self.template_zm)
+##        temp_zm = tf.py_function(func=self.to_numpy, inp=[self.template_zm], Tout=float).numpy()
+##        tf.print(temp_zm.dtype)
+#        self.kernel = self.add_weight(
+#            name="kernel", shape=[*list(self.template_zm.shape)],
+#            initializer=tf.constant_initializer(self.template_zm))
+#
+#        # the normalizer also needs to be updated if the template is updated
+#        self.normalizer = self.add_weight(
+#            name="normalizer", shape=[*list(self.template_var.shape)],
+#            initializer=tf.constant_initializer(self.template_var))
+#
+#        super().build(batch_input_shape) # must be at the end
 
-        # the normalizer also needs to be updated if the template is updated
-        self.normalizer = self.add_weight(
-            name="normalizer", shape=[*list(self.template_var.shape)],
-            initializer=tf.constant_initializer(self.template_var))
-#            initializer=tf.constant_initializer(np.asarray(self.template_var))) 
-#        self.A = self.add_weight(
-#            name="A", shape=[*self.A_.shape],
-#            initializer=tf.constant_initializer(self.A_))
-#        # theta_2 param in https://angms.science/doc/NMF/nnls_pgd.pdf
-#        self.n_AtA = self.add_weight(
-#            name="n_AtA", shape=[*self.n_AtA_.shape],
-#            initializer=tf.constant_initializer(self.n_AtA_)) 
-        super().build(batch_input_shape) # must be at the end
-    
-#    def to_numpy(self, tensor):
-#        tf.print(tensor.numpy().dtype)
-#        return tensor.numpy().astype(float)
 
     @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
-        # normalize images
+        tf.print(X.shape)
         X_center = X[:, self.shp:-self.shp, self.shp:-self.shp]
         # pass in center (128x128)
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
@@ -107,34 +98,21 @@ class MotionCorrect(keras.layers.Layer):
 
         if tensor_ncc.shape[0] == None:
             shape = tensor_ncc.shape
-            tensor_ncc = tf.reshape(tensor_ncc, [1, shape[1], shape[2], 1])
-            X = tf.reshape(X, [1, X.shape[1], X.shape[2], 1])
+            tensor_ncc = tf.reshape(tensor_ncc, [1, shape[2], shape[2], 1])
+            X = tf.reshape(X, [1, X.shape[2], X.shape[2], 1])
 
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
 
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
-#        except:
-#            n_shape = tensor_ncc.shape
-#            xs, ys = self.extract_fractional_peak(tf.reshape(tensor_ncc, [1, n_shape[1], n_shape[2], n_shape[3]]), ms_h=self.ms_h, ms_w=self.ms_w)
-#            X_corrected = tfa.image.translate(tf.reshape(X, [1, 512, 512, 1]), tf.squeeze(tf.stack([ys, xs], axis=1)), 
-#                                            interpolation="BILINEAR")
-
-        #return X_corrected
-
-        t = tf.reshape(tf.squeeze(X_corrected), [1, 512**2])
-        return t
-    
-#        Y = tf.matmul(X_corr_translated, self.A) 
-#        Y = tf.divide(Y,self.n_AtA)
-#        Y = tf.transpose(Y)
-#        return Y
+        
+        return tf.reshape(tf.squeeze(X_corrected), [1, 512**2])
 
 
     def get_config(self):
         base_config = super().get_config().copy()
         return {**base_config, "template": self.template,"strides": self.strides,
-                "template_zm":self.template_zm, "template_var": self.template_var,
+#                "template_zm":self.kernel, "template_var": self.normalizer,
                 "padding": self.padding, "epsilon": self.epsilon, 
                                         "ms_h": self.ms_h,"ms_w": self.ms_w }  
         
@@ -142,7 +120,7 @@ class MotionCorrect(keras.layers.Layer):
         # remove mean and divide by std
         template_zm = template - tf.reduce_mean(template, axis=[0,1], keepdims=True)
         template_var = tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon
-        return template_zm.numpy(), template_var.numpy()
+        return tf.cast(template_zm, tf.float32), tf.cast(template_var, tf.float32)
         
     def normalize_image(self, imgs, shape_template, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001):
         # remove mean and standardize so that normalized cross correlation can be computed
@@ -216,12 +194,6 @@ class MotionCorrect(keras.layers.Layer):
         sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1 - log_x_yp1), (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
 #        tf.print(float(timeit.default_timer())-start, "3 fractional peak")
         return tf.reshape(sh_x_n, [1, 1]), tf.reshape(sh_y_n, [1, 1])
-    @tf.function
-    def softargmax(self, x, beta=1e10):
-
-        x_range = tf.range(x.shape[-1], dtype=x.dtype)
-
-        return tf.reduce_sum(tf.nn.softmax(x*beta) * x_range, axis=1)
   
     def generator(self):
         while True:
@@ -236,116 +208,6 @@ class MotionCorrect(keras.layers.Layer):
             q.put(fr)
         return
 
-#%%
-def update_order_greedy(A, flag_AA=True):
-    """Determines the update order of the temporal components
-
-    this, given the spatial components using a greedy method
-    Basically we can update the components that are not overlapping, in parallel
-
-    Args:
-        A:  sparse crc matrix
-            matrix of spatial components (d x K)
-        OR:
-            A.T.dot(A) matrix (d x d) if flag_AA = true
-
-        flag_AA: boolean (default true)
-
-     Returns:
-         parllcomp:   list of sets
-             list of subsets of components. The components of each subset can be updated in parallel
-
-         len_parrllcomp:  list
-             length of each subset
-
-    Author:
-        Eftychios A. Pnevmatikakis, Simons Foundation, 2017
-    """
-    K = np.shape(A)[-1]
-    parllcomp = []
-    for i in range(K):
-        new_list = True
-        for ls in parllcomp:
-            if flag_AA:
-                if A[i, ls].nnz == 0:
-                    ls.append(i)
-                    new_list = False
-                    break
-            else:
-                if (A[:, i].T.dot(A[:, ls])).nnz == 0:
-                    ls.append(i)
-                    new_list = False
-                    break
-
-        if new_list:
-            parllcomp.append([i])
-    len_parrllcomp = [len(ls) for ls in parllcomp]
-    return parllcomp, len_parrllcomp
-#%%
-from math import sqrt
-def HALS4activity(Yr, A, noisyC, AtA=None, iters=5, tol=1e-3, groups=None,
-                  order=None):
-    """Solves C = argmin_C ||Yr-AC|| using block-coordinate decent. Can use
-    groups to update non-overlapping components in parallel or a specified
-    order.
-
-    Args:
-        Yr : np.array (possibly memory mapped, (x,y,[,z]) x t)
-            Imaging data reshaped in matrix format
-
-        A : scipy.sparse.csc_matrix (or np.array) (x,y,[,z]) x # of components)
-            Spatial components and background
-
-        noisyC : np.array  (# of components x t)
-            Temporal traces (including residuals plus background)
-
-        AtA : np.array, optional (# of components x # of components)
-            A.T.dot(A) Overlap matrix of shapes A.
-
-        iters : int, optional
-            Maximum number of iterations.
-
-        tol : at, optional
-            Change tolerance level
-
-        groups : list of sets
-            grouped components to be updated simultaneously
-
-        order : list
-            Update components in that order (used if nonempty and groups=None)
-
-    Returns:
-        C : np.array (# of components x t)
-            solution of HALS
-
-        noisyC : np.array (# of components x t)
-            solution of HALS + residuals, i.e, (C + YrA)
-    """
-
-    AtY = A.T.dot(Yr)
-    num_iters = 0
-    C_old = np.zeros_like(noisyC)
-    C = noisyC.copy()
-    if AtA is None:
-        AtA = A.T.dot(A)
-    AtAd = AtA.diagonal() + np.finfo(np.float32).eps
-
-    # faster than np.linalg.norm
-    def norm(c): return sqrt(c.ravel().dot(c.ravel()))
-    while (norm(C_old - C) >= tol * norm(C_old)) and (num_iters < iters):
-        C_old[:] = C
-        if groups is None:
-            if order is None:
-                order = list(range(AtY.shape[0]))
-            for m in order:
-                noisyC[m] = C[m] + (AtY[m] - AtA[m].dot(C)) / AtAd[m]
-                C[m] = np.maximum(noisyC[m], 0)
-        else:
-            for m in groups:
-                noisyC[m] = C[m] + ((AtY[m] - AtA[m].dot(C)).T/AtAd[m]).T
-                C[m] = np.maximum(noisyC[m], 0)
-        num_iters += 1
-    return C, noisyC
 #%% 
 class NNLS(keras.layers.Layer):
     def __init__(self, theta_1, theta_2, **kwargs):
@@ -368,9 +230,9 @@ class NNLS(keras.layers.Layer):
         
         """
         super().__init__(**kwargs)
-        self.th1 = tf.convert_to_tensor(theta_1, dtype=np.float32)
+#        self.th1 = theta_1
+        self.th1 = theta_1.astype(np.float32)
         self.theta_2 = theta_2
-        print(type(self.th1), type(self.theta_2))
         
 
     def build(self, batch_input_shape):
@@ -389,18 +251,38 @@ class NNLS(keras.layers.Layer):
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
         (Y,X_old,k) = X
+#        mm = tf.matmul(self.th1.astype(np.float32), Y)
         mm = tf.matmul(self.th1, Y)
         new_X = tf.nn.relu(mm + self.th2)
 
         Y_new = new_X + (k - 1)/(k + 2)*(new_X-X_old)  
         k += 1
-        
         return (Y_new, new_X, k)
     
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config, "theta_2": self.theta_2, "theta_1": self.th1.numpy()}  
+        return {**base_config, "theta_2": self.theta_2, "theta_1": self.th1}  
+
+#%%
+class compute_theta2_AG(keras.layers.Layer):
+    def __init__(self, A, n_AtA, **kwargs):
+        # tf.keras.backend.clear_session() 
+        super().__init__(**kwargs)
+        self.A = A
+        self.n_AtA = n_AtA
     
+    def call(self, X):
+#        self.A = tf.Variable(self.A)
+        self.a = tf.Variable(self.A, name="BAD", trainable=True)
+        Y = tf.matmul(X, self.a)
+#        self.A = tf.Variable(self.A, name="BAD", trainable=True)
+        Y = tf.divide(Y, self.n_AtA)
+        Y = tf.transpose(Y)
+        return Y    
+    
+    def get_config(self):
+        base_config = super().get_config().copy()
+        return {**base_config, "A":self.A, "n_AtA":self.n_AtA}
 #%%
 class compute_theta2(keras.layers.Layer):
     def __init__(self, A, n_AtA,t1, **kwargs):
@@ -410,20 +292,13 @@ class compute_theta2(keras.layers.Layer):
         self.A_ = A
         self.n_AtA_ = n_AtA
         self.t1 = t1
-        tf.print(self.A_.dtype)
-        print(self.A_.dtype, self.n_AtA_.dtype, type(self.A_), type(self.n_AtA_), type(self.t1))
         
 
     def build(self, batch_input_shape):
         # theta_1 param in https://angms.science/doc/NMF/nnls_pgd.pdf
-        try:
-            self.A = self.add_weight(
-                name="A", shape=[*self.A_.shape],
-                initializer=tf.constant_initializer(self.A_))
-        except:
-            self.A = self.add_weight(
-                name="A", shape=[*self.A_.shape],
-                initializer=tf.constant_initializer(self.A_))
+        self.A = self.add_weight(
+            name="A", shape=[*self.A_.shape],
+            initializer=tf.constant_initializer(self.A_))
         # theta_2 param in https://angms.science/doc/NMF/nnls_pgd.pdf
         self.n_AtA = self.add_weight(
             name="n_AtA", shape=[*self.n_AtA_.shape],
