@@ -11,20 +11,19 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 from scipy.signal import find_peaks
 from scipy.signal import savgol_filter
+from signal_analysis_online import SignalAnalysisOnline
 from metrics import metric
+import os
 from spike_extraction_routines import estimate_subthreshold_signal, extract_exceptional_events, find_spikes
 from running_statistics import estimate_running_std
 #%%
-file_list = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/454597_Cell_0_40x_patch1_output.npz', 
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_3_40x_1xtube_10A2_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_3_40x_1xtube_10A3_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A5_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A7_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/462149_Cell_1_40x_1xtube_10A1_output.npz', 
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/462149_Cell_1_40x_1xtube_10A2_output.npz',
-             '/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new/456462_Cell_5_40x_1xtube_10A6_output.npz']
-
-
+base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
+lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
+             '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
+             '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
+             '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz', ]
+file_list = [os.path.join(base_folder, file)for file in lists]
 
 all_f1_scores = []
 all_prec = []
@@ -58,6 +57,8 @@ else:
     
 perc_subthr = 20
 all_results = []
+thresh_factor=[]
+scale = []
 
 for thres_STD in [thres_STD]:#range(23,24,1):
     res_dict = dict()
@@ -65,16 +66,16 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     all_prec = []
     all_rec = []
     all_corr_subthr = []
-    for file in file_list[:]:
+    for file in file_list[0:8]:
         dict1 = np.load(file, allow_pickle=True)
         spike_purs = False
         if spike_purs:
             dict1_v_sp_ = dict1['e_sp']
         else:
             img = dict1['v_sg']            
-            img /= estimate_running_std(img, q_min=0.1, q_max=99.9, win_size=20000, stride=5000)
+            #img /= estimate_running_std(img, q_min=0.1, q_max=99.9, win_size=20000, stride=5000)
+            print(f'time between frame:{np.diff(dict1["v_t"])[0]}')
             
-            print(np.diff( dict1['v_t']))
             idx_to_remove_estimate = []
             for i in range(len(dict1['sweep_time']) - 1):
                 idx_to_rem = np.where([np.logical_and(dict1['v_t']>(dict1['sweep_time'][i][-1]), dict1['v_t']<dict1['sweep_time'][i+1][0])])[1]
@@ -101,13 +102,14 @@ for thres_STD in [thres_STD]:#range(23,24,1):
             signal_no_subthr = img - subthreshold_signal
         #    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
             
-            indexes, erf, z_signal, estimator = find_spikes(img, signal_no_subthr=signal_no_subthr, 
+            indexes, erf, z_signal, estimator = find_spikes(img[:], signal_no_subthr=signal_no_subthr, 
                                                  mode=mode_spikes, only_rising=only_rising, normalize_signal=normalize_signal, 
                                                  samples_covariance=10000, thres_STD=thres_STD, #thres_STD=3.5, 
                                                  thres_STD_ampl=4, min_dist=1, 
                                                  N=N, win_size=20000, stride=5000)
             
-   
+            #thresh_factor.append(erf)
+            #scale.append(z_signal)
             
             indexes = np.setdiff1d(indexes, np.concatenate(idx_to_remove_estimate))
             dict1_v_sp_ = dict1['v_t'][indexes]
@@ -150,6 +152,10 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
 
     all_results.append(res_dict)
+
+#%%
+[plt.plot(scale[i], label=str(i)) for i in range(len(scale))]
+plt.legend()
 
 #%%
 all_f1_mat = []
@@ -197,7 +203,12 @@ if False:
     plt.plot(dict1['v_t'][1:],-erf,'r-')
 #    plt.plot(dict1['v_t'],subs/3)
     
-
+    #%%
+    plt.plot(dict1['v_t'], img, '.-')
+    plt.legend()
+    plt.vlines(e_spike_aligned, img.min()-0.5, img.min(), color='black')
+    plt.vlines(v_spike_aligned, img.min()-1, img.min()-0.5, color='red')
+    
     #%%
     plt.plot(signal_no_subthr)
 

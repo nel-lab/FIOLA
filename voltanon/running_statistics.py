@@ -5,17 +5,16 @@ Created on Sat May 23 08:07:20 2020
 
 @author: agiovann
 """
-
 from caiman.base.movies import rolling_window
-from functools import partial
 import cv2
+from functools import partial
+import matplotlib.pyplot as plt
+import numpy as np
 #import scipy
 #from scipy.interpolate import interp1d
 from scipy import stats
-import numpy as np
 from scipy.signal import argrelextrema
 
-#
 def estimate_running_std(signal_in, win_size=20000, stride=5000, 
                          idx_exclude=None, q_min=25, q_max=75):
     """
@@ -55,16 +54,14 @@ def estimate_running_std(signal_in, win_size=20000, stride=5000,
     std_run = cv2.resize(iqr,signal_in[None,:].shape).squeeze()
     return std_run
 
-#%%
 def compute_std(peak_height):
     data = peak_height - np.median(peak_height)
     ff1 = -data * (data < 0)
     Ns = np.sum(ff1 > 0)
     std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-    return std            
- 
+    return std
 
-def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_before=1):
+def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_before=1):
     kernel = stats.gaussian_kde(peak_height)
     x_val = np.linspace(0,np.max(peak_height),1000)
     pdf = kernel(x_val)
@@ -79,11 +76,9 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_
 
     if prev_thresh is None:
         delta_max = np.inf
-        prev_thresh = mean
-                    
+        prev_thresh = mean                   
     
     thresh = prev_thresh 
-
 
     if (len(minima)>0) and (np.abs(minima[0]-prev_thresh)< delta_max):
         thresh = minima[0]
@@ -91,4 +86,15 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.05, number_maxima_
         mnt = mnt[mnt<0]
         thresh += mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]
     
+    """
+    print(f'previous thresh: {prev_thresh}')
+    print(f'current thresh: {thresh}')  
+    """
+    """
+    plt.figure()
+    plt.plot(x_val, pdf,'c')    
+    plt.plot(x_val[2:],second_der*500,'r')  
+    plt.plot(thresh,0, '*')   
+    plt.pause(0.1)
+    """
     return thresh

@@ -191,9 +191,9 @@ def find_spikes(signal_orig, signal_no_subthr=None, normalize_signal=False, thre
     elif mode == 'multi_peak':
         # changjia HERE
         win_size, stride = 10000, 5000
-        indexes = find_spikes_rh_online(signal_orig, thresh_height=thres_STD, 
-                                        window=win_size, step=stride, do_scale=False)
-        erf, z_signal, estimator = [None]*3
+        indexes, erf, z_signal = find_spikes_rh_online(signal_orig, thresh_height=thres_STD, 
+                                        window=win_size, step=stride, do_scale=True)
+        estimator = [None]*1
         
     return indexes, erf, z_signal, estimator
 #%%
@@ -221,7 +221,7 @@ def nan_helper(y):
 #%%
 def find_spikes_rh(t, thresh_height=None, window_length = 2, 
                            witgh_descending_peak=0.7,
-                           do_scale=True):
+                           do_scale=False):
     """ Find spikes based on the relative height of peaks
     Args:
         t: 1-D array
@@ -239,7 +239,7 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
     median = np.median(t) 
     t = t - median
     if do_scale:
-        scale = np.percentile(t, 99.9)  
+        scale = np.percentile(t, 99)  
         t = t / scale
     else: 
         scale = None
@@ -262,34 +262,41 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
     else:
         thresh = compute_thresh(peak_height)
         
+    thresh_factor = thresh / std
+    print(f'thresh_factor equals {thresh_factor}')
+        
     index = index[peak_height > thresh]
 
     # Only select peaks above subthreshold
     tt = -t[t<0]
     thresh_sub = np.percentile(tt, 99)
     index_sub = np.where(t > thresh_sub)[0]
-    index = np.intersect1d(index,index_sub)
-    
+    index = np.intersect1d(index,index_sub)    
 
-    return t, index, thresh_sub, thresh, peak_height, median, scale   
-
+    return t, index, thresh_sub, thresh, peak_height, median, scale, thresh_factor   
 
 
-def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub, index, peak_height):
-    t = np.append(t, t_in, axis=1)
+
+def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub,\
+                            index, peak_height, index_track, peak_height_track, n):
+    t[:, n:(n + 1)] = t_in
     t_in = (t_in - median[:, -1:]) / scale[:, -1:]
-    t_rm = np.append(t_rm, t_in, axis=1)
-    temp = t_rm[:, -3:-2] - t_rm[:, -5:]
-    
+    t_rm[:, n:(n + 1)] = t_in
+    temp = t_rm[:, (n - 2):(n - 1)] - t_rm[:, (n - 4):(n + 1)]
+
     left = np.max((temp[:,0:1], temp[:,1:2]), axis=0)
     right = np.max((temp[:,3:4], temp[:,4:5]), axis=0)
     height = np.single(1 / (1 / left + 0.7 / right))
     indices = np.where(np.logical_and((temp[:,1] > 0), (temp[:,3] > 0)))[0]
+
     for idx in indices:
-        peak_height[idx] = np.append(peak_height[idx], height[idx])
-        if (t_rm[idx, -3] > thresh_sub[idx, -1]) and (height[idx] > thresh[idx, -1]):
-            index[idx] = np.append(index[idx], (t.shape[1] - 2))            
-    return t, t_rm, index, peak_height
+        peak_height[idx, peak_height_track[idx]] = height[idx]
+        peak_height_track[idx] += 1
+        if (t_rm[idx, n - 2] > thresh_sub[idx, -1]) and (height[idx] > thresh[idx, -1]):
+            index[idx, index_track[idx]] = (n - 2)     
+            index_track[idx] +=1
+    
+    return t, t_rm, index, peak_height, index_track, peak_height_track
 
 
   #%%  
@@ -313,12 +320,14 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=
         index: 1-D array
             index of spikes
     """
+    _, index, thresh_sub_init, thresh_init, peak_height, median_init, scale_init, thresh_factor = find_spikes_rh(t[:20000], 
+                                                                       thresh_height, do_scale=do_scale)
+    if thresh_factor > 8:
+        thresh_factor = 8
+    elif thresh_factor < 3.3:
+        thresh_factor = 3
     
-     
-
-    
-    _, index, thresh_sub_init, thresh_init, peak_height, median_init, scale = find_spikes_rh(t[:], 
-                                                                       thresh_height, do_scale=do_scale)  
+    thresh_height = thresh_factor
     t_init = time()
     window_length = 2
     peak_height = np.array([])
@@ -327,32 +336,30 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=
     thresh_sub = [thresh_sub_init]
     thresh = [thresh_init]
     ts = np.zeros(t.shape)
+    scale = [scale_init]
     time_all = [] 
     
     for i in range(len(t)):
         if i > 2 * window_length:  
             ts[i] = t[i] - median[-1]
+            if do_scale:
+                ts[i] = ts[i] / scale[-1]
             # Estimate thresh_sub
             if (i > window) and (i % step == 0):
                 tt = -ts[i - window : i][ts[i - window : i] < 0]  
                 thresh_sub.append(np.percentile(tt, 99))
                 print(f'{i} frames processed')
             
-            if (i > window) and (i % step == 100):
-                tt = t[i - window : i]  
+            if (i >= 2.5* window) and (i % step == 100):
+                tt = t[i - int(2.5 * window) : i]  
                 median.append(np.percentile(tt, 50))
+                scale.append(np.percentile(tt, 99))
             
             if (i > window) and (i % step == 200):
-                length = len(peak_height)
-                if length % 2 == 0:
-                    temp_median = peak_height[int(length / 2) - 1]
-                else:
-                    temp_median = peak_height[int((length-1) / 2)]
-                
                 if thresh_height is None:
                     thresh.append(compute_thresh(peak_height, thresh[-1]))                    
                 else:
-                    thresh.append(compute_std(peak_height, temp_median) * thresh_height)
+                    thresh.append(compute_std(peak_height[:]) * thresh_height)
                 
             # decide if two frames ago it is a peak
             temp = ts[i - 2] - ts[(i - 4) : (i+1)]
@@ -368,18 +375,17 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=
                         index.append(i - 2)
         t_c = time()
         time_all.append(t_c)
-                
+    
+          
     print(f'{1000*(time() - t_init) / t.shape[0]} ms per frame')  
     print(f'{1000*np.diff(time_all).max()} ms for maximum per frame')  
     
     #plt.figure()
     #plt.plot(np.diff(np.array(time_all)))
     
-    return index
+    return index, thresh_factor, scale
 
 #%%
-
-
 def estimate_subthreshold_signal(signal, mode='percentile', perc_subthr=20,
                                  perc_window=50, perc_stride=25, thres_STD = 5, 
                                  kernel_size=21,return_nans=False):
