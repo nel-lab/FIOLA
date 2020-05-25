@@ -81,7 +81,6 @@ class MotionCorrect(keras.layers.Layer):
     @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
-        tf.print(X.shape)
         X_center = X[:, self.shp:-self.shp, self.shp:-self.shp]
         # pass in center (128x128)
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,

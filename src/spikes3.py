@@ -116,7 +116,7 @@ def get_model():
     (y_new, x_new, kkk), tht2 = mod_nnls((mc_0, y_old[None, :], x_old[None, :], tf.convert_to_tensor([[0]], dtype=tf.int8)))
     tht2 = tf.squeeze(tht2)[:, None]
     
-    return mod_nnls, x0[None, :], x0[None, :], mc_0, tht2
+    return mod_nnls, x0[None, :], x0[None, :], mc_0, th2
 #    return mod, mc_0
 #%%
 class Spikes(object):
@@ -133,7 +133,7 @@ class Spikes(object):
         self.estimator = self.load_estimator()
         
         self.frame_input_q.put(a[0, :, :, None][None, :])
-        self.spike_input_q.put([y_0, x_0, tht2])
+        self.spike_input_q.put((y_0, x_0, tht2))
 #        self.frame_input_q.put(self.mc0)
 #        import pdb; pdb.set_trace()
 
@@ -144,6 +144,7 @@ class Spikes(object):
         
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
+#            import pdb; pdb.set_trace()
             self.output_q.put(i)
 #        while True:
 #            y_, x_, k_, tht2_ = self.spike_input_q.dequeue()
@@ -179,27 +180,27 @@ class Spikes(object):
 #            import pdb; pdb.set_trace()
 #            print("WAITING")
 #            print()
-            y, x, tht2 = self.spike_input_q.get()
+            out = self.spike_input_q.get()
+            (y, x, tht2) = out
 #            tf.print(y)
 #            fr = self.frame_input_q.get()
             fr = self.frame_input_q.get()
-            print("not waiting")
-            self.model.layers[3].set_weight([tht2])
+#            self.model.layers[3].set_weights([tht2])
 #            self.mc0=tf.reshape(self.mc0, [1, 512, 512, 1])
 #            print(y.shape, x.shape)
             
             yield {"m":fr, "y":y, "x":x, "k":[[0]]}
 #            yield fr
 
-    def get_spikes(self, idx):
-#        for i in range(1, idx+1):
+    def get_spikes(self):
+        for idx in range(1, 101):
 #        t = tf.convert_to_tensor(a[idx, :, :, None])
 #        print(t[None,:].shape)
-        self.frame_input_q.put(a[idx, :, :, None][None, :])
+            self.frame_input_q.put(a[idx, :, :, None][None, :])
         
-        out = self.output_q.get()
+            out = self.output_q.get()
 #        print(y.shape, x.shape, k.shape, tht2.shape)
-        self.spike_input_q.put(out["nnls"], out["nnls_1"], out["compute_theta2_ag"])
+            self.spike_input_q.put((out["nnls"], out["nnls_1"], out["compute_theta2_ag"]))
 #        print(out.shape)
         return out['nnls']
             
@@ -216,9 +217,9 @@ print("out of init")
 cfnn = []
 start = float(timeit.default_timer())
 #cfnn.append(spike_extracter.get_spikes(50))
-for i in range(1, 5):
-    cfnn.append(spike_extractor.get_spikes(i))
-print((float(timeit.default_timer())-start)/4)
+#for i in range(1, 101):
+cfnn.append(spike_extractor.get_spikes())
+print((float(timeit.default_timer())-start)/100)
 #%%
 cfnn=np.array(cfnn)
 for i in range(5):
