@@ -9,12 +9,12 @@ import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
 from queue import Queue
-from threading import Thread
-from past.utils import old_div
-from skimage import io
+#from threading import Thread
+#from past.utils import old_div
+#from skimage import io
 import numpy as np
-import timeit
-import time as time
+#import timeit
+#import time as time
 #%%
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, template_zm, template_var, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
@@ -87,12 +87,11 @@ class MotionCorrect(keras.layers.Layer):
 #        tf.print(tensor.numpy().dtype)
 #        return tensor.numpy().astype(float)
 
-    #@tf.function
+    @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         # normalize images
         X_center = X[:, self.shp:-self.shp, self.shp:-self.shp]
-        tf.print(X.shape, self.kernel.shape, self.normalizer.shape)
         # pass in center (128x128)
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon) 
@@ -112,7 +111,7 @@ class MotionCorrect(keras.layers.Layer):
             X = tf.reshape(X, [1, X.shape[1], X.shape[2], 1])
 
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
-#        try:
+
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
 #        except:
@@ -122,7 +121,9 @@ class MotionCorrect(keras.layers.Layer):
 #                                            interpolation="BILINEAR")
 
         #return X_corrected
-        return tf.reshape(tf.squeeze(X_corrected), [1, X_corrected.shape[-2]**2])
+
+        t = tf.reshape(tf.squeeze(X_corrected), [1, 512**2])
+        return t
     
 #        Y = tf.matmul(X_corr_translated, self.A) 
 #        Y = tf.divide(Y,self.n_AtA)
@@ -132,7 +133,8 @@ class MotionCorrect(keras.layers.Layer):
 
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config, "template": self.template, "template_zm": self.template_zm, "template_var": self.template_var,"strides": self.strides,
+        return {**base_config, "template": self.template,"strides": self.strides,
+                "template_zm":self.template_zm, "template_var": self.template_var,
                 "padding": self.padding, "epsilon": self.epsilon, 
                                         "ms_h": self.ms_h,"ms_w": self.ms_w }  
         
@@ -140,7 +142,7 @@ class MotionCorrect(keras.layers.Layer):
         # remove mean and divide by std
         template_zm = template - tf.reduce_mean(template, axis=[0,1], keepdims=True)
         template_var = tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon
-        return template_zm, template_var
+        return template_zm.numpy(), template_var.numpy()
         
     def normalize_image(self, imgs, shape_template, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001):
         # remove mean and standardize so that normalized cross correlation can be computed
@@ -180,16 +182,22 @@ class MotionCorrect(keras.layers.Layer):
                 ms_w: max integere shift horizontal
         
         """
-        shifts_int = self.argmax_2d(tensor_ncc)
-        shifts_int_cast = tf.cast(shifts_int,tf.int32)
+#        shifts_int = self.argmax_2d(tensor_ncc)
+
+        x_range = tf.range(tensor_ncc.shape[-1])
+        x_range = tf.cast(x_range, dtype=tf.float32)
+        beta = tensor_ncc*10000000000.0
+        shifts_int = tf.reduce_sum(tf.nn.softmax(beta) * x_range, axis=1)
+
+        shifts_int_cast = tf.cast(shifts_int,tf.int64)
         sh_x, sh_y = shifts_int_cast[:,0],shifts_int_cast[:,1]
         
         sh_x_n = tf.cast(-(sh_x - ms_h), tf.float32)
         sh_y_n = tf.cast(-(sh_y - ms_w), tf.float32)
         
-        tensor_ncc_log = tf.math.log(tensor_ncc)      
+        tensor_ncc_log = tf.math.log(tensor_ncc)
 
-        n_batches = np.arange(tensor_ncc_log.shape[0])
+        n_batches = np.arange(1)
 
         idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x-1, axis=0), tf.squeeze(sh_y, axis=0)]))
         log_xm1_y = tf.gather_nd(tensor_ncc_log, idx)
@@ -202,15 +210,17 @@ class MotionCorrect(keras.layers.Layer):
         idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0)]))
         four_log_xy = 4 * tf.gather_nd(tensor_ncc_log, idx)
 
+
         
         sh_x_n = sh_x_n - tf.math.truediv((log_xm1_y - log_xp1_y), (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
         sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1 - log_x_yp1), (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
 #        tf.print(float(timeit.default_timer())-start, "3 fractional peak")
-        return sh_x_n, sh_y_n
-    
+        return tf.reshape(sh_x_n, [1, 1]), tf.reshape(sh_y_n, [1, 1])
+    @tf.function
     def softargmax(self, x, beta=1e10):
-        print(x.shape, "HELLO")
+
         x_range = tf.range(x.shape[-1], dtype=x.dtype)
+
         return tf.reduce_sum(tf.nn.softmax(x*beta) * x_range, axis=1)
   
     def generator(self):
@@ -360,29 +370,31 @@ class NNLS(keras.layers.Layer):
         super().__init__(**kwargs)
         self.th1 = tf.convert_to_tensor(theta_1, dtype=np.float32)
         self.theta_2 = theta_2
+        print(type(self.th1), type(self.theta_2))
         
 
     def build(self, batch_input_shape):
         # theta_1 param in https://angms.science/doc/NMF/nnls_pgd.pdf
-        self.th1 = self.add_weight(
-            name="kernel", shape=[*self.theta_1.shape],
-            initializer=tf.constant_initializer(self.theta_1))
-        # theta_2 param in https://angms.science/doc/NMF/nnls_pgd.pdf
+#        self.th1 = self.add_weight(
+#            name="kernel", shape=[*self.theta_1.shape],
+#            initializer=tf.constant_initializer(self.theta_1))
         self.th2 = self.add_weight(
             name="normalizer", shape=[*self.theta_2.shape],
-            initializer=tf.constant_initializer(self.theta_2))   
+            initializer=tf.constant_initializer(self.theta_2)) 
         super().build(batch_input_shape) # must be at the end
     
-    #@tf.function
+    @tf.function
     def call(self, X):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
-        (Y,X_old,k) = X  
-        new_X = tf.nn.relu(tf.matmul(self.th1, Y) + self.th2)
+        (Y,X_old,k) = X
+        mm = tf.matmul(self.th1, Y)
+        new_X = tf.nn.relu(mm + self.th2)
+
         Y_new = new_X + (k - 1)/(k + 2)*(new_X-X_old)  
         k += 1
-
+        
         return (Y_new, new_X, k)
     
     def get_config(self):
@@ -391,37 +403,50 @@ class NNLS(keras.layers.Layer):
     
 #%%
 class compute_theta2(keras.layers.Layer):
-    def __init__(self, A, n_AtA, **kwargs):
+    def __init__(self, A, n_AtA,t1, **kwargs):
         # tf.keras.backend.clear_session()
        
         super().__init__(**kwargs)
         self.A_ = A
         self.n_AtA_ = n_AtA
+        self.t1 = t1
+        tf.print(self.A_.dtype)
+        print(self.A_.dtype, self.n_AtA_.dtype, type(self.A_), type(self.n_AtA_), type(self.t1))
         
 
     def build(self, batch_input_shape):
         # theta_1 param in https://angms.science/doc/NMF/nnls_pgd.pdf
-#        tf.print(self.A_.dtype)
-        self.A = self.add_weight(
-            name="A", shape=[*self.A_.shape],
-            initializer=tf.constant_initializer(self.A_))
+        try:
+            self.A = self.add_weight(
+                name="A", shape=[*self.A_.shape],
+                initializer=tf.constant_initializer(self.A_))
+        except:
+            self.A = self.add_weight(
+                name="A", shape=[*self.A_.shape],
+                initializer=tf.constant_initializer(self.A_))
         # theta_2 param in https://angms.science/doc/NMF/nnls_pgd.pdf
         self.n_AtA = self.add_weight(
             name="n_AtA", shape=[*self.n_AtA_.shape],
-            initializer=tf.constant_initializer(self.n_AtA_)) 
+            initializer=tf.constant_initializer(self.n_AtA_))
         super().build(batch_input_shape) # must be at the end
     
-   # @tf.function
+    @tf.function
     def call(self, X):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
+        self.t1=self.t1*1
+        return self.temp(X)
+    
+    def temp(self, X):
+#        tf.compat.v1.disable_v2_behavior()
+        self.A = self.A*1
+        self.n_AtA = self.n_AtA*1
         Y = tf.matmul(X, self.A) 
         Y = tf.divide(Y,self.n_AtA)
         Y = tf.transpose(Y)
-
         return Y
     
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config}
+        return {**base_config, "A":self.A, "n_AtA":self.n_AtA, "t1":self.t1}
