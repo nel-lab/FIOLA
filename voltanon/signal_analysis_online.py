@@ -39,6 +39,8 @@ class SignalAnalysisOnline(object):
         self.index_track = np.zeros((trace.shape[0]), dtype=np.int32)
         self.peak_height = np.zeros((trace.shape[0], num_frames), dtype=np.float32)
         self.peak_height_track = np.zeros((trace.shape[0]), dtype=np.int32)
+        self.SNR = np.zeros((trace.shape[0]), dtype=np.float32)
+        #self.thresh_factor
         t_start = time()
         for idx, tr in enumerate(trace):        
             self.trace_rm[idx, :trace.shape[1]], index_init, self.thresh_sub[idx], \
@@ -63,8 +65,8 @@ class SignalAnalysisOnline(object):
                     self.update_median(idx)
                 if (n % self.step == idx * 4 + 1):
                     self.update_scale(idx)
-                if (n % self.step == idx * 4 + 2):
-                    self.update_thresh(idx)
+                #if (n % self.step == idx * 4 + 2):
+                    #self.update_thresh(idx)
                 if (n % self.step == idx * 4 + 3):
                     self.update_thresh_sub(idx)
         self.trace, self.trace_rm, self.index, self.peak_height, self.index_track, self.peak_height_track = find_spikes_rh_multiple \
@@ -82,6 +84,7 @@ class SignalAnalysisOnline(object):
     
     def update_scale(self, idx):
         tt = self.trace[idx, self.n - np.int(self.window*2.5):self.n]
+        #tt = self.trace[idx, :self.n]
         if idx == 0:
             self.scale = np.append(self.scale, self.scale[:, -1:], axis=1)
         self.scale[idx, -1] = np.percentile(tt, 99)
@@ -99,10 +102,35 @@ class SignalAnalysisOnline(object):
         return self
 
     def update_thresh_sub(self, idx):
-        tt = -self.trace_rm[idx, (self.n - self.window):self.n][self.trace[idx, (self.n - self.window):self.n] < 0]
+        tt = -self.trace_rm[idx, (self.n - self.window):self.n][self.trace_rm[idx, (self.n - self.window):self.n] < 0]
         if idx == 0:
             self.thresh_sub = np.append(self.thresh_sub, self.thresh_sub[:, -1:], axis=1)
         self.thresh_sub[idx, -1] = np.percentile(tt, 99)
-        return self    
+        return self
+
+    def compute_SNR(self):
+        for idx in range(self.trace.shape[0]):
+            mean_height = self.trace_rm[idx][self.index[idx][self.index[idx] > 0]].mean()
+            #mean_height = self.peak_height[idx][self.peak_height[idx] > 0].mean()
+            std = compute_std(self.trace_rm[idx][self.trace_rm[idx] != 0])
+            snr = mean_height / std
+            self.SNR[idx] = snr
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+        
     
     

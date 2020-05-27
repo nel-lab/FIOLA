@@ -103,8 +103,8 @@ for k in np.array(list(range(0, 8))):
     #indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
     img = img.astype(np.float32)
     sao = SignalAnalysisOnline(thresh_STD=None)
-    trace = img[np.newaxis, :]
-    #trace = np.array([img for i in range(500)])
+    #trace = img[np.newaxis, :]
+    trace = np.array([img for i in range(50)])
     sao.fit(trace[:, :20000], num_frames=100000)
     for n in range(20000, img.shape[0]):
         sao.fit_next(trace[:, n: n+1], n)
