@@ -13,7 +13,7 @@ from queue import Queue
 #from past.utils import old_div
 #from skimage import io
 import numpy as np
-#import timeit
+import timeit
 #import time as time
 #%%
 class MotionCorrect(keras.layers.Layer):
@@ -81,7 +81,9 @@ class MotionCorrect(keras.layers.Layer):
     @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
+#        start = timeit.default_timer()
         X_center = X[:, self.shp:-self.shp, self.shp:-self.shp]
+#        X_center = X
         # pass in center (128x128)
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon) 
@@ -95,17 +97,18 @@ class MotionCorrect(keras.layers.Layer):
         # Remove any NaN in final output
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
 
-        if tensor_ncc.shape[0] == None:
-            shape = tensor_ncc.shape
-            tensor_ncc = tf.reshape(tensor_ncc, [1, shape[2], shape[2], 1])
-            X = tf.reshape(X, [1, X.shape[2], X.shape[2], 1])
+#        if tensor_ncc.shape[0] == None:
+#            shape = tensor_ncc.shape
+#            tensor_ncc = tf.reshape(tensor_ncc, [1, shape[2], shape[2], 1])
+        X = tf.reshape(X, [1, X.shape[2], X.shape[2], 1])
 
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
 
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
-        
+#        tf.print(timeit.default_timer()-start)
         return tf.reshape(tf.squeeze(X_corrected), [1, 512**2])
+#        return X_corrected
 
 
     def get_config(self):
@@ -232,6 +235,7 @@ class NNLS(keras.layers.Layer):
 #        self.th1 = theta_1
         self.th1 = theta_1.astype(np.float32)
         self.theta_2 = theta_2
+#        self.wt = weight
         
 
     def build(self, batch_input_shape):
@@ -244,8 +248,8 @@ class NNLS(keras.layers.Layer):
             initializer=tf.constant_initializer(self.theta_2)) 
         super().build(batch_input_shape) # must be at the end
     
-    @tf.function
-    def call(self, X):
+#    @tf.function
+    def call(self, X, weight):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
@@ -256,12 +260,66 @@ class NNLS(keras.layers.Layer):
 
         Y_new = new_X + (k - 1)/(k + 2)*(new_X-X_old)  
         k += 1
+        self.set_weights([weight])
         return (Y_new, new_X, k)
     
     def get_config(self):
         base_config = super().get_config().copy()
         return {**base_config, "theta_2": self.theta_2, "theta_1": self.th1}  
+#%%
+class NNLS1(keras.layers.Layer):
+    def __init__(self, theta_1, **kwargs):
+        """
+        Tensforflow layer which perform Non Negative Least Squares. Using  https://angms.science/doc/NMF/nnls_pgd.pdf
+            arg min f(x) = 1/2 || Ax − b ||_2^2
+             {x≥0}
+             
+        Notice that the input must be a tensorflow tensor with dimension batch 
+        x width x height x channel
+        Args:
+           theta_1: ndarray
+               theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
+           theta_2: ndarray
+               theta_2 = (Atb/n_AtA)[:,None]  
+          
+        
+        Returns:
+           x regressed values
+        
+        """
+        super().__init__(**kwargs)
+#        self.th1 = theta_1
+        self.th1 = theta_1.astype(np.float32)
+#        self.theta_2 = theta_2
+#        self.wt = weight
+        
 
+#    def build(self, batch_input_shape):
+#        # theta_1 param in https://angms.science/doc/NMF/nnls_pgd.pdf
+##        self.th1 = self.add_weight(
+##            name="kernel", shape=[*self.theta_1.shape],
+##            initializer=tf.constant_initializer(self.theta_1))
+#        self.th2 = self.add_weight(
+#            name="normalizer", shape=[*self.theta_2.shape],
+#            initializer=tf.constant_initializer(self.theta_2)) 
+#        super().build(batch_input_shape) # must be at the end
+    
+#    @tf.function
+    def call(self, X):
+        """
+        pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
+        """
+        (Y,X_old,weight) = X
+#        mm = tf.matmul(self.th1.astype(np.float32), Y)
+        mm = tf.matmul(self.th1, Y)
+        new_X = tf.nn.relu(mm + weight)
+
+        Y_new = new_X + (-1)/(2)*(new_X-X_old)  
+        return (Y_new, new_X, weight)
+    
+    def get_config(self):
+        base_config = super().get_config().copy()
+        return {**base_config, "theta_1": self.th1} 
 #%%
 class compute_theta2_AG(keras.layers.Layer):
     def __init__(self, A, n_AtA, **kwargs):
@@ -269,11 +327,13 @@ class compute_theta2_AG(keras.layers.Layer):
         super().__init__(**kwargs)
         self.A = A
         self.n_AtA = n_AtA
-    
+#        self.a = 0
+        
+#    @tf.function
     def call(self, X):
 #        self.A = tf.Variable(self.A)
-        self.a = tf.Variable(self.A, name="BAD", trainable=True)
-        Y = tf.matmul(X, self.a)
+#        self.a = tf.Variable(self.A, name="BAD", trainable=True)
+        Y = tf.matmul(X, self.A)
 #        self.A = tf.Variable(self.A, name="BAD", trainable=True)
         Y = tf.divide(Y, self.n_AtA)
         Y = tf.transpose(Y)
