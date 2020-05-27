@@ -9,6 +9,7 @@ Created on Wed May 20 23:36:11 2020
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
 from queue import Queue
@@ -19,12 +20,13 @@ import numpy as np
 import pylab as plt
 import cv2
 import timeit
-from classes2 import MotionCorrect, compute_theta2, NNLS
+from classes2 import MotionCorrect, compute_theta2_AG, NNLS, NNLS1
 from mc_nnls import HALS4activity
 import caiman as cm
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 tb_path = "logs/"
+
 #%%
 with np.load('/home/nellab/SOFTWARE/SANDBOX/src/regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     Y_tot = ld['Y']
@@ -47,76 +49,200 @@ with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3
     YrA_full = YrA_full[idx_components]
 #%%
 a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
+#a = a.resize(0.5, 0.5)
+a = np.array(a[:, :, :])
 #%%
 def get_model():
 #    num_frames = 200
     #a = io.imread('Sue_2x_3000_40_-46.tif')
 #    a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
     template = np.median(a,axis=0)
-    epsilon=0.00000001
-    #import pdb; pdb.set_trace()
-    shp = int(template.shape[1]/4)
-    template = template[shp+10:-(10+shp),shp+10:-(shp+10), None, None]
+#    epsilon=0.00000001
+#    #import pdb; pdb.set_trace()
+    shp = int(template.shape[1])
+    c_shp = int(shp/4)
+    template = template[c_shp+10:-(c_shp+10),c_shp+10:-(c_shp+10), None, None]
     #temp_in = tf.reshape(tf.keras.layers.Input(shape=tf.TensorShape([512, 512])), [512, 512])
-    template_zm = (template - tf.reduce_mean(template, axis=[0,1], keepdims=True)).numpy()
-    template_var = (tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon).numpy()
-    
+#    template_zm = (template - tf.reduce_mean(template, axis=[0,1], keepdims=True))
+#    template_var = (tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon)
     # min_, max_ = -296.0, 1425.0
-    y_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) #num comps x 1fr
-    x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1])) # num components x fr
-    k_in = tf.keras.layers.Input(shape=(1,))
-    b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, 512**2])) # num pixels => 1x512**2
-    mc_0 = tf.reshape(a[0, :, :], [1, 512, 512, 1]) # initial input tensor for the motion correction layer
-    #mc_in = tf.keras.layers.Input(tensor=tf.convert_to_tensor(tf.reshape(a[0, :, :], [512, 512, 1])))
-    mc_in = tf.keras.layers.Input(shape=tf.TensorShape([512, 512, 1]))
+    y_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1]), name="y") #num comps x 1fr
+    x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1]), name="x") # num components x fr
+#    k_in = tf.keras.layers.Input(shape=(1,), name="k")
+#    b_in = tf.keras.layers.Input(shape=tf.TensorShape([1, 512**2]), name="B") # num pixels => 1x512**2
+    mc_0 = tf.reshape(a[0, :, :], [1, shp, shp, 1]) # initial input tensor for the motion correction layer
+#    #mc_in = tf.keras.layers.Input(tensor=tf.convert_to_tensor(tf.reshape(a[0, :, :], [512, 512, 1])))
+    mc_in = tf.keras.layers.Input(shape=tf.TensorShape([shp, shp, 1]), name="m")
+#    t2_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1]), name="th2")
+#    mc_in = tf.reshape(mc_in, [1, 512, 512, 1])
     
     
-    Ab = np.concatenate([A_sp_full.toarray()[:], b_full], axis=1)
+    Ab = np.concatenate([A_sp_full.toarray()[:], b_full], axis=1).astype(np.float32)
     b = Y_tot[:, 0]
     AtA = Ab.T@Ab
     Atb = Ab.T@b
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
-    theta_2 = (Atb/n_AtA)[:, None]
-    print(type(Ab), type(n_AtA))
-    print(type(theta_1))
-    print(n_AtA)
+    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+    th2_2 = a[0,:,:].flatten()[None, :]@Ab
+    th2_2 = th2_2 / n_AtA
+    th2_2 = th2_2.T
+
 ###########This is for the MOTION CORRECTION LAYER    
-#    mc_layer = MotionCorrect(template, template_zm, template_var)   
-#    mc = mc_layer(mc_in)
+    mc_layer = MotionCorrect(template)   
+    mc = mc_layer(mc_in)
 #    mod = keras.Model(inputs=[mc_in], outputs=[mc])
  #########This is for the COMPUTE_THETA2 LAYER   
-    c_th2 = compute_theta2(Ab, n_AtA, theta_1)
-    th2 = c_th2(b_in)
-    mod = keras.Model(inputs=[b_in], outputs=[th2])
+    c_th2 = compute_theta2_AG(Ab, n_AtA)
+    th2 = c_th2(mc)
+#    mod = keras.Model(inputs=[b_in], outputs=[th2])
 ########THIS IS FOR THE NNLS LAYER ONLY####### => Note: I haven't reconfigured the Spikes object for the other layers yet
+    nnls = NNLS1(theta_1)
+    x_kk = nnls([y_in, x_in, th2])
 #    nnls = NNLS(theta_1, theta_2)
-#    x_kk = nnls([y_in, x_in, k_in])
-#    for k in range(1, 10):
-#        x_kk = nnls(x_kk)
-#    mod = keras.Model(inputs=[y_in, x_in, k_in], outputs=[x_kk])
+#    x_kk = nnls(x_kk1)
+    for k in range(1, 10):
+        x_kk = nnls(x_kk)
+#    mod_nnls = keras.Model(inputs=[y_in, x_in, k_in], outputs=[x_kk])
 #    
-##    mod_nnls = keras.Model(inputs=[mc_in, y_in, x_in, k_in], outputs=[x_kk, th2])
+    mod_nnls = keras.Model(inputs=[mc_in, y_in, x_in], outputs=[x_kk])
 
 #    
-#    f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
-#    YrA = YrA_full[:, 0][:, None]
-#    C = C_full[:, 0][:, None]
-#
-#    Cf = np.concatenate([C+YrA,f], axis=0)
-#    Cf_bc = Cf.copy()
-#    Cf_bc = HALS4activity(Y_tot[:, 0][:, None].T[0], Ab, noisyC = Cf_bc, AtA=AtA, iters=5, groups=None)[0]
-#    
+    f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
+    YrA = YrA_full[:, 0][:, None]
+    C = C_full[:, 0][:, None]
+
+    Cf = np.concatenate([C+YrA,f], axis=0)
+    Cf_bc = Cf.copy()
+    Cf_bc = HALS4activity(Y_tot[:, 0][:, None].T[0], Ab, noisyC = Cf_bc, AtA=AtA, iters=5, groups=None)[0]
+    
+    x0 = Cf[:,0].copy()[:,None]
 #    x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
 #    y_old = tf.identity(x_old)
-
-#    (y_new, x_new, kkk), tht2 = mod_nnls((mc_0, y_old[None, :], x_old[None, :], tf.convert_to_tensor([[0]], dtype=tf.int8)))
+#    import pdb; pdb.set_trace()
+#    output = mod_nnls((mc_0, y_old[None, :], x_old[None, :]))
 #    tht2 = tf.squeeze(tht2)[:, None]
-    
-#    return mod_nnls, y_old, x_old, mc_0
-    return mod, mc_0
+#
+#    
+    return mod_nnls, x0[None, :], x0[None, :], mc_0, th2_2
+#    return mod, mc_0
 #%%
 class Spikes(object):
+    
+    def __init__(self, model, y_0, x_0, mc_0, tht2):
+#        self.model = model
+        self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
+        #self.frame_input_q = tf.queue.FIFOQueue(capacity=4, dtypes=tf.float32)
+#        self.spike_input_q =  tf.queue.FIFOQueue(capacity=4, dtypes=[tf.float32, tf.float32, tf.float32, tf.float32])
+        self.frame_input_q = Queue()
+        self.spike_input_q = Queue()
+        self.output_q = Queue()
+        self.estimator = self.load_estimator()
+        
+        self.frame_input_q.put(a[0, :, :, None][None, :])
+        self.spike_input_q.put((y_0, x_0))
+#        self.frame_input_q.put(self.mc0)
+#        import pdb; pdb.set_trace()
+
+        #self.dataset = self.get_inputs()
+
+        self.extraction_thread = Thread(target=self.extract, daemon=True)
+        self.extraction_thread.start()
+        
+    def extract(self):
+        for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
+#            import pdb; pdb.set_trace()
+#            print(i.keys())
+            self.output_q.put(i)
+#        while True:
+#            y_, x_, k_, tht2_ = self.spike_input_q.dequeue()
+#            self.model.layers[3].set_weights([tht2_])
+#        #        import pdb; pdb.set_trace()
+#            (y, x, k), tht2 = self.model([self.frame_input_q.dequeue(), y_, x_, self.zero_tensor])
+#            self.spike_input_q.enqueue([y, x, k, tht2])
+#            self.output_q.enqueue(y)
+    
+    def load_estimator(self):
+
+#        self.model.compile(optimizer='rmsprop', loss='mse')
+#        ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from="/tmp",
+#                       vars_to_warm_start=".*")
+        self.tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./summaries")
+        return tf.keras.estimator.model_to_estimator(keras_model = self.model, model_dir="./summaries")
+
+    def get_dataset(self):
+#        import pdb; pdb.set_trace()
+        dataset = tf.data.Dataset.from_generator(self.generator, 
+                                                 output_types={"m": tf.float32,
+                                                               "y": tf.float32,
+                                                               "x": tf.float32}, 
+                                                 output_shapes={"m":(1, 512, 512, 1),
+                                                                "y":(1, 572, 1),
+                                                                "x":(1, 572, 1)})
+        return dataset
+    
+    def generator(self):
+        while True:
+#            import pdb; pdb.set_trace()
+#            print("WAITING")
+#            print()
+            out = self.spike_input_q.get()
+            (y, x) = out
+#            import pdb; pdb.set_trace()
+#            tf.print(y)
+#            fr = self.frame_input_q.get()
+#            try:
+#                self.model.layers[3].set_weights([tht2])
+#            except Exception as e:
+#                print(e)
+#                print(self.model.layers[3])
+#                print(tf.Graph().finalized)
+            fr = self.frame_input_q.get()
+#            self.mc0=tf.reshape(self.mc0, [1, 512, 512, 1])
+#            print(y.shape, x.shape)
+            
+            yield {"m":fr, "y":y, "x":x}
+#            yield fr
+
+    def get_spikes(self, bound, output):
+        start = timeit.default_timer()
+        for idx in range(1, bound):
+
+            self.frame_input_q.put(a[idx, :, :, None][None, :])
+        
+            out = self.output_q.get()
+
+            self.spike_input_q.put((out["nnl_s1_2"], out["nnl_s1_2_1"]))
+
+        print(timeit.default_timer() - start)
+        return output
+            
+
+#%%
+#tf.compat.v1.enable_eager_execution()
+from classes2 import MotionCorrect, compute_theta2_AG, NNLS1
+model, y_0, x_0, mc_0, tht2= get_model()
+#model.layers[3].set_weights([tht2])
+model.compile(optimizer='rmsprop', loss='mse')
+print(y_0.shape, x_0.shape, tht2.shape, mc_0.shape)
+
+#%%
+spike_extractor = Spikes(model, y_0.astype(np.float32), x_0, mc_0, tht2)
+print()
+print("out of init")
+cfnn = []
+
+cfnn = spike_extractor.get_spikes(1000, cfnn)
+
+#%%
+#cfnn=np.array(cfnn)
+#for i in range(5):
+#    plt.plot(cfnn[:, i])
+#    plt.pause(1)
+#    plt.cla()
+#%%
+#%%
+class SpikesMC(object):
     
     def __init__(self, model, mc0):
 #        self.model, self.y0, self.x0, self.mc0 = get_model()
@@ -126,19 +252,27 @@ class Spikes(object):
         self.frame_input_q = mp.Queue()
 #        self.spike_input_q = mp.Queue()
         self.output_q = mp.Queue()
-        self.zero_tensor = tf.convert_to_tensor([[0]], dtype=tf.float32)
+#        self.zero_tensor = tf.convert_to_tensor([[0]], dtype=tf.float32)
         self.estimator = self.load_estimator()
         
         self.frame_input_q.put(self.mc0)
 #        self.spike_input_q.enqueue([y, x, k, tht2])
         #self.dataset = self.get_inputs()
+        self.data = []
+        self.times = []
 
-#        self.extraction_thread = Thread(target=self.extract, daemon=True)
-#        self.extraction_thread.start()
+        self.extraction_thread = Thread(target=self.extract, daemon=True)
+        self.extraction_thread.start()
+        
+#        self.output_thread = Thread(target=self.get_output, daemon=True)
+#        self.output_thread.start()
         
     def extract(self):
+        start = timeit.default_timer()
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-            self.output_q.put(i.popitem())
+#            print(i)
+            self.output_q.put(i["motion_correct_7"])
+            print(timeit.default_timer()-start)
 #        while True:
 #            y_, x_, k_, tht2_ = self.spike_input_q.dequeue()
 #            self.model.layers[3].set_weights([tht2_])
@@ -153,7 +287,7 @@ class Spikes(object):
         return tf.keras.estimator.model_to_estimator(keras_model = self.model)
 
     def get_dataset(self):
-        dataset = tf.data.Dataset.from_generator(self.generator, output_types=tf.float32, output_shapes=tf.TensorShape([1, 512, 512, 1]))
+        dataset = tf.data.Dataset.from_generator(self.generator, output_types=tf.float32, output_shapes=(1, 512, 512, 1))
         return dataset
     
     def generator(self):
@@ -165,34 +299,29 @@ class Spikes(object):
             yield fr
 
     def get_spikes(self, idx):
-#        for i in range(1, idx+1):
-        t = tf.convert_to_tensor(a[idx, :, :, None])
-        self.frame_input_q.put(t[None, :])
-        
-        out = self.output_q.get()
-#        print(out.shape)
-        return out
+        for i in range(1, idx):
+            start = timeit.default_timer()
+            t = a[i, :, :, None]
+            self.frame_input_q.put(t[None, :])
             
-#%%
-#tf.compat.v1.enable_eager_execution()
-from classes2 import compute_theta2
-model, mc_0 = get_model()
-#%%   
-spike_extractor = Spikes(model, mc_0)
-print()
-print()
-print("out of init")
-cfnn = []
-start = float(timeit.default_timer())
-#cfnn.append(spike_extracter.get_spikes(50))
-for i in range(1, 6):
-    cfnn.append(spike_extractor.get_spikes(i))
-print((float(timeit.default_timer())-start)/5)
-#%%
-cfnn=np.array(cfnn)
-for i in range(500):
-    plt.plot(cfnn[:, i])
-    plt.pause(1)
-    plt.cla()
+            self.data.append(self.output_q.get())
+            self.times.append(timeit.default_timer()-start)
+        return self.times
+    
+    def get_output(self):
+        for i in range(999):
+            start = timeit.default_timer()
+#            self.data.append(self.output_q.get())
+            self.times.append(timeit.default_timer()-start)
+    
+    def out(self):
+        return self.data, self.times
 
+        
+from classes2 import MotionCorrect
+model, mc_0 = get_model()
+spike_extractor = SpikesMC(model, mc_0)
+spikes = []
+times = spike_extractor.get_spikes(1000)
+#data, time = spike_extractor.out()
     

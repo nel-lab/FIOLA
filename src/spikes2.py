@@ -24,7 +24,14 @@ from mc_nnls import HALS4activity
 import caiman as cm
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
-tb_path = "logs/"
+
+physical_devices = tf.config.list_physical_devices('GPU')
+try:
+  tf.config.experimental.set_memory_growth(physical_devices[0], True)
+except:
+  # Invalid device or cannot modify virtual devices once initialized.
+  print("pass")
+  pass
 #%%
 with np.load('/home/nellab/SOFTWARE/SANDBOX/src/regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     Y_tot = ld['Y']
