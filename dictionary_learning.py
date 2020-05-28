@@ -354,7 +354,7 @@ for k in list(range(0, 8)):
 #%%
     x_shifts = [4, -2]
     y_shifts = [4, -2]
-    name_set = fnames[1:3]
+    name_set = fnames[0:2]
     #x_shifts = [0]
     #y_shifts = [0]
     #name_set = fnames[1:2]
@@ -363,7 +363,7 @@ for k in list(range(0, 8)):
     plt.figure();plt.imshow(m1[0]);plt.colorbar()
     plt.figure();plt.imshow(m2[0]);plt.colorbar()
     
-    num_frames = 100000
+    num_frames = 80000
     frate = 400
     all_coeffs = []
     for idx in range(1):#fnames:    
@@ -417,45 +417,6 @@ for k in list(range(0, 8)):
             H[i][H[i] < 0] = 0
         for i in range(n_components):
             plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
-            
-        #%%
-    n_comps = len(x_shifts)
-#    n_comps = 2
-    num_frames = 20000
-    y_now = ycr[:num_frames,:].copy()
-    W_tot = []
-    H_tot = []
-    for i in range(2):
-        n_components = 1        
-        model = NMF(n_components=n_components, init='nndsvd', max_iter=500, verbose=True)
-        plt.figure()
-        mask, y_use = select_masks(y_now, mcr[:num_frames].shape)
-        #model = PCA(n_components=n_components)
-        W = model.fit_transform(np.maximum(y_use,0))#, H=H, W=W)
-        #W = np.zeros((num_frames, n_comps))
-        #H = np.zeros((n_comps, ))
-        #cc = (ycr[:num_frames] - ycr[:num_frames].mean(axis=0)[np.newaxis,:])
-        #aa = np.maximum(cc, 0)
-        #W = model.fit_transform(aa)#, H=H, W=W)
-        H = model.components_
-        W_tot.append(W)
-        H_tot.append(H)
-        plt.figure();plt.plot(W);
-        y_now = y_now - W@H
-        
-        """
-        for i in range(len(H)):
-            H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
-            H[i] = H[i] / H[i].max()
-            H[i] = H[i] - np.percentile(H[i], 50)
-            H[i][H[i] < 0] = 0
-        """
-        for i in range(n_components):
-            plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
-            
-    H = np.vstack(H_tot)
-    W = np.hstack(W_tot)
-    
     
     #%%
     fe = slice(0,None)
@@ -485,10 +446,10 @@ all_f1_scores = []
 all_prec = []
 all_rec = []
 all_snr = []
-for k in list(range(1, 3)):
+for k in list(range(0, 2)):
     print(k)
-    trace = trace_all[(k - 1):k, :]
-    sao = SignalAnalysisOnline(thresh_STD=3.5)
+    trace = trace_all[k:(k+1), :]
+    sao = SignalAnalysisOnline(thresh_STD=4)
     #sao.fit(trr_postf[:20000], len())
     #trace=dict1['v_sg'][np.newaxis, :]
     sao.fit(trace[:, :20000], num_frames=100000)
@@ -525,13 +486,14 @@ for k in list(range(1, 3)):
 #%%
 #plt.plot(dict1['v_t'], )
 #plt.plot(dict1['v_t'], dict1['v_sp'])
+num_frames = 80000
 t1 = normalize(trace_all[0])
 t2 = normalize(trace_all[1])
 t3 = normalize(dict1['v_sg'])
 t4 = normalize(dict1['e_sg'])
-plt.plot(dict1['v_t'], t1 + 0.3, label='neuron1')
-plt.plot(dict1['v_t'], t2, label='neuron2')
-plt.plot(dict1['v_t'], t3, label='gt')
+plt.plot(dict1['v_t'][:num_frames], t1 + 0.3, label='neuron1')
+plt.plot(dict1['v_t'][:num_frames], t2, label='neuron2')
+plt.plot(dict1['v_t'][:num_frames], t3[:num_frames], label='gt')
 plt.plot(dict1['e_t'], t4-3, label='ele')
 plt.vlines(dict1['e_sp'], -3, -2.5, color='black')
 
@@ -545,15 +507,6 @@ print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}');
 print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
 print(f'snr:{np.array(all_snr).round(3)}')
    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     #%%
     count = 0
@@ -738,6 +691,44 @@ plt.plot(time_v[:], normalize(fun(Cf1[:,0])))
         """
         
 #%%
+        
+        #%%
+    n_comps = len(x_shifts)
+#    n_comps = 2
+    num_frames = 20000
+    y_now = ycr[:num_frames,:].copy()
+    W_tot = []
+    H_tot = []
+    for i in range(2):
+        n_components = 1        
+        model = NMF(n_components=n_components, init='nndsvd', max_iter=500, verbose=True)
+        plt.figure()
+        mask, y_use = select_masks(y_now, mcr[:num_frames].shape)
+        #model = PCA(n_components=n_components)
+        W = model.fit_transform(np.maximum(y_use,0))#, H=H, W=W)
+        #W = np.zeros((num_frames, n_comps))
+        #H = np.zeros((n_comps, ))
+        #cc = (ycr[:num_frames] - ycr[:num_frames].mean(axis=0)[np.newaxis,:])
+        #aa = np.maximum(cc, 0)
+        #W = model.fit_transform(aa)#, H=H, W=W)
+        H = model.components_
+        W_tot.append(W)
+        H_tot.append(H)
+        plt.figure();plt.plot(W);
+        y_now = y_now - W@H
+        
+        """
+        for i in range(len(H)):
+            H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
+            H[i] = H[i] / H[i].max()
+            H[i] = H[i] - np.percentile(H[i], 50)
+            H[i][H[i] < 0] = 0
+        """
+        for i in range(n_components):
+            plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
+            
+    H = np.vstack(H_tot)
+    W = np.hstack(W_tot)
         #%%
 #def hals(Y, A, C, b, f, bSiz=3, maxIter=5):
 #    """ Hierarchical alternating least square method for solving NMF problem
