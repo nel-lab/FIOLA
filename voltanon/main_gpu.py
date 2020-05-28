@@ -19,15 +19,17 @@ import numpy as np
 import pylab as plt
 import cv2
 import timeit
-import caiman as cm
+# import caiman as cm
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 #%%
-with np.load('/home/nellab/SOFTWARE/SANDBOX/src/regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
+# base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/regression_n.01.01_less_neurons.npz'
+base_folder = '/home/andrea/software/SANDBOX/src/'
+with np.load(base_folder+'regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     Y_tot = ld['Y']
 import h5py
 import scipy
-with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+with h5py.File(base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
         
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])
@@ -43,7 +45,7 @@ with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
 #%%
-a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
+a = np.load(base_folder+'n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy')
 a = np.array(a[:, :, :])
 #%%
 from nnls_gpu import compute_theta2, NNLS
