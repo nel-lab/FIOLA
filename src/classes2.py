@@ -249,19 +249,17 @@ class NNLS(keras.layers.Layer):
         super().build(batch_input_shape) # must be at the end
     
 #    @tf.function
-    def call(self, X, weight):
+    def call(self, X):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
-        (Y,X_old,k) = X
+        (Y,X_old) = X
 #        mm = tf.matmul(self.th1.astype(np.float32), Y)
         mm = tf.matmul(self.th1, Y)
         new_X = tf.nn.relu(mm + self.th2)
 
-        Y_new = new_X + (k - 1)/(k + 2)*(new_X-X_old)  
-        k += 1
-        self.set_weights([weight])
-        return (Y_new, new_X, k)
+        Y_new = new_X + (-1)/(2)*(new_X-X_old)  
+        return (Y_new, new_X)
     
     def get_config(self):
         base_config = super().get_config().copy()
