@@ -8,7 +8,6 @@ Created on Wed May 27 17:18:35 2020
 #%%
 import tensorflow as tf
 import tensorflow.keras as keras
-import tensorflow_addons as tfa
 import numpy as np
 #%%
 class NNLS(keras.layers.Layer):
@@ -38,12 +37,14 @@ class NNLS(keras.layers.Layer):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
-        (Y,X_old,weight) = X
+        (Y,X_old,k,weight) = X
         mm = tf.matmul(self.th1, Y)
         new_X = tf.nn.relu(mm + weight)
 
-        Y_new = new_X + (-1)/(2)*(new_X-X_old)  
-        return (Y_new, new_X, weight)
+        Y_new = new_X + (k - 1)/(k + 2)*(new_X - X_old)  
+#        print(tf.reduce_sum(Y_new), "NNLS")
+        k += 1
+        return (Y_new, new_X, k, weight)
     
     def get_config(self):
         base_config = super().get_config().copy()
@@ -59,6 +60,7 @@ class compute_theta2(keras.layers.Layer):
         Y = tf.matmul(X, self.A)
         Y = tf.divide(Y, self.n_AtA)
         Y = tf.transpose(Y)
+#        tf.print(tf.reduce_sum(Y), tf.reduce_sum(X), "weight, x_corr")
         return Y    
     
     def get_config(self):

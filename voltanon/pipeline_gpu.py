@@ -8,7 +8,7 @@ Created on Wed May 27 17:20:47 2020
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
+#tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
 from threading import Thread
 import numpy as np
@@ -23,14 +23,14 @@ def get_model(template, A_sp, b_full):
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
     shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
-    c_shp_x, c_shp_y = shp_x//4, shp_y//4
+#    c_shp_x, c_shp_y = shp_x//4, shp_y//4
 
-    template = template[c_shp_x+10:-(c_shp_x+10),c_shp_y+10:-(c_shp_y+10), None, None]
+#    template = template[c_shp_x+10:-(c_shp_x+10),c_shp_y+10:-(c_shp_y+10), None, None]
 
     y_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1]), name="y") # Input Layer for components
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, 1]), name="x") # Input layer for components
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
-    
+    k_in = tf.keras.layers.Input(shape=(1,), name="k")
     #Calculations to initialize Motion Correction
     Ab = np.concatenate([A_sp.toarray()[:], b_full], axis=1).astype(np.float32)
     AtA = Ab.T@Ab
@@ -46,13 +46,13 @@ def get_model(template, A_sp, b_full):
     th2 = c_th2(mc)
     #Connects weights, calculated from the motion correction, to the NNLS layer
     nnls = NNLS(theta_1)
-    x_kk = nnls([y_in, x_in, th2])
+    x_kk = nnls([y_in, x_in, k_in, th2])
     #stacks NNLS 9 times
     for k in range(1, 10):
         x_kk = nnls(x_kk)
    
     #create final model, returns it and the first weight
-    model = keras.Model(inputs=[fr_in, y_in, x_in], outputs=[x_kk])   
+    model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
     return model
 
 #%%
@@ -67,6 +67,7 @@ class Pipeline(object):
         self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
         self.tot = tot
         self.dim_x, self.dim_y = self.mc0.shape[1], self.mc0.shape[2]
+        self.zero_tensor = tf.convert_to_tensor([[0]], dtype=tf.float32)
         
         self.frame_input_q = Queue()
         self.spike_input_q = Queue()
@@ -92,10 +93,12 @@ class Pipeline(object):
         dataset = tf.data.Dataset.from_generator(self.generator, 
                                                  output_types={"m": tf.float32,
                                                                "y": tf.float32,
-                                                               "x": tf.float32}, 
+                                                               "x": tf.float32,
+                                                               "k": tf.float32}, 
                                                  output_shapes={"m":(1, self.dim_x, self.dim_y, 1),
                                                                 "y":(1, 572, 1),
-                                                                "x":(1, 572, 1)})
+                                                                "x":(1, 572, 1),
+                                                                "k":(1, 1)})
         return dataset
     
     def generator(self):
@@ -104,7 +107,7 @@ class Pipeline(object):
             (y, x) = out
             fr = self.frame_input_q.get()
             
-            yield {"m":fr, "y":y, "x":x}
+            yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
     def get_spikes(self, bound):
         output = []
@@ -113,9 +116,8 @@ class Pipeline(object):
             self.frame_input_q.put(self.tot[idx, :, :, None][None, :]) #here, a represents a numpy array defined outside of the class.
         
             out = self.output_q.get()
-
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
-            output.append(out["nnls"])
+            output.append(out["nnls_1"])
 
         return output
     

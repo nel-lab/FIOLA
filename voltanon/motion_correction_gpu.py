@@ -10,6 +10,7 @@ import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
 import numpy as np
+import matplotlib.pyplot as plt
 #%%
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
@@ -36,7 +37,12 @@ class MotionCorrect(keras.layers.Layer):
         
         """
         super().__init__(**kwargs)
-        self.template=template
+#        print(template)
+        self.shp_x, self.shp_y = template.shape[0], template.shape[1]
+        self.c_shp_x, self.c_shp_y = self.shp_x//4, self.shp_y//4
+        self.template_0 = template
+        self.template=self.template_0[self.c_shp_x+ms_w:-(self.c_shp_x+ms_w),self.c_shp_y+ms_h:-(self.c_shp_y+ms_h), None, None]
+#        print(self.template.shape)
         self.ms_h = ms_h
         self.ms_w = ms_w
         self.strides = strides
@@ -53,10 +59,8 @@ class MotionCorrect(keras.layers.Layer):
 
     @tf.function
     def call(self, X):
-        shp_x, shp_y = X.shape[1], X.shape[2] #the shape
-        c_shp_x, c_shp_y = shp_x//4, shp_y//4
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
-        X_center = X[:, c_shp_x:-c_shp_x, c_shp_y:-c_shp_y]
+        X_center = X[:, self.c_shp_x:-self.c_shp_x, self.c_shp_y:-self.c_shp_y]
         # pass in center for normalization
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon) 
@@ -65,25 +69,26 @@ class MotionCorrect(keras.layers.Layer):
                                  strides=self.strides)
         
         tensor_ncc = tf.truediv(numerator, denominator)
-        self.kernel = self.kernel*1
-        self.normalizer = self.normalizer*1
+#        self.kernel = self.kernel*1
+#        self.normalizer = self.normalizer*1
        
         # Remove any NaN in final output
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
 
-        X = tf.reshape(X, [1, shp_x, shp_y, 1])
+        X = tf.reshape(X, [1, self.shp_x, self.shp_y, 1])
         
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
 
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
-        
-        return tf.reshape(tf.squeeze(X_corrected), [1, shp_x*shp_y])
+
+#        tf.print(tf.reduce_sum(X_corrected), tf.reduce_sum(X), "corrected, orig")
+        return tf.reshape(tf.squeeze(X_corrected), [1, self.shp_x*self.shp_y])
 
 
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config, "template": self.template,"strides": self.strides,
+        return {**base_config, "template": self.template_0,"strides": self.strides,
                 "padding": self.padding, "epsilon": self.epsilon, 
                                         "ms_h": self.ms_h,"ms_w": self.ms_w }  
         
