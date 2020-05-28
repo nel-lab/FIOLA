@@ -101,18 +101,19 @@ for thres_STD in [thres_STD]:#range(23,24,1):
             frate = 1/np.median(np.diff(dict1['v_t']))
             signal_no_subthr = img - subthreshold_signal
         #    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
-            
+            """
             indexes, erf, z_signal, estimator = find_spikes(img[:], signal_no_subthr=signal_no_subthr, 
                                                  mode=mode_spikes, only_rising=only_rising, normalize_signal=normalize_signal, 
                                                  samples_covariance=10000, thres_STD=thres_STD, #thres_STD=3.5, 
                                                  thres_STD_ampl=4, min_dist=1, 
                                                  N=N, win_size=20000, stride=5000)
-            
+            """
             #thresh_factor.append(erf)
             #scale.append(z_signal)
             
-            indexes = np.setdiff1d(indexes, np.concatenate(idx_to_remove_estimate))
-            dict1_v_sp_ = dict1['v_t'][indexes]
+            #indexes = np.setdiff1d(indexes, np.concatenate(idx_to_remove_estimate))
+            #dict1_v_sp_ = dict1['v_t'][indexes]
+            dict1_v_sp_ = dict1['v_sp']
             
             for i in range(len(dict1['sweep_time']) - 1):
                 dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])

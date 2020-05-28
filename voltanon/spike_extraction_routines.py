@@ -263,6 +263,11 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
         thresh = compute_thresh(peak_height)
         
     thresh_factor = thresh / std
+    if thresh_factor> 7.5:
+        thresh_factor = 7.5
+    elif thresh_factor < 3.3:
+        thresh_factor = 3.3
+    thresh = std * thresh_factor
     print(f'thresh_factor equals {thresh_factor}')
         
     index = index[peak_height > thresh]
