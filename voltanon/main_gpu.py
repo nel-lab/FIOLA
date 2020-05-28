@@ -72,4 +72,15 @@ x0 = Cf[:,0].copy()[:,None]
 model.compile(optimizer='rmsprop', loss='mse')
 mc0 = a[0, :, :].reshape((1, 512, 512, 1))
 spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a)
-spikes = spike_extractor.get_spikes(1000)
+spikes_gpu = spike_extractor.get_spikes(1000)
+#%%
+normalize = lambda sig: (sig-np.min(sig))/(np.max(sig)-np.min(sig))
+
+spikes = np.array(spikes_gpu).squeeze().T
+# plt.plot(spikes)
+for vol, ca in zip(spikes, (C_full + YrA_full)[:,:1000]):
+    plt.cla()
+    plt.plot(normalize(vol), label='volpy')
+    plt.plot(normalize(ca), label='caiman')
+    
+    plt.pause(1)
