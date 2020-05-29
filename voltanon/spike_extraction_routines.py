@@ -5,7 +5,6 @@ Created on Sat May 23 08:09:48 2020
 
 @author: agiovann
 """
-from caiman.base.movies import rolling_window
 #from functools import partial
 import cv2
 import scipy
@@ -19,9 +18,10 @@ import peakutils
 from scipy import signal
 from running_statistics import compute_thresh
 from running_statistics import compute_std
+from running_statistics import rolling_window
 from sklearn.covariance import EllipticEnvelope
 from scipy.stats import multivariate_normal
-
+ 
 #%%
 def extract_exceptional_events(z_signal, input_erf=False, thres_STD=5, N=2, min_dist=1, bidirectional=False):
     """
@@ -220,7 +220,7 @@ def nan_helper(y):
 
 #%%
 def find_spikes_rh(t, thresh_height=None, window_length = 2, 
-                           witgh_descending_peak=0.7,
+                           width_descending_peak=0.7,
                            do_scale=False):
     """ Find spikes based on the relative height of peaks
     Args:
@@ -230,9 +230,19 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
         thresh height: int
             selected threshold
             
+        window_length: int
+            @todo
+        
+        width_descending_peak: float
+            used to weight the importance of descending portion of the spike
+            
+        do_scale: Bool
+                whether to scale the input trace or not
+                
     Returns:
         index: 1-D array
             index of spikes
+        @todo document            
     """
         
     # List peaks based on their relative peak heights
@@ -250,7 +260,7 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
     matrix = t[index[:, np.newaxis]+window]
     left = np.maximum((matrix[:,2] - matrix[:,1]), (matrix[:,2] - matrix[:,0]))  
     right = np.maximum((matrix[:,2] - matrix[:,3]), (matrix[:,2] - matrix[:,4]))  
-    peak_height = 1 / (1 / left + witgh_descending_peak / right)
+    peak_height = 1 / (1 / left + 0.7 / right)
     
     # Thresholding
     data = peak_height - np.median(peak_height)
@@ -268,8 +278,7 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
     elif thresh_factor < 3.3:
         thresh_factor = 3.3
     thresh = std * thresh_factor
-    print(f'thresh_factor equals {thresh_factor}')
-        
+    print(f'thresh_factor equals {thresh_factor}')        
     index = index[peak_height > thresh]
 
     # Only select peaks above subthreshold
@@ -284,16 +293,67 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
 
 def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub,\
                             index, peak_height, index_track, peak_height_track, n):
+    """
+    
+    Find spikes based on the relative height of peaks
+    
+
+    Parameters @todo
+    ----------
+    t : TYPE
+        DESCRIPTION.
+    t_rm : TYPE
+        DESCRIPTION.
+    t_in : TYPE
+        DESCRIPTION.
+    median : TYPE
+        DESCRIPTION.
+    scale : TYPE
+        DESCRIPTION.
+    thresh : TYPE
+        DESCRIPTION.
+    thresh_sub : TYPE
+        DESCRIPTION.
+    index : TYPE
+        DESCRIPTION.
+    peak_height : TYPE
+        DESCRIPTION.
+    index_track : TYPE
+        DESCRIPTION.
+    peak_height_track : TYPE
+        DESCRIPTION.
+    n : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    t : TYPE
+        DESCRIPTION.
+    t_rm : ndarray
+        scaled signal and remove mean
+    index : TYPE
+        DESCRIPTION.
+    peak_height : TYPE
+        DESCRIPTION.
+    index_track : TYPE
+        DESCRIPTION.
+    peak_height_track : TYPE
+        DESCRIPTION.
+
+    """
+    
     t[:, n:(n + 1)] = t_in
+    #scale and remove mean
     t_in = (t_in - median[:, -1:]) / scale[:, -1:]
     t_rm[:, n:(n + 1)] = t_in
-    temp = t_rm[:, (n - 2):(n - 1)] - t_rm[:, (n - 4):(n + 1)]
-
+    # @todo
+    temp = t_rm[:, (n - 2):(n - 1)] - t_rm[:, (n - 4):(n + 1)]    
     left = np.max((temp[:,0:1], temp[:,1:2]), axis=0)
     right = np.max((temp[:,3:4], temp[:,4:5]), axis=0)
     height = np.single(1 / (1 / left + 0.7 / right))
+    
     indices = np.where(np.logical_and((temp[:,1] > 0), (temp[:,3] > 0)))[0]
-
+    
     for idx in indices:
         peak_height[idx, peak_height_track[idx]] = height[idx]
         peak_height_track[idx] += 1
