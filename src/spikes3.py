@@ -56,12 +56,12 @@ def get_model():
 #    num_frames = 200
     #a = io.imread('Sue_2x_3000_40_-46.tif')
 #    a = cm.load('/home/nellab/caiman_data/example_movies/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.mmap', in_memory=True)
-    template = np.median(a,axis=0)
+    template = np.median(a,axis=0) # sets up a template, consisting of the median of the imported movie.
 #    epsilon=0.00000001
 #    #import pdb; pdb.set_trace()
-    shp = int(template.shape[1])
-    c_shp = int(shp/4)
-    template = template[c_shp+10:-(c_shp+10),c_shp+10:-(c_shp+10), None, None]
+    shp = int(template.shape[1]) #determines shape of the tensor
+    c_shp = int(shp/4) #for cropping the center
+    template = template[c_shp+10:-(c_shp+10),c_shp+10:-(c_shp+10), None, None]# cr
     #temp_in = tf.reshape(tf.keras.layers.Input(shape=tf.TensorShape([512, 512])), [512, 512])
 #    template_zm = (template - tf.reduce_mean(template, axis=[0,1], keepdims=True))
 #    template_var = (tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon)
@@ -99,6 +99,8 @@ def get_model():
 ########THIS IS FOR THE NNLS LAYER ONLY####### => Note: I haven't reconfigured the Spikes object for the other layers yet
     nnls = NNLS1(theta_1)
     x_kk = nnls([y_in, x_in, th2])
+#    nnls2 = NNLS(theta_1, theta_2)
+#    x_kk = nnls2([x_kk[0], x_kk[1]])
 #    nnls = NNLS(theta_1, theta_2)
 #    x_kk = nnls(x_kk1)
     for k in range(1, 10):
@@ -130,10 +132,9 @@ def get_model():
 class Spikes(object):
     
     def __init__(self, model, y_0, x_0, mc_0, tht2):
-#        self.model = model
+
         self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
-        #self.frame_input_q = tf.queue.FIFOQueue(capacity=4, dtypes=tf.float32)
-#        self.spike_input_q =  tf.queue.FIFOQueue(capacity=4, dtypes=[tf.float32, tf.float32, tf.float32, tf.float32])
+        self.dim = self.mc0.shape[1]
         self.frame_input_q = Queue()
         self.spike_input_q = Queue()
         self.output_q = Queue()
@@ -141,68 +142,36 @@ class Spikes(object):
         
         self.frame_input_q.put(a[0, :, :, None][None, :])
         self.spike_input_q.put((y_0, x_0))
-#        self.frame_input_q.put(self.mc0)
-#        import pdb; pdb.set_trace()
-
-        #self.dataset = self.get_inputs()
 
         self.extraction_thread = Thread(target=self.extract, daemon=True)
         self.extraction_thread.start()
         
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-#            import pdb; pdb.set_trace()
 #            print(i.keys())
             self.output_q.put(i)
-#        while True:
-#            y_, x_, k_, tht2_ = self.spike_input_q.dequeue()
-#            self.model.layers[3].set_weights([tht2_])
-#        #        import pdb; pdb.set_trace()
-#            (y, x, k), tht2 = self.model([self.frame_input_q.dequeue(), y_, x_, self.zero_tensor])
-#            self.spike_input_q.enqueue([y, x, k, tht2])
-#            self.output_q.enqueue(y)
     
     def load_estimator(self):
-
-#        self.model.compile(optimizer='rmsprop', loss='mse')
-#        ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from="/tmp",
-#                       vars_to_warm_start=".*")
         self.tensorboard_callback = keras.callbacks.TensorBoard(log_dir="./summaries")
         return tf.keras.estimator.model_to_estimator(keras_model = self.model, model_dir="./summaries")
 
     def get_dataset(self):
-#        import pdb; pdb.set_trace()
         dataset = tf.data.Dataset.from_generator(self.generator, 
                                                  output_types={"m": tf.float32,
                                                                "y": tf.float32,
                                                                "x": tf.float32}, 
-                                                 output_shapes={"m":(1, 512, 512, 1),
+                                                 output_shapes={"m":(1, self.dim, self.dim, 1),
                                                                 "y":(1, 572, 1),
                                                                 "x":(1, 572, 1)})
         return dataset
     
     def generator(self):
         while True:
-#            import pdb; pdb.set_trace()
-#            print("WAITING")
-#            print()
             out = self.spike_input_q.get()
             (y, x) = out
-#            import pdb; pdb.set_trace()
-#            tf.print(y)
-#            fr = self.frame_input_q.get()
-#            try:
-#                self.model.layers[3].set_weights([tht2])
-#            except Exception as e:
-#                print(e)
-#                print(self.model.layers[3])
-#                print(tf.Graph().finalized)
             fr = self.frame_input_q.get()
-#            self.mc0=tf.reshape(self.mc0, [1, 512, 512, 1])
-#            print(y.shape, x.shape)
             
             yield {"m":fr, "y":y, "x":x}
-#            yield fr
 
     def get_spikes(self, bound, output):
         start = timeit.default_timer()
@@ -212,7 +181,8 @@ class Spikes(object):
         
             out = self.output_q.get()
 
-            self.spike_input_q.put((out["nnl_s1_2"], out["nnl_s1_2_1"]))
+            self.spike_input_q.put((out["nnl_s1_1"], out["nnl_s1_1_1"]))
+            output.append(out["nnls_s1_1"])
 
         print(timeit.default_timer() - start)
         return output
@@ -232,7 +202,7 @@ print()
 print("out of init")
 cfnn = []
 
-cfnn = spike_extractor.get_spikes(1000, cfnn)
+cfnn = spike_extractor.get_spikes(1800, cfnn)
 
 #%%
 #cfnn=np.array(cfnn)
