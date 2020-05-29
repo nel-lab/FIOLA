@@ -5,12 +5,13 @@ Created on Mon Apr 20 09:34:51 2020
 This file uses spams package for nmf and nnsc
 @author: Andrea Giovannucci
 """
+import cv2
 import caiman as cm
 from caiman.base.rois import nf_read_roi_zip
 import pylab as plt
 import numpy as np
 from caiman.summary_images import local_correlations_movie_offline
-#import spams
+from caiman.source_extraction.volpy.spikepursuit import denoise_spikes
 from sklearn.decomposition import NMF, PCA
 from caiman.base.movies import to_3D
 from scipy import zeros, signal, random
@@ -23,42 +24,30 @@ from scipy.optimize import nnls
 from signal_analysis_online import SignalAnalysisOnline
 
 #%%
-def hals(Y, A, C, b, f, bSiz=3, filsiz=(3,3), maxIter=5):
+def hals(Y, A, C, b, f, bSiz=3, maxIter=5):
     """ Hierarchical alternating least square method for solving NMF problem
-
     Y = A*C + b*f
-
     Args:
        Y:      d1 X d2 [X d3] X T, raw data.
            It will be reshaped to (d1*d2[*d3]) X T in this
            function
-
        A:      (d1*d2[*d3]) X K, initial value of spatial components
-
        C:      K X T, initial value of temporal components
-
        b:      (d1*d2[*d3]) X nb, initial value of background spatial component
-
        f:      nb X T, initial value of background temporal component
-
        bSiz:   int or tuple of int
         blur size. A box kernel (bSiz X bSiz [X bSiz]) (if int) or bSiz (if tuple) will
         be convolved with each neuron's initial spatial component, then all nonzero
        pixels will be picked as pixels to be updated, and the rest will be
        forced to be 0.
-
        maxIter: maximum iteration of iterating HALS.
-
     Returns:
         the updated A, C, b, f
-
     Authors:
         Johannes Friedrich, Andrea Giovannucci
-
     See Also:
         http://proceedings.mlr.press/v39/kimura14.pdf
     """
-
     # smooth the components
     dims, T = np.shape(Y)[:-1], np.shape(Y)[-1]
     K = A.shape[1]  # number of neurons
@@ -68,12 +57,10 @@ def hals(Y, A, C, b, f, bSiz=3, filsiz=(3,3), maxIter=5):
              bSiz = [bSiz] * len(dims)
         ind_A = nd.filters.uniform_filter(np.reshape(A,
                 dims + (K,), order='F'), size=bSiz + [0])
-        ind_A = np.reshape(ind_A > 0, (np.prod(dims), K), order='F')
+        ind_A = np.reshape(ind_A > 1e-10, (np.prod(dims), K), order='F')
     else:
-        ind_A = A>0
-
+        ind_A = A>1e-10
     ind_A = spr.csc_matrix(ind_A)  # indicator of nonnero pixels
-
     def HALS4activity(Yr, A, C, iters=2):
         U = A.T.dot(Yr)
         V = A.T.dot(A) + np.finfo(A.dtype).eps
@@ -82,7 +69,6 @@ def hals(Y, A, C, b, f, bSiz=3, filsiz=(3,3), maxIter=5):
                 C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
                                V[m, m], 0, np.inf)
         return C
-
     def HALS4shape(Yr, A, C, iters=2):
         U = C.dot(Yr.T)
         V = C.dot(C.T) + np.finfo(C.dtype).eps
@@ -96,33 +82,44 @@ def hals(Y, A, C, b, f, bSiz=3, filsiz=(3,3), maxIter=5):
                 A[:, K + m] = np.clip(A[:, K + m] + ((U[K + m] - V[K + m].dot(A.T)) /
                                                      V[K + m, K + m]), 0, np.inf)
         return A
-
     Ab = np.c_[A, b]
     Cf = np.r_[C, f.reshape(nb, -1)]
     for _ in range(maxIter):
         Cf = HALS4activity(np.reshape(
             Y, (np.prod(dims), T), order='F'), Ab, Cf)
+        Cf_processed = Cf.copy()
+        for i in range(Cf.shape[0]):
+            if i != Cf.shape[0] - 1 : 
+                _, _, Cf_processed[i], _, _, _ = denoise_spikes(Cf[i], window_length=3, threshold=4, threshold_method='adaptive_threshold')
+        Cf = Cf_processed
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
-
+        for i in range(Ab.shape[1]):
+            plt.figure();plt.imshow(Ab[:, i].reshape(Y.shape[0:2], order='F'));plt.colorbar()
+        
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
-#%%
-def select_masks(ycr, shape):
-    m = to_3D(ycr,shape=shape, order='F')
-    frame = m[:10000].std(axis=0)
-    plt.imshow(frame, cmap=mpl_cm.Greys_r)
-    pts = []
-    while not len(pts):
-        pts = plt.ginput(0)
-        plt.close()
-        path = mpl_path.Path(pts)
-        mask = np.ones(np.shape(frame), dtype=bool)
-        for ridx, row in enumerate(mask):
-            for cidx, pt in enumerate(row):
-                if path.contains_point([cidx, ridx]):
-                    mask[ridx, cidx] = False
 
+#%%
+def select_masks(ycr, shape, mask=None):
+    m = to_3D(ycr,shape=shape, order='F')
+    if mask is None:
+        frame = m[:10000].std(axis=0)
+        plt.figure()
+        plt.imshow(frame, cmap=mpl_cm.Greys_r)
+        pts = []    
+        while not len(pts):
+            pts = plt.ginput(0)
+            plt.close()
+            path = mpl_path.Path(pts)
+            mask = np.ones(np.shape(frame), dtype=bool)
+            for ridx, row in enumerate(mask):
+                for cidx, pt in enumerate(row):
+                    if path.contains_point([cidx, ridx]):
+                        mask[ridx, cidx] = False
+    else:
+        mask = cv2.dilate(mask,np.ones((4,4),np.uint8),iterations = 1)
+        mask = (mask < 1)
     ycr = cm.movie((1.0 - mask)*m).to_2D() 
-    plt.plot(((m * (1.0 - mask)).mean(axis=(1, 2))))
+    plt.figure();plt.plot(((m * (1.0 - mask)).mean(axis=(1, 2))))
     return mask, ycr 
 #%%
 def signal_filter(sg, fr, freq=1/3, order=3, mode='high'):
@@ -218,9 +215,9 @@ def normalize(ss):
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
                '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
-               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][-1]
+               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
 #lists = ['454597_Cell_0_40x_patch1.tif', '456462_Cell_3_40x_1xtube_10A2.tif',
-#             '456462_Cell_3_40x_1xtube_10A3.tif', '456462_Cell_5_40x_1xtube_10A5.tif',
+#            '456462_Cell_3_40x_1xtube_10A3.tif', '456462_Cell_5_40x_1xtube_10A5.tif',
 #             '456462_Cell_5_40x_1xtube_10A6.tif', '456462_Cell_5_40x_1xtube_10A7.tif', 
 #             '462149_Cell_1_40x_1xtube_10A1.tif', '462149_Cell_1_40x_1xtube_10A2.tif', ]
 lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.tif',
@@ -255,7 +252,7 @@ all_rec = []
 all_snr = []
 frate = 400
 for k in list(range(0, 8)):
-    mcr_orig = cm.load(fnames[k]).resize(.5,.5,1)
+    mcr_orig = cm.load(fnames[k])#.resize(.5,.5,1)
     mcr = -mcr_orig.copy()
     ycr_orig = mcr.to_2D()
     # movie after detrending
@@ -264,7 +261,7 @@ for k in list(range(0, 8)):
     ycr = ycr_filt
     name_traces = '/'.join(fnames[k].split('/')[:-2] + ['data_new', 
                                fnames[k].split('/')[-1][:-7]+'_output.npz'])
-    mode = ['direct_multiplication', 'manual_filter_nnls', 'nmf_nnls'][2]
+    mode = ['direct_multiplication', 'manual_filter_nnls', 'nmf_nnls', 'nmf_hals_nnls'][3]
     detrend_before = True
     if mode == 'direct_multiplication':
         dims = mcr_orig.shape[1:]
@@ -305,6 +302,8 @@ for k in list(range(0, 8)):
         aa = np.maximum(cc, 0)
         W = model.fit_transform(aa)#, H=H, W=W)
         H = model.components_
+        
+        
         H[H > np.percentile(H, 98)] = np.percentile(H, 98) 
         H = H / H.max()
         H = H - np.percentile(H, 30)
@@ -315,15 +314,13 @@ for k in list(range(0, 8)):
         #plt.figure();plt.plot(W[:,1])
         #y_now = y_now - W@H
         for i in range(n_components):
-            plt.figure();plt.imshow(H[0].reshape(mcr.shape[1:], order='F'));plt.colorbar()
-            
+            plt.figure();plt.imshow(H[0].reshape(mcr.shape[1:], order='F'));plt.colorbar()            
         fe = slice(0,None)
         Cf_postf = np.array([nnls(H.T,y)[0] for y in -ycr_orig[fe]]) 
         trr_postf = signal_filter(-Cf_postf.T,freq = 1/3, fr=frate).T
         trr_postf -= np.min(trr_postf, axis=0)
         trace = trr_postf.T - np.median(trr_postf.T)
         #trace= dict1['v_sg'][np.newaxis, :]
-
     # SAO object
     sao = SignalAnalysisOnline()
     #sao.fit(trr_postf[:20000], len())
@@ -356,99 +353,63 @@ for k in list(range(0, 8)):
     all_rec.append(np.array(recall).round(2))
     all_snr.append(sao.SNR[0].round(3))
     
-#%%
-print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
-#print(f'average_sub:{np.nanmean(all_corr_subthr,axis=0)}')
-print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
-print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
-print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
-print(f'snr:{np.array(all_snr).round(3)}')
-
-lsls
-#%%
-x_shifts = [-4, 8]
-y_shifts = [-4, 8]
-name_set = fnames[1:3]
-#x_shifts = [0]
-#y_shifts = [0]
-#name_set = fnames[1:2]
-m1 = cm.load(name_set[0])
-m2 = cm.load(name_set[1])
-plt.figure();plt.imshow(m1[0]);plt.colorbar()
-plt.figure();plt.imshow(m2[0]);plt.colorbar()
-
-num_frames = 100000
-frate = 400
-all_coeffs = []
-for idx in range(1):#fnames:    
-    mcr_orig, volt, ephs, times_v, times_e, spatial = combine_datasets(name_set, num_frames,
-                                                          x_shifts=x_shifts, 
-                                                          y_shifts=y_shifts, 
-                                                          weights=None, 
-                                                          shape=(30, 30))
-# original movie     
-mcr_mc = mcr_orig
-mcr = -mcr_mc   
-ycr_orig = mcr.to_2D()
-# movie after detrending
-ycr = mcr.to_2D().copy() 
-ycr_filt = signal_filter(ycr.T,freq = 20, fr=frate).T
-ycr = ycr_filt
-#plt.figure()
-#plt.plot(times_v[0],ycr.mean(axis=(1)))
-plt.figure();plt.imshow(mcr_orig[0])
-plt.figure();plt.imshow(spatial[0][0], alpha=0.5);plt.imshow(spatial[1][0], alpha=0.5)
+    #%%
+    print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
+    #print(f'average_sub:{np.nanmean(all_corr_subthr,axis=0)}')
+    print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
+    print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
+    print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
+    print(f'snr:{np.array(all_snr).round(3)}')
 
 #%%
-n_comps = len(x_shifts)
-#    n_comps = 2
-num_frames = 20000
-y_now = ycr[:num_frames,:].copy()
-W_tot = []
-H_tot = []
-for i in range(1):
-    n_components = 2        
-    model = NMF(n_components=n_components, init='nndsvd', max_iter=500, verbose=True)
-    plt.figure()
-    #mask, y_use = select_masks(y_now, mcr[:num_frames].shape)
-    #model = PCA(n_components=n_components)
-    #W = model.fit_transform(np.maximum(y_use,0))#, H=H, W=W)
-    #W = np.zeros((num_frames, n_comps))
-    #H = np.zeros((n_comps, ))
-    cc = (ycr[:num_frames] - ycr[:num_frames].mean(axis=0)[np.newaxis,:])
-    aa = np.maximum(cc, 0)
-    W = model.fit_transform(aa)#, H=H, W=W)
-    H = model.components_
-    W_tot.append(W)
-    H_tot.append(H)
-    plt.figure();plt.plot(W);
-    y_now = y_now - W@H
+    x_shifts = [6, -2]
+    y_shifts = [8, -2]
+    file_set = list(np.arange(1,3))
+    name_set = fnames[file_set[0]: file_set[1] + 1]
+    m1 = cm.load(name_set[0])
+    m2 = cm.load(name_set[1])
+    plt.figure();plt.imshow(m1[0]);plt.colorbar()
+    plt.figure();plt.imshow(m2[0]);plt.colorbar()
     
-    for i in range(len(H)):
-        H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
-        H[i] = H[i] / H[i].max()
-        H[i] = H[i] - np.percentile(H[i], 50)
-        H[i][H[i] < 0] = 0
-    for i in range(n_components):
-        plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
-        
+    num_frames = np.min((m1.shape[0], m2.shape[0]))
+    frate = 400
+    all_coeffs = []
+    for idx in range(1):#fnames:    
+        mcr_orig, v_sg, e_sg, v_t, e_t, spatial = combine_datasets(name_set, num_frames,
+                                                              x_shifts=x_shifts, 
+                                                              y_shifts=y_shifts, 
+                                                              weights=None, 
+                                                              shape=(30, 30))
+    # original movie     
+    mcr_mc = mcr_orig
+    mcr = -mcr_mc   
+    ycr_orig = mcr.to_2D()
+    # movie after detrending
+    ycr = mcr.to_2D().copy() 
+    ycr_filt = signal_filter(ycr.T,freq = 1/3, fr=frate).T
+    ycr = ycr_filt
+    #plt.figure()
+    #plt.plot(times_v[0],ycr.mean(axis=(1)))
+    plt.figure();plt.imshow(mcr_orig[0])
+    plt.figure();plt.imshow(spatial[0][0], alpha=0.5);plt.imshow(spatial[1][0], alpha=0.5)
+
     #%%
 n_comps = len(x_shifts)
 #    n_comps = 2
-num_frames = 20000
-y_now = ycr[:num_frames,:].copy()
+num_frames_init = 20000
+y_now = ycr[:num_frames_init,:].copy()
 W_tot = []
 H_tot = []
-for i in range(2):
+seq = [0,1]
+for i in seq:
     n_components = 1        
     model = NMF(n_components=n_components, init='nndsvd', max_iter=500, verbose=True)
-    plt.figure()
-    mask, y_use = select_masks(y_now, mcr[:num_frames].shape)
+    mask, y_use = select_masks(y_now, mcr[:num_frames_init].shape, mask=spatial[i][0])
     #model = PCA(n_components=n_components)
     W = model.fit_transform(np.maximum(y_use,0))#, H=H, W=W)
-    #W = np.zeros((num_frames, n_comps))
+    #W = np.zeros((num_frames_init, n_comps))
     #H = np.zeros((n_comps, ))
-    #cc = (ycr[:num_frames] - ycr[:num_frames].mean(axis=0)[np.newaxis,:])
+    #cc = (ycr[:num_frames_init] - ycr[:num_frames_init].mean(axis=0)[np.newaxis,:])
     #aa = np.maximum(cc, 0)
     #W = model.fit_transform(aa)#, H=H, W=W)
     H = model.components_
@@ -457,19 +418,26 @@ for i in range(2):
     plt.figure();plt.plot(W);
     y_now = y_now - W@H
     
-    """
-    for i in range(len(H)):
-        H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
-        H[i] = H[i] / H[i].max()
-        H[i] = H[i] - np.percentile(H[i], 50)
-        H[i][H[i] < 0] = 0
-    """
-    for i in range(n_components):
-        plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
+    for j in range(n_components):
+        plt.figure();plt.imshow(H[j].reshape(mcr.shape[1:], order='F'));plt.colorbar()
         
 H = np.vstack(H_tot)
 W = np.hstack(W_tot)
 
+#%%
+%matplotlib inline
+Cf = W.copy()#np.array([nnls(H.T,y)[0] for y in (y_now)[fe]])
+y_input = np.maximum(ycr[:num_frames_init]-np.median(ycr[:num_frames_init], axis=0)[np.newaxis,:], 0)
+H1,Cf1,b1,f1 = hals(cm.movie(to_3D(y_input,
+                             shape=(y_now.shape[0],30,30), order='F')).transpose([1,2,0]),
+                             H.T, Cf.T, np.ones((ycr.shape[1],1)) / ycr.shape[1],
+                             np.random.rand(1,y_now.shape[0]), bSiz=None, maxIter=3)
+H1=H1.T
+Cf1=Cf1.T  
+for i in range(2):
+    plt.figure();plt.imshow(H1[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
+    
+plt.plot(Cf1)
 
 #%%
 fe = slice(0,None)
@@ -483,7 +451,7 @@ fe = slice(0,None)
 #trace separation and then remove trend
 yy = -ycr_orig - (-ycr_orig).min()
 #yy = yy - yy.mean(axis=0)[np.newaxis, :]
-Cf_postf = np.array([nnls(H.T,y)[0] for y in yy[fe]]) 
+Cf_postf = np.array([nnls(H1.T,y)[0] for y in yy[fe]]) 
 trr_postf = signal_filter(-Cf_postf.T,freq = 1/3, fr=frate).T
 trr_postf -= np.min(trr_postf, axis=0)
 #%%
@@ -492,17 +460,15 @@ trace_all = trr_postf.T
 trace_all = trace_all - np.median(trace_all, 1)[:, np.newaxis]
 #plt.plot(trr_pref[:,1]+0.1)
 plt.plot(trr_postf[:,])
-    
 
-    #%%
+#%%
 all_f1_scores = []
 all_prec = []
 all_rec = []
 all_snr = []
-for k in list(range(1, 3)):
-    print(k)
-    trace = trace_all[(k - 1):k, :]
-    sao = SignalAnalysisOnline(thresh_STD=3.5)
+for idx, k in enumerate(list(file_set)):
+    trace = trace_all[seq[idx]:seq[idx]+1, :]
+    sao = SignalAnalysisOnline(thresh_STD=None)
     #sao.fit(trr_postf[:20000], len())
     #trace=dict1['v_sg'][np.newaxis, :]
     sao.fit(trace[:, :20000], num_frames=100000)
@@ -512,7 +478,7 @@ for k in list(range(1, 3)):
     print(f'SNR: {sao.SNR}')
     indexes = np.array((list(set(sao.index[0]) - set([0]))))  
     name_traces = '/'.join(fnames[k].split('/')[:-2] + ['data_new', 
-                               fnames[k].split('/')[-1][:-4]+'_output.npz'])
+                               fnames[k].split('/')[-1][:-7]+'_output.npz'])
     #plt.figure(); plt.plot(sao.trace_rm.flatten())
     
     # F1 score
@@ -537,19 +503,18 @@ for k in list(range(1, 3)):
     all_snr.append(sao.SNR[0].round(3))
     
 #%%
-#plt.plot(dict1['v_t'], )
-#plt.plot(dict1['v_t'], dict1['v_sp'])
+#%matplotlib auto
 t1 = normalize(trace_all[0])
 t2 = normalize(trace_all[1])
-t3 = normalize(dict1['v_sg'])
-t4 = normalize(dict1['e_sg'])
-plt.plot(dict1['v_t'], t1 + 0.3, label='neuron1')
-plt.plot(dict1['v_t'], t2, label='neuron2')
-plt.plot(dict1['v_t'], t3, label='gt')
-plt.plot(dict1['e_t'], t4-3, label='ele')
-plt.vlines(dict1['e_sp'], -3, -2.5, color='black')
-
-
+t3 = normalize(v_sg[0])
+t4 = normalize(v_sg[1])
+#t4 = normalize(dict1['e_sg'])
+plt.plot(dict1['v_t'][:num_frames], t1 + 0.5, label='neuron1')
+plt.plot(dict1['v_t'][:num_frames], t2, label='neuron2')
+plt.plot(dict1['v_t'][:num_frames], t3[:num_frames], label='gt1')
+plt.plot(dict1['v_t'][:num_frames], t4[:num_frames]+0.5, label='gt2')
+#plt.plot(dict1['e_t'], t4-3, label='ele')
+#plt.vlines(dict1['e_sp'], -3, -2.5, color='black')
 plt.legend()
 #%%   
 print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
@@ -559,15 +524,6 @@ print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}');
 print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
 print(f'snr:{np.array(all_snr).round(3)}')
    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     #%%
 count = 0
@@ -752,6 +708,136 @@ plt.plot(time_v[:], normalize(fun(Cf1[:,0])))
         """
         
 #%%
+        
+        #%%
+    n_comps = len(x_shifts)
+#    n_comps = 2
+    num_frames = 20000
+    y_now = ycr[:num_frames,:].copy()
+    W_tot = []
+    H_tot = []
+    for i in range(2):
+        n_components = 1        
+        model = NMF(n_components=n_components, init='nndsvd', max_iter=500, verbose=True)
+        plt.figure()
+        mask, y_use = select_masks(y_now, mcr[:num_frames].shape)
+        #model = PCA(n_components=n_components)
+        W = model.fit_transform(np.maximum(y_use,0))#, H=H, W=W)
+        #W = np.zeros((num_frames, n_comps))
+        #H = np.zeros((n_comps, ))
+        #cc = (ycr[:num_frames] - ycr[:num_frames].mean(axis=0)[np.newaxis,:])
+        #aa = np.maximum(cc, 0)
+        #W = model.fit_transform(aa)#, H=H, W=W)
+        H = model.components_
+        W_tot.append(W)
+        H_tot.append(H)
+        plt.figure();plt.plot(W);
+        y_now = y_now - W@H
+        
+        """
+        for i in range(len(H)):
+            H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
+            H[i] = H[i] / H[i].max()
+            H[i] = H[i] - np.percentile(H[i], 50)
+            H[i][H[i] < 0] = 0
+        """
+        for i in range(n_components):
+            plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
+            
+    H = np.vstack(H_tot)
+    W = np.hstack(W_tot)
+    
+    #%%
+    #%%
+n_comps = len(x_shifts)
+#    n_comps = 2
+num_frames = 20000
+y_now = ycr[:num_frames,:].copy()
+W_tot = []
+H_tot = []
+for i in range(1):
+    n_components = 2        
+    model = NMF(n_components=n_components, init='nndsvd', max_iter=500, verbose=True)
+    plt.figure()
+    #mask, y_use = select_masks(y_now, mcr[:num_frames].shape)
+    #model = PCA(n_components=n_components)
+    #W = model.fit_transform(np.maximum(y_use,0))#, H=H, W=W)
+    #W = np.zeros((num_frames, n_comps))
+    #H = np.zeros((n_comps, ))
+    cc = (ycr[:num_frames] - ycr[:num_frames].mean(axis=0)[np.newaxis,:])
+    aa = np.maximum(cc, 0)
+    W = model.fit_transform(aa)#, H=H, W=W)
+    H = model.components_
+    W_tot.append(W)
+    H_tot.append(H)
+    plt.figure();plt.plot(W);
+    y_now = y_now - W@H
+    
+    for i in range(len(H)):
+        H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
+        H[i] = H[i] / H[i].max()
+        H[i] = H[i] - np.percentile(H[i], 50)
+        H[i][H[i] < 0] = 0
+    for i in range(n_components):
+        plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
+        for i in range(len(H)):
+            H[i][H[i]> np.percentile(H[i], 98)] = np.percentile(H[i], 98) 
+            H[i] = H[i] / H[i].max()
+            H[i] = H[i] - np.percentile(H[i], 50)
+            H[i][H[i] < 0] = 0
+        for i in range(n_components):
+            plt.figure();plt.imshow(H[i].reshape(mcr.shape[1:], order='F'));plt.colorbar()
+    
+    #%%
+    fe = slice(0,None)
+    # remove trend and then trace separation
+    #ycr = mcr.to_2D().copy() 
+    #ycr_filt = signal_filter(ycr.T,freq = 1/3, fr=frate).T
+    #ycr = ycr_filt
+    #Cf_pref = np.array([nnls(H.T,y)[0] for y in (ycr-ycr.min())[fe]]) # extract signal based on found spatial footprints 
+    #trr_pref = Cf_pref[:,:]
+    #trr_pref -= np.min(trr_pref, axis=0)
+    #trace separation and then remove trend
+    yy = -ycr_orig - (-ycr_orig).min()
+    #yy = yy - yy.mean(axis=0)[np.newaxis, :]
+    Cf_postf = np.array([nnls(H.T,y)[0] for y in yy[fe]]) 
+    trr_postf = signal_filter(-Cf_postf.T,freq = 1/3, fr=frate).T
+    trr_postf -= np.min(trr_postf, axis=0)
+    #%%
+    trace_all = trr_postf.T
+    #trace_all = trr_pref.T
+    trace_all = trace_all - np.median(trace_all, 1)[:, np.newaxis]
+    #plt.plot(trr_pref[:,1]+0.1)
+    plt.plot(trr_postf[:,])
+    #%%
+        elif mode == 'nmf_hals_nnls':
+        num_frames = 20000
+        dims = mcr_orig.shape[1:]
+        n_components = 1     
+        model = NMF(n_components=n_components, init='nndsvd', max_iter=100, verbose=True)
+        cc = (mm[:num_frames] - mm[:num_frames].mean(axis=0)[np.newaxis,:])
+        aa = np.maximum(cc, 0)
+        W = model.fit_transform(aa)#, H=H, W=W)
+        H = model.components_
+        plt.figure();plt.plot(W[:,0])
+        
+        y_input = np.maximum(ycr[:num_frames], 0)
+        H1,Cf1,b1,f1 = hals(cm.movie(to_3D(y_input,
+                             shape=(num_frames, mcr.shape[1], mcr.shape[2]), order='F')).transpose([1,2,0]),
+                             H.T, W.T, np.ones((ycr.shape[1],1)) / ycr.shape[1],
+                             np.random.rand(1,num_frames), bSiz=None, maxIter=3)
+        H1=H1.T
+        Cf1=Cf1.T  
+        #plt.figure();plt.plot(W[:,1])
+        #y_now = y_now - W@H
+        for i in range(n_components):
+            plt.figure();plt.imshow(H[0].reshape(mcr.shape[1:], order='F'));plt.colorbar()            
+        fe = slice(0,None)
+        Cf_postf = np.array([nnls(H1.T,y)[0] for y in -ycr_orig[fe]]) 
+        trr_postf = signal_filter(-Cf_postf.T,freq = 1/3, fr=frate).T
+        trr_postf -= np.min(trr_postf, axis=0)
+        trace = trr_postf.T - np.median(trr_postf.T)
+        #trace= dict1['v_sg'][np.newaxis, :]
         #%%
 #def hals(Y, A, C, b, f, bSiz=3, maxIter=5):
 #    """ Hierarchical alternating least square method for solving NMF problem
