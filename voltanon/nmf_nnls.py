@@ -81,7 +81,7 @@ H = np.vstack(H_tot)
 W = np.hstack(W_tot)
 
 #%% Use hals to optimize masks
-update_bg = True
+update_bg = False
 y_input = np.maximum(y_filt[:num_frames_init], 0)
 y_input = cm.movie(to_3D(y_input, shape=(num_frames_init,30,30), order='F')).transpose([1,2,0])
 
@@ -94,7 +94,7 @@ for i in range(2):
 #%% Use nnls to extract signal for neurons
 fe = slice(0,None)
 if update_bg:
-    trace_all = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (y_filt-y_filt.min())[fe]]) 
+    trace_all = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (-y)[fe]]) 
 else:
     trace_all = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]]) 
 
@@ -102,10 +102,9 @@ trace_all = signal_filter(trace_all.T,freq = 1/3, fr=frate).T
 trace_all = trace_all - np.median(trace_all, 0)[np.newaxis, :]
 
 plt.plot(trace_all[:, :])
-trace_all = trace_all.T
+trace_all = -trace_all.T
 
 trace_all = trace_all[:2]
-plt.plot(trace_all.T)
 
 #%% Extract spikes and compute F1 score
 v_sg = []

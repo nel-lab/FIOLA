@@ -147,54 +147,7 @@ def signal_filter(sg, fr, freq=1/3, order=3, mode='high'):
     b, a = signal.butter(order, normFreq, mode)
     sg = np.single(signal.filtfilt(b, a, sg, padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
     return sg
-#%%
-def combine_datasets(fnames, num_frames, x_shifts=[3,-3], y_shifts=[3,-3], weights=None, shape=(15,15)):
-    mm = 0
-    ephs = []
-    times_e = []
-    times_v = []
-    volt = []
-    spatial = []
-    if weights is None:
-        weights = [1/len(fnames)]*len(fnames)
-    for name,x_shift, y_shift, weight in zip(fnames,x_shifts,y_shifts, weights):
-        new_mov = cm.load(name)
-        dims = new_mov.shape[1:]
-        hh = nf_read_roi_zip((name[:-7] + '_ROI.zip'), dims=dims)
-        hh = hh.astype(np.float32)
-        new_hh = cm.movie(hh)
-        
-        if new_mov.shape[1] != shape[0]:
-            new_mov = new_mov.resize(shape[0]/new_mov.shape[1],shape[1]/new_mov.shape[2],1)
-            new_hh = new_hh.resize(shape[0]/hh.shape[1],shape[1]/hh.shape[2], 1)
-            
-        mm += np.roll(new_mov[:num_frames]*weight, (x_shift, y_shift), axis=(1,2))
-        new_hh = np.roll(new_hh, (x_shift, y_shift), axis=(1,2))
-        spatial.append(new_hh)   
-    
-        name_traces = '/'.join(name.split('/')[:-2] + ['data_new', name.split('/')[-1][:-7]+'_output.npz'])
-        #%
-        try:
-            with np.load(name_traces, allow_pickle=True) as ld:
-                dict1 = dict(ld)
-                time_v = dict1['v_t'] - dict1['v_t'][0]
-                time_e = dict1['e_t'] - dict1['e_t'][0]
-                time_v = time_v[:num_frames]
-                eph = normalize(dict1['e_sg'][time_e<time_v[-1]])
-                time_e = time_e[time_e<time_v[-1]]            
-                time_e /= np.max(time_e)
-                time_v /= np.max(time_v)
-                trep = normalize(dict1['v_sg'][:num_frames])
-                times_e.append(time_e)
-                times_v.append(time_v)
-                ephs.append(eph)
-                volt.append(trep)
-        except:
-            volt, ephs, times_v, times_e = [None]*4
-            
-        #%
-        
-    return mm, volt, ephs, times_v, times_e, spatial
+
 #%%
 #c, dview, n_processes = cm.cluster.setup_cluster(
 #        backend='local', n_processes=None, single_thread=False)
