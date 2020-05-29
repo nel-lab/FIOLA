@@ -37,13 +37,12 @@ class MotionCorrect(keras.layers.Layer):
         
         """
         super().__init__(**kwargs)
-#        print(template)
         self.shp_x, self.shp_y = template.shape[0], template.shape[1]
         self.c_shp_x, self.c_shp_y = self.shp_x//4, self.shp_y//4
-#        self.template_0 = template[10:-10, 10:-10, None, None]
+
         self.template_0 = template
         self.template=self.template_0[self.c_shp_x+ms_w:-(self.c_shp_x+ms_w),self.c_shp_y+ms_h:-(self.c_shp_y+ms_h), None, None]
-#        print(self.template.shape)
+
         self.ms_h = ms_h
         self.ms_w = ms_w
         self.strides = strides
@@ -62,7 +61,7 @@ class MotionCorrect(keras.layers.Layer):
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         X_center = X[:, self.c_shp_x:-self.c_shp_x, self.c_shp_y:-self.c_shp_y]
-#        X_center = X
+
         # pass in center for normalization
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon) 
@@ -76,7 +75,7 @@ class MotionCorrect(keras.layers.Layer):
        
         # Remove any NaN in final output
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
-#        
+        
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
@@ -115,15 +114,15 @@ class MotionCorrect(keras.layers.Layer):
         # extract peaks from 2D tensor (takes batches as input too)
         
         # flatten the Tensor along the height and width axes
-        flat_tensor = tf.reshape(tensor, (tf.shape(tensor)[0], -1, tf.shape(tensor)[3]))
-        # argmax of the flat tensor
-        argmax = self.softargmax(flat_tensor)
+        flat_tensor = tf.reshape(tensor, (1, tensor.shape[1]**2, 1))
+
+        argmax= tf.cast(tf.argmax(flat_tensor, axis=1), tf.int32)
         # convert indexes into 2D coordinates
         argmax_x = tf.cast(argmax, tf.int32) // tf.shape(tensor)[2]
         argmax_y = tf.cast(argmax, tf.int32) % tf.shape(tensor)[2]
         # stack and return 2D coordinates
         return tf.cast(tf.stack((argmax_x, argmax_y), axis=1), tf.float32)
-    
+        
     def extract_fractional_peak(self, tensor_ncc, ms_h, ms_w):
         """ use gaussian interpolation to extract a fractional shift
         Args:
@@ -133,11 +132,7 @@ class MotionCorrect(keras.layers.Layer):
                 ms_w: max integere shift horizontal
         
         """
-
-        x_range = tf.range(tensor_ncc.shape[-1])
-        x_range = tf.cast(x_range, dtype=tf.float32)
-        beta = tensor_ncc*10000000000.0
-        shifts_int = tf.reduce_sum(tf.nn.softmax(beta) * x_range, axis=1)
+        shifts_int = self.argmax_2d(tensor_ncc)
 
         shifts_int_cast = tf.cast(shifts_int,tf.int64)
         sh_x, sh_y = shifts_int_cast[:,0],shifts_int_cast[:,1]
@@ -162,7 +157,6 @@ class MotionCorrect(keras.layers.Layer):
 
         sh_x_n = sh_x_n - tf.math.truediv((log_xm1_y - log_xp1_y), (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
         sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1 - log_x_yp1), (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
-        
+
         return tf.reshape(sh_x_n, [1, 1]), tf.reshape(sh_y_n, [1, 1])
-#        return sh_x_n, sh_y_n
   
