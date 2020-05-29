@@ -48,7 +48,7 @@ def get_model(template, A_sp, b_full):
     nnls = NNLS(theta_1)
     x_kk = nnls([y_in, x_in, k_in, th2])
     #stacks NNLS 9 times
-    for k in range(1, 10):
+    for j in range(1, 10):
         x_kk = nnls(x_kk)
    
     #create final model, returns it and the first weight
@@ -67,17 +67,21 @@ class Pipeline(object):
         self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
         self.tot = tot
         self.dim_x, self.dim_y = self.mc0.shape[1], self.mc0.shape[2]
-        self.zero_tensor = tf.convert_to_tensor([[0]], dtype=tf.float32)
+        self.zero_tensor = [[0.0]]
         
         self.frame_input_q = Queue()
         self.spike_input_q = Queue()
         self.output_q = Queue()
         
+        #load estimator from the keras model
         self.estimator = self.load_estimator()
         
+        #seed the queues
         self.frame_input_q.put(self.mc0)
         self.spike_input_q.put((y_0, x_0))
 
+        #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
+            #pull from the generator.
         self.extraction_thread = Thread(target=self.extract, daemon=True)
         self.extraction_thread.start()
         
@@ -102,6 +106,7 @@ class Pipeline(object):
         return dataset
     
     def generator(self):
+        #generator waits until data has been enqueued, then yields the data to the dataset
         while True:
             out = self.spike_input_q.get()
             (y, x) = out
@@ -110,14 +115,16 @@ class Pipeline(object):
             yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
     def get_spikes(self, bound):
+        #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
         output = []
+        start = timeit.default_timer()
         for idx in range(1, bound):
 
-            self.frame_input_q.put(self.tot[idx, :, :, None][None, :]) #here, a represents a numpy array defined outside of the class.
+            self.frame_input_q.put(self.tot[:, :, idx:idx+1][None, :])
         
             out = self.output_q.get()
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
             output.append(out["nnls_1"])
-
+        print(timeit.default_timer()-start)
         return output
     
