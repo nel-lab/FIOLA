@@ -48,7 +48,7 @@ def get_model(template, A_sp, b_full):
     nnls = NNLS(theta_1)
     x_kk = nnls([y_in, x_in, k_in, th2])
     #stacks NNLS 9 times
-    for k in range(1, 10):
+    for j in range(1, 10):
         x_kk = nnls(x_kk)
    
     #create final model, returns it and the first weight
@@ -113,11 +113,11 @@ class Pipeline(object):
         output = []
         for idx in range(1, bound):
 
-            self.frame_input_q.put(self.tot[idx, :, :, None][None, :]) #here, a represents a numpy array defined outside of the class.
+            self.frame_input_q.put(self.tot[:, :, idx:idx+1][None, :]) #here, a represents a numpy array defined outside of the class.
         
             out = self.output_q.get()
-            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
-            output.append(out["nnls_1"])
+            self.spike_input_q.put((out["NNLS"], out["NNLS_1"]))
+            output.append(out["NNLS_1"])
 
         return output
     

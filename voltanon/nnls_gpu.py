@@ -11,7 +11,7 @@ import tensorflow.keras as keras
 import numpy as np
 #%%
 class NNLS(keras.layers.Layer):
-    def __init__(self, theta_1, **kwargs):
+    def __init__(self, theta_1, name="NNLS",**kwargs):
         """
         Tensforflow layer which perform Non Negative Least Squares. Using  https://angms.science/doc/NMF/nnls_pgd.pdf
             arg min f(x) = 1/2 || Ax − b ||_2^2
@@ -42,7 +42,6 @@ class NNLS(keras.layers.Layer):
         new_X = tf.nn.relu(mm + weight)
 
         Y_new = new_X + (k - 1)/(k + 2)*(new_X - X_old)  
-#        print(tf.reduce_sum(Y_new), "NNLS")
         k += 1
         return (Y_new, new_X, k, weight)
     
@@ -60,7 +59,6 @@ class compute_theta2(keras.layers.Layer):
         Y = tf.matmul(X, self.A)
         Y = tf.divide(Y, self.n_AtA)
         Y = tf.transpose(Y)
-#        tf.print(tf.reduce_sum(Y), tf.reduce_sum(X), "weight, x_corr")
         return Y    
     
     def get_config(self):

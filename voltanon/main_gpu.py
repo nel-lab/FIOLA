@@ -5,10 +5,11 @@ Created on Wed May 27 21:18:19 2020
 
 @author: nellab
 """
+#%%
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
+#tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
 from queue import Queue
@@ -23,13 +24,13 @@ import timeit
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 #%%
-# base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/regression_n.01.01_less_neurons.npz'
-base_folder = '/home/andrea/software/SANDBOX/src/'
+base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/'
+#base_folder = '/home/andrea/software/SANDBOX/src/'
 with np.load(base_folder+'regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     Y_tot = ld['Y']
 import h5py
 import scipy
-with h5py.File(base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
         
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])
@@ -45,7 +46,7 @@ with h5py.File(base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
 #%%
-a = np.load(base_folder+'n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy')
+a = np.load(base_folder+'movie.npy')
 a = np.array(a[:, :, :])
 #%%
 from nnls_gpu import compute_theta2, NNLS
@@ -63,23 +64,67 @@ b = Y_tot[:, 0]
 AtA = Ab.T@Ab
 Atb = Ab.T@b
 n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
 theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
 Cf = np.concatenate([C+YrA,f], axis=0)
-Cf_bc = Cf.copy()
 x0 = Cf[:,0].copy()[:,None]
 #%%
-model.compile(optimizer='rmsprop', loss='mse')
-mc0 = a[0, :, :].reshape((1, 512, 512, 1))
-spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a)
-spikes_gpu = spike_extractor.get_spikes(1000)
-#%%
+#cfnn1 = []
+#x_old, y_old = x0[None, :], x0[None, :]
+##template = np.median(a, axis=0)
+##template = template[138:-138, 138:-138, None, None]
+#
+##mc = MotionCorrect(template)
+#ct2 = compute_theta2(Ab, n_AtA)
+#reg = NNLS(theta_1)
+#
+#for i in range(100):
+##    plt.imshow(a[0, :, :])
+##    mc_out = mc(a[i, :, :, None][None, :])
+#    mc_out = Y_tot[:, i:i+1].T
+#    ct2_out = ct2(mc_out)
+#    nnls_out = reg([y_old, x_old, tf.convert_to_tensor(np.zeros_like(1), dtype=tf.int8), ct2_out])
+#    for k in range(1, 10):
+#        nnls_out = reg(nnls_out)
+#
+#    y_old, x_old = nnls_out[0], nnls_out[1]
+#    tf.print(tf.reduce_sum(y_old), tf.reduce_sum(x_old), tf.reduce_sum(nnls_out[3]), "y, x, weight")
+#    cfnn1.append(x_old)    
 
-spikes = np.array(spikes_gpu).squeeze().T
+#cfnn1 = np.squeeze(np.array(cfnn1)).T
+#for vol, ca in zip(cfnn1, (C_full + YrA_full)[:,:100]):
+##    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
+#    plt.cla()
+#    plt.plot((vol), label='volpy')
+#    plt.plot((ca), label='caiman')    
+#    plt.pause(1)
+#%%
+model.compile(optimizer='rmsprop', loss='mse')
+#%%
+from caiman.base.movies import to_3D
+a2 = to_3D(Y_tot, (512, 512, 1825))
+#%%
+spikes = []
+x_old, y_old = x0[None, :], x0[None, :]
+for idx in range(100):
+    fr = Y_tot[:, :, idx:idx+1][None, :]
+#    fr = mov_corr[idx:idx+1, :]
+    nnls_out = model([fr, x_old, y_old, tf.convert_to_tensor([[0]], dtype=tf.int8)])[0]
+    y_old, x_old = nnls_out[0], nnls_out[1]
+    spikes.append(x_old)
+#%%
+mc0 = a2[:, :, 0:1][None, :]
+spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
+spikes_gpu = spike_extractor.get_spikes(100)
+#%%
+spikes = np.array(spikes).squeeze().T
 # plt.plot(spikes)
-for vol, ca in zip(spikes, (C_full + YrA_full)[:,:1000]):
+for vol, ca in zip(spikes, (C_full + YrA_full)[:,:100]):
+#    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
     plt.cla()
     plt.plot((vol), label='volpy')
-    plt.plot((ca), label='caiman')
-    
+    plt.plot((ca), label='caiman')    
     plt.pause(1)
+
+
