@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Thu May 28 22:25:59 2020
@@ -17,6 +17,7 @@ import caiman as cm
 from caiman.base.rois import nf_read_roi_zip
 from caiman.source_extraction.volpy.spikepursuit import signal_filter
 from caiman.base.movies import to_3D
+from metrics import metric
 from nmf_support import hals, combine_datasets, select_masks, normalize
 #%% files for processing
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
@@ -54,6 +55,7 @@ mov, mask = combine_datasets(movies, masks, num_frames, x_shifts=x_shifts,
 # original movie
 y = (cm.movie(-mov)).to_2D().copy()     
 y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
+y_filt = y_filt 
 
 plt.figure();plt.imshow(mov[0])
 plt.figure();plt.imshow(mask[0], alpha=0.5);plt.imshow(mask[1], alpha=0.5)
@@ -78,25 +80,34 @@ for i in seq:
 H = np.vstack(H_tot)
 W = np.hstack(W_tot)
 
-#%% Use hals to optimize spatial filter
+#%% Use hals to optimize masks
+update_bg = True
 y_input = np.maximum(y_filt[:num_frames_init], 0)
 y_input = cm.movie(to_3D(y_input, shape=(num_frames_init,30,30), order='F')).transpose([1,2,0])
 
 H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y.shape[1],1)) / y.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                             update_bg=False, use_spikes=True)
+                             update_bg=update_bg, use_spikes=True)
 for i in range(2):
     plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
-    
-#%% Use nnls to extract signal fast
+
+#%% Use nnls to extract signal for neurons
 fe = slice(0,None)
-trace_all = np.array([nnls(H_new,yy)[0] for yy in (y - (y).min())[fe]]) 
+if update_bg:
+    trace_all = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (y_filt-y_filt.min())[fe]]) 
+else:
+    trace_all = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]]) 
+
 trace_all = signal_filter(trace_all.T,freq = 1/3, fr=frate).T
 trace_all = trace_all - np.median(trace_all, 0)[np.newaxis, :]
-plt.plot(trace_all)
+
+plt.plot(trace_all[:, :])
 trace_all = trace_all.T
 
-#%% F1 score
+trace_all = trace_all[:2]
+plt.plot(trace_all.T)
+
+#%% Extract spikes and compute F1 score
 v_sg = []
 all_f1_scores = []
 all_prec = []
@@ -126,7 +137,6 @@ for idx, k in enumerate(list(file_set)):
         dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
     dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
     
-    from metrics import metric
     precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
                         = metric(dict1['sweep_time'], dict1['e_sg'], 
                               dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
