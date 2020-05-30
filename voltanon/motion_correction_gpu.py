@@ -114,7 +114,7 @@ class MotionCorrect(keras.layers.Layer):
         # extract peaks from 2D tensor (takes batches as input too)
         
         # flatten the Tensor along the height and width axes
-        flat_tensor = tf.reshape(tensor, (1, tensor.shape[1]**2, 1))
+        flat_tensor = tf.reshape(tensor, (1, tensor.shape[-3]*tensor.shape[-2], 1))
 
         argmax= tf.cast(tf.argmax(flat_tensor, axis=1), tf.int32)
         # convert indexes into 2D coordinates
