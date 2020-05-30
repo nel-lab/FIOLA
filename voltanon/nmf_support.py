@@ -173,7 +173,8 @@ def combine_datasets(movies, masks, num_frames, x_shifts=[3,-3], y_shifts=[3,-3]
             new_mask = new_mask.resize(shape[0]/mask.shape[1],shape[1]/mask.shape[2], 1)
             
         if num_frames > mov.shape[0]:
-            mov = np.concatenate((mov, np.zeros((num_frames - mov.shape[0], mov.shape[1], mov.shape[2]))), axis=0)
+            num_diff = num_frames - mov.shape[0]
+            mov = np.concatenate((mov, mov[(mov.shape[0] - num_diff) : mov.shape[0], :, :]), axis=0)
         new_mov += np.roll(mov[:num_frames]*weight, (x_shift, y_shift), axis=(1,2))
         new_mask = np.roll(new_mask, (x_shift, y_shift), axis=(1,2))
         new_masks.append(new_mask[0])   
