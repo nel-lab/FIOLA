@@ -17,7 +17,8 @@ from running_statistics import compute_std, compute_thresh
 
 #%%
 class SignalAnalysisOnline(object):
-    def __init__(self, thresh_STD=None, window = 10000, step = 5000, do_scale=True):
+    def __init__(self, thresh_STD=None, window = 10000, step = 5000, do_scale=True,
+                 percentile_thr_sub=99):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -29,12 +30,15 @@ class SignalAnalysisOnline(object):
                 stride over which to compute the running statistics                
             do_scale: Bool
                 whether to scale the input trace or not
+            percentile_thr_sub: float
+                percentile used as a threshold to decide when to accept a spike
         '''
         self.t_detect = []
         self.thresh_factor = thresh_STD
         self.window = window
         self.step = step
         self.do_scale = do_scale
+        self.percentile_thr_sub=percentile_thr_sub
         
     def fit(self, trace_in, num_frames):
         """
@@ -127,8 +131,7 @@ class SignalAnalysisOnline(object):
             self.peak_height_track[idx] += 1
             if (self.trace_rm[idx, n - 2] > self.thresh_sub[idx, -1]) and (height[idx] > self.thresh[idx, -1]):
                 self.index[idx, self.index_track[idx]] = (n - 2)     
-                self.index_track[idx] +=1
-        
+                self.index_track[idx] +=1        
         
         self.t_detect.append(time() - t_start)
         
@@ -164,7 +167,7 @@ class SignalAnalysisOnline(object):
         tt = -self.trace_rm[idx, (self.n - self.window):self.n][self.trace_rm[idx, (self.n - self.window):self.n] < 0]
         if idx == 0:
             self.thresh_sub = np.append(self.thresh_sub, self.thresh_sub[:, -1:], axis=1)
-        self.thresh_sub[idx, -1] = np.percentile(tt, 99)
+        self.thresh_sub[idx, -1] = np.percentile(tt, self.percentile_thr_sub)
         return self
 
     def compute_SNR(self):

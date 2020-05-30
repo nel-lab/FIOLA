@@ -83,12 +83,12 @@ class compute_theta2(keras.layers.Layer):
         Y = tf.transpose(Y)
         return Y
 #%% EXAMMPLE NEURONS    
-with np.load('/home/nellab/SOFTWARE/SANDBOX/src/regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
+with np.load('/home/andrea/software/SANDBOX/src/regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     print(list(ld.keys()))
     Y_tot = ld['Y']
 import h5py
 import scipy
-with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
     for k,i in f['estimates'].items():
         print((k, i))
     
@@ -149,9 +149,9 @@ theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
 theta_2 = (Atb/n_AtA)[:,None]  
 
 #%% BATCH
-x_old = tf.convert_to_tensor(Cf[:,0].copy()[:,None], dtype=np.float32)
+x_old = tf.convert_to_tensor(Cf[:,0].copy(), dtype=np.float32)
 y_old = tf.identity(x_old)
-fr =  tf.convert_to_tensor(Y[:,0][None,:], dtype=tf.float32)
+fr =  tf.convert_to_tensor(Y[:,0], dtype=tf.float32)
 y_in = tf.keras.layers.Input(shape=y_old.shape)
 x_in = tf.keras.layers.Input(shape=x_old.shape)
 k_in = tf.keras.layers.Input(shape=(1,))
@@ -162,7 +162,7 @@ c_th2 = compute_theta2(A, n_AtA)
 
 th2 = c_th2(b_in) 
 x_kk = nnls([y_in, x_in, k_in, th2])
-for k in range(1,20):    
+for k in range(1,10):    
     x_kk = nnls(x_kk)    
    
 mod = keras.Model(inputs=[b_in, y_in, x_in, k_in], outputs=x_kk)
@@ -180,14 +180,18 @@ for i in range(0,Y.shape[-1], batch_size):
     newy.append(x_old.numpy())
 print(time()-t_0) 
 Cf_nn = np.concatenate(newy,axis=1).squeeze()
- 
+#%% 
 print(np.linalg.norm(Y-Ab@Cf_nn)/np.linalg.norm(Y))
 print(np.linalg.norm(Y-Ab@Cf)/np.linalg.norm(Y))
 #%%
+Cff_naive = Ab.T.dot(Y)
+#%%
 for i in range(20):
     plt.plot(Cf[i,:])
-    plt.plot(Cf_nn[i,1:])
-    plt.pause(1)
+    plt.plot(Cf_nn[i,:])
+    plt.xlim([0,500])
+    plt.ginput(1)
+    # plt.plot(Cff_naive[i,1:])
     plt.cla()  
 
 #%% ONLINE 
@@ -222,3 +226,4 @@ Cf_nn = np.array(newy[:]).squeeze().T
  
 print(np.linalg.norm(Y-Ab@Cf_nn)/np.linalg.norm(Y))
 print(np.linalg.norm(Y-Ab@Cf_bc)/np.linalg.norm(Y))
+#%%

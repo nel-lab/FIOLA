@@ -23,15 +23,17 @@ import timeit
 # import caiman as cm
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
+from caiman_functions import to_3D
 #%%
-base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/'
-#base_folder = '/home/andrea/software/SANDBOX/src/'
+# base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/'
+base_folder = '/home/andrea/software/SANDBOX/src/'
 with np.load(base_folder+'regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     Y_tot = ld['Y']
 import h5py
 import scipy
-with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
-        
+# with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])
     indptr = np.array(f['estimates']['A']['indptr'])
@@ -46,15 +48,17 @@ with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
 #%%
+
+
 #a = np.load(base_folder+'movie.npy')
 #a = np.array(a[:, :, :])
-from caiman.base.movies import to_3D
+
 a2 = to_3D(Y_tot, (512, 512, 1825))
 #%%
 from pipeline_gpu import Pipeline, get_model
 #%%
 template = np.median(a2, axis=2)
-model = get_model(template, A_sp_full, b_full)
+model = get_model(template, A_sp_full, b_full, 30)
 #%%
 f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 YrA = YrA_full[:, 0][:, None]
@@ -68,6 +72,8 @@ n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
 theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
 theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
+
+Cff = np.concatenate([C_full+YrA_full,f_full], axis=0)
 Cf = np.concatenate([C+YrA,f], axis=0)
 x0 = Cf[:,0].copy()[:,None]
 #%%
@@ -116,15 +122,19 @@ model.compile(optimizer='rmsprop', loss='mse')
 #%%
 mc0 = a2[:, :, 0:1][None, :]
 spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
-spikes_gpu = spike_extractor.get_spikes(1800)
+spikes_gpu = spike_extractor.get_spikes(1825)
 #%%
 spikes = np.array(spikes_gpu).squeeze().T
+#%%
+
+#%%
 # plt.plot(spikes)
-for vol, ca in zip(spikes, (C_full + YrA_full)[:,:100]):
+for vol, ca in zip(spikes, Cff[:,:300]):
 #    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
     plt.cla()
     plt.plot((vol), label='volpy')
     plt.plot((ca), label='caiman')    
+    plt.xlim([0,300])
     plt.pause(1)
 
 

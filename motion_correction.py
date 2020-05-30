@@ -65,7 +65,10 @@ movie_folders = ['/home/nel/data/voltage_data/Marton/456462/Cell_4/40x_1xtube_10
                  '/home/nel/data/voltage_data/Marton/456462/Cell_5/40x_1xtube_10A8/movie',
                  '/home/nel/data/voltage_data/Marton/456462/Cell_5/40x_1xtube_10A9/movie',
                  '/home/nel/data/voltage_data/Marton/462149/Cell_3/40x_1xtube_10A3/movie',
-                 '/home/nel/data/voltage_data/Marton/462149/Cell_3/40x_1xtube_10A4/movie'][6:8]
+                 '/home/nel/data/voltage_data/Marton/462149/Cell_3/40x_1xtube_10A4/movie', 
+                 '/home/nel/data/voltage_data/Marton/466769/Cell_2/40x_1xtube_10A_6/movie',
+                 '/home/nel/data/voltage_data/Marton/466769/Cell_2/40x_1xtube_10A_4/movie',
+                 '/home/nel/data/voltage_data/Marton/466769/Cell_3/40x_1xtube_10A_8/movie'][8:]
 
 # %% start a cluster for parallel processing
 c, dview, n_processes = cm.cluster.setup_cluster(
