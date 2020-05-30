@@ -16,7 +16,8 @@ from metrics import metric
 from visualization import plot_marton
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
-               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
+               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][-1]
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
              '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
              '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 

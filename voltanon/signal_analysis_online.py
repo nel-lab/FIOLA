@@ -17,46 +17,88 @@ from running_statistics import compute_std, compute_thresh
 
 #%%
 class SignalAnalysisOnline(object):
-    def __init__(self, params=None, estimates=None, dview=None, thresh_STD=None):
-        #self.params = params
-        #self.estimates = estimates
+    def __init__(self, thresh_STD=None, window = 10000, step = 5000, do_scale=True,
+                 percentile_thr_sub=99):
+        '''
+        Object encapsulating Online Spike extraction from input traces
+        Args:
+            thresh_STD: float  
+                threshold for spike selection, if None computed automatically
+            window: int
+                window over which to compute the running statistics
+            window: int
+                stride over which to compute the running statistics                
+            do_scale: Bool
+                whether to scale the input trace or not
+            percentile_thr_sub: float
+                percentile used as a threshold to decide when to accept a spike
+        '''
         self.t_detect = []
         self.thresh_factor = thresh_STD
-        self.window = 10000
-        self.step = 5000
+        self.window = window
+        self.step = step
+        self.do_scale = do_scale
+        self.percentile_thr_sub=percentile_thr_sub
         
-    def fit(self, trace, num_frames):
+    def fit(self, trace_in, num_frames):
+        """
+        Method for computing spikes in offline mode, and initializer for the online mode
+        Args:
+            trace_in: ndarray
+                the vector (num neurons x time steps) to use to simulate the online process
+        """
         #trace = self.estimates.trace
-        self.trace = np.zeros((trace.shape[0], num_frames), dtype=np.float32)
-        self.trace[:, :trace.shape[1]] = trace
-        self.trace_rm = np.zeros((trace.shape[0], num_frames), dtype=np.float32) 
-        self.median = np.zeros((trace.shape[0],1), dtype=np.float32)
-        self.scale = np.zeros((trace.shape[0],1), dtype=np.float32)
-        self.thresh = np.zeros((trace.shape[0],1), dtype=np.float32)
-        self.thresh_sub = np.zeros((trace.shape[0],1), dtype=np.float32)
-        #self.index = [np.array([], dtype=int) for i in range(trace.shape[0])]
-        self.index = np.zeros((trace.shape[0], num_frames), dtype=np.int32)
-        self.index_track = np.zeros((trace.shape[0]), dtype=np.int32)
-        self.peak_height = np.zeros((trace.shape[0], num_frames), dtype=np.float32)
-        self.peak_height_track = np.zeros((trace.shape[0]), dtype=np.int32)
-        self.SNR = np.zeros((trace.shape[0]), dtype=np.float32)
-        #self.thresh_factor
+        nn, tm = trace_in.shape # number of neurons and time steps
+        # contains all the extracted fluorescence traces
+        self.trace = np.zeros((nn, num_frames), dtype=np.float32) 
+        self.trace[:, :tm] = trace_in
+        # contains @todo
+        self.trace_rm = np.zeros((nn, num_frames), dtype=np.float32) 
+        # running statistics
+        self.median = np.zeros((nn,1), dtype=np.float32)
+        self.scale = self.median.copy()
+        self.thresh =self.median.copy()
+        self.thresh_sub = self.median.copy()
+        # contains @todo
+        self.index = np.zeros((nn, num_frames), dtype=np.int32)
+        self.peak_height = np.zeros((nn, num_frames), dtype=np.float32)
+        self.index_track = np.zeros((nn), dtype=np.int32)        
+        self.peak_height_track = np.zeros((nn), dtype=np.int32)
+        self.SNR = np.zeros((nn), dtype=np.float32)
         t_start = time()
-        for idx, tr in enumerate(trace):        
-            self.trace_rm[idx, :trace.shape[1]], index_init, self.thresh_sub[idx], \
-            self.thresh[idx], peak_height_init, self.median[idx], self.scale[idx], self.thresh_factor \
-            = find_spikes_rh(tr, self.thresh_factor, do_scale=True)             
+        # initialize for each neuron: @todo parallelize
+        for idx, tr in enumerate(trace_in):        
+            output_list = find_spikes_rh(tr, self.thresh_factor, do_scale=self.do_scale)                         
+            self.trace_rm[idx, :tm] = output_list[0]
+            index_init = output_list[1]
+            self.thresh_sub[idx] = output_list[2] 
+            self.thresh[idx] = output_list[3]
+            peak_height_init = output_list[4]
+            self.median[idx] = output_list[5]
+            self.scale[idx] = output_list[6]
+            self.thresh_factor = output_list[7]
+            
             self.index_track[idx] = index_init.shape[0]
             self.peak_height_track[idx] = peak_height_init.shape[0]
             self.index[idx, :self.index_track[idx]] = index_init
             self.peak_height[idx, :self.peak_height_track[idx]] = peak_height_init
-        self.t_detect = self.t_detect + [(time() - t_start) / trace.shape[1]] * trace.shape[1] 
+        
+        self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1] 
+        
         return self
 
     def fit_next(self, trace_in, n):
+        '''
+        Method to incrementally estimate the spikes at each time step
+        Args:
+            trace_in: ndarray
+                vector containing the fluorescence value at a single time point
+            n: time step    
+        '''        
         self.n = n
         if self.n % self.step ==0:
             print(self.n)
+            
         t_start = time()
         # Estimate thresh_sub, median, thresh        
         if (n >= 2.5 * self.window):
@@ -69,10 +111,30 @@ class SignalAnalysisOnline(object):
                     #self.update_thresh(idx)
                 if (n % self.step == idx * 4 + 3):
                     self.update_thresh_sub(idx)
-        self.trace, self.trace_rm, self.index, self.peak_height, self.index_track, self.peak_height_track = find_spikes_rh_multiple \
-        (self.trace, self.trace_rm, trace_in, self.median, self.scale, self.thresh, \
-         self.thresh_sub, self.index, self.peak_height, self.index_track, self.peak_height_track, n)
+                         
+                                          
+        self.trace[:, n:(n + 1)] = trace_in
+        #scale and remove mean
+        trace_in -= self.median[:, -1:]
+        trace_in /= self.scale[:, -1:]
+        self.trace_rm[:, n:(n + 1)] = trace_in
+        # @todo
+        temp = self.trace_rm[:, (n - 2):(n - 1)] - self.trace_rm[:, (n - 4):(n + 1)]    
+        left = np.max((temp[:,0:1], temp[:,1:2]), axis=0)
+        right = np.max((temp[:,3:4], temp[:,4:5]), axis=0)
+        height = np.single(1 / (1 / left + 0.7 / right))
+        
+        indices = np.where(np.logical_and((temp[:,1] > 0), (temp[:,3] > 0)))[0]
+        
+        for idx in indices:
+            self.peak_height[idx, self.peak_height_track[idx]] = height[idx]
+            self.peak_height_track[idx] += 1
+            if (self.trace_rm[idx, n - 2] > self.thresh_sub[idx, -1]) and (height[idx] > self.thresh[idx, -1]):
+                self.index[idx, self.index_track[idx]] = (n - 2)     
+                self.index_track[idx] +=1        
+        
         self.t_detect.append(time() - t_start)
+        
         return self       
 
     def update_median(self, idx):
@@ -105,7 +167,7 @@ class SignalAnalysisOnline(object):
         tt = -self.trace_rm[idx, (self.n - self.window):self.n][self.trace_rm[idx, (self.n - self.window):self.n] < 0]
         if idx == 0:
             self.thresh_sub = np.append(self.thresh_sub, self.thresh_sub[:, -1:], axis=1)
-        self.thresh_sub[idx, -1] = np.percentile(tt, 99)
+        self.thresh_sub[idx, -1] = np.percentile(tt, self.percentile_thr_sub)
         return self
 
     def compute_SNR(self):

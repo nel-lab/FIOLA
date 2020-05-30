@@ -5,7 +5,6 @@ Created on Sat May 23 08:07:20 2020
 
 @author: agiovann
 """
-from caiman.base.movies import rolling_window
 import cv2
 from functools import partial
 import matplotlib.pyplot as plt
@@ -14,6 +13,26 @@ import numpy as np
 #from scipy.interpolate import interp1d
 from scipy import stats
 from scipy.signal import argrelextrema
+
+def rolling_window(ndarr, window_size, stride):   
+        """
+        generates efficient rolling window for running statistics
+        Args:
+            ndarr: ndarray
+                input pixels in format pixels x time
+            window_size: int
+                size of the sliding window
+            stride: int
+                stride of the sliding window
+        Returns:
+                iterator with views of the input array
+                
+        """
+        for i in range(0,ndarr.shape[-1]-window_size-stride+1,stride): 
+            yield ndarr[:,i:np.minimum(i+window_size, ndarr.shape[-1])]
+            
+        if i+stride != ndarr.shape[-1]:
+           yield ndarr[:,i+stride:]
 
 def estimate_running_std(signal_in, win_size=20000, stride=5000, 
                          idx_exclude=None, q_min=25, q_max=75):
