@@ -33,17 +33,18 @@ import h5py
 import scipy
 # with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
 with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
-
+    
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])
     indptr = np.array(f['estimates']['A']['indptr'])
     shape = np.array(f['estimates']['A']['shape'])
-    idx_components = f['estimates']['idx_components']
+    idx_components = f['estimates']['idx_components'][:1]
     A_sp_full = scipy.sparse.csc_matrix((data[:], indices[:], indptr[:]), shape[:])
     YrA_full = np.array(f['estimates']['YrA'])
     C_full = np.array(f['estimates']['C']) 
-    b_full = np.array(f['estimates']['b']) 
-    f_full = np.array(f['estimates']['f'])
+    b_full = np.array(f['estimates']['b'])
+    b_full = b_full[:,:1]
+    f_full = np.array(f['estimates']['f'])[:1]
     A_sp_full = A_sp_full[:,idx_components ]
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
@@ -52,14 +53,10 @@ with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_ord
 
 #a = np.load(base_folder+'movie.npy')
 #a = np.array(a[:, :, :])
-
 a2 = to_3D(Y_tot, (512, 512, 1825))
 #%%
-from pipeline_gpu import Pipeline, get_model
 #%%
 template = np.median(a2, axis=2)
-model = get_model(template, A_sp_full, b_full, 30)
-#%%
 f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 YrA = YrA_full[:, 0][:, None]
 C = C_full[:, 0][:, None]
@@ -76,6 +73,11 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 Cff = np.concatenate([C_full+YrA_full,f_full], axis=0)
 Cf = np.concatenate([C+YrA,f], axis=0)
 x0 = Cf[:,0].copy()[:,None]
+#%%
+from pipeline_gpu import Pipeline, get_model
+model = get_model(template, Ab.astype(np.float32), 30)
+#%%
+
 #%%
 #cfnn1 = []
 #x_old, y_old = x0[None, :], x0[None, :]
@@ -126,7 +128,7 @@ spikes_gpu = spike_extractor.get_spikes(1825)
 #%%
 spikes = np.array(spikes_gpu).squeeze().T
 #%%
-
+print(np.linalg.norm(Y_tot[:,:-1]-Ab@spikes)/np.linalg.norm(Y_tot[:,:-1]))
 #%%
 # plt.plot(spikes)
 for vol, ca in zip(spikes, Cff[:,:300]):

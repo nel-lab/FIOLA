@@ -111,40 +111,33 @@ if do_plot:
     plt.figure()
     plt.plot(trace_nnls.T) 
 #%%
-template = np.median(mov, axis=0)
+mov_in = mov.transpose([1,2,0])
+Ab = H_new.astype(np.float32)
+template = np.median(mov_in, axis=-1)
+mc0 = mov_in[:,:,0:1][None, :]
+b =  to_2D(mov).T[:, 0]
+x0 = nnls(Ab,b)[0][:,None]
+AtA = Ab.T@Ab
+Atb = Ab.T@b
+n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 #%%
 from pipeline_gpu import Pipeline, get_model
-Ab = H_new.astype(np.float32)
-model = get_model(template, Ab, 10)
+model = get_model(template, Ab, 30)
 model.compile(optimizer='rmsprop', loss='mse')
+spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
+traces_viola = spike_extractor.get_spikes(100000)
 #%%
-mc0 = mov[0:1][None, :]
-x0 = trace_nnls[:,0].copy()[:,None]
-b =  to_2D(mov).T[:, 0]
-AtA = Ab.T@Ab
-Atb = Ab.T@b
-n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov)
-traces_viola = spike_extractor.get_spikes(1825)
+traces_viola = np.array(traces_viola).squeeze().T
+traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
+traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
+traces_viola = -traces_viola.T
+traces_viola = traces_viola[:2]
 #%%
-f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
-YrA = YrA_full[:, 0][:, None]
-C = C_full[:, 0][:, None]
-
-Ab = np.concatenate([H_new[:], np.zeros((H_new.shape[0],1))], axis=1).astype(np.float32)
-b = Y_tot[:, 0]
-AtA = Ab.T@Ab
-Atb = Ab.T@b
-n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
-theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-
-
-Cff = np.concatenate([C_full+YrA_full,f_full], axis=0)
-Cf = np.concatenate([C+YrA,f], axis=0)
-x0 = Cf[:,0].copy()[:,None]
-trace_all = trace_nnls
+plt.plot(np.concatenate([traces_viola[0],0])-trace_nnls[0])
+# plt.plot(trace_nnls[0])
+#%%
+trace_all = traces_viola
 #%% Extract spikes and compute F1 score
 v_sg = []
 all_f1_scores = []

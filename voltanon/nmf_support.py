@@ -98,8 +98,8 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
                                       threshold=4, threshold_method='adaptive_threshold')
         Cf = Cf_processed
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
-        for i in range(Ab.shape[1]):
-            plt.figure();plt.imshow(Ab[:, i].reshape(Y.shape[0:2], order='F'));plt.colorbar()
+        # for i in range(Ab.shape[1]):
+        #     plt.figure();plt.imshow(Ab[:, i].reshape(Y.shape[0:2], order='F'));plt.colorbar()
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
 
@@ -135,7 +135,7 @@ def select_masks(Y, shape, mask=None):
         mask = cv2.dilate(mask,np.ones((4,4),np.uint8),iterations = 1)
         mask = (mask < 1)
     Y = to_2D((1.0 - mask)*m) 
-    plt.figure();plt.plot(((m * (1.0 - mask)).mean(axis=(1, 2))))
+    # plt.figure();plt.plot(((m * (1.0 - mask)).mean(axis=(1, 2))))
     return Y, mask 
 
 def combine_datasets(movies, masks, num_frames, x_shifts=[3,-3], y_shifts=[3,-3], weights=None, shape=(15,15)):

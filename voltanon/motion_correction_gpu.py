@@ -39,10 +39,11 @@ class MotionCorrect(keras.layers.Layer):
         super().__init__(**kwargs)
         self.shp_x, self.shp_y = template.shape[0], template.shape[1]
         self.c_shp_x, self.c_shp_y = self.shp_x//4, self.shp_y//4
-
+        ms_h, ms_w = ms_h//4, ms_w//4
+        
         self.template_0 = template
         self.template=self.template_0[self.c_shp_x+ms_w:-(self.c_shp_x+ms_w),self.c_shp_y+ms_h:-(self.c_shp_y+ms_h), None, None]
-
+        tf.print(self.template.shape)
         self.ms_h = ms_h
         self.ms_w = ms_w
         self.strides = strides

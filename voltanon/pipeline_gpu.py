@@ -66,9 +66,11 @@ class Pipeline(object):
         """
         Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
         To run, after initializing, run self.get_spikes()
+        @todo: check if nAtA is computed at every iteration!
         """
         self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
         self.tot = tot
+        self.num_neurons = tht2.shape[0]
         self.dim_x, self.dim_y = self.mc0.shape[1], self.mc0.shape[2]
         self.zero_tensor = [[0.0]]
         
@@ -103,8 +105,8 @@ class Pipeline(object):
                                                                "x": tf.float32,
                                                                "k": tf.float32}, 
                                                  output_shapes={"m":(1, self.dim_x, self.dim_y, 1),
-                                                                "y":(1, 572, 1),
-                                                                "x":(1, 572, 1),
+                                                                "y":(1, self.num_neurons, 1),
+                                                                "x":(1, self.num_neurons, 1),
                                                                 "k":(1, 1)})
         return dataset
     
@@ -123,7 +125,7 @@ class Pipeline(object):
         start = timeit.default_timer()
         for idx in range(1, bound):
 
-            self.frame_input_q.put(self.tot[idx:idx+1][None, :])
+            self.frame_input_q.put(self.tot[:, :, idx:idx+1][None, :])
         
             out = self.output_q.get()
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
