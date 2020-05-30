@@ -12,10 +12,8 @@ import numpy as np
 import pylab as plt
 import scipy.ndimage as nd
 import scipy.sparse as spr
-
-import caiman as cm
-from caiman.base.movies import to_3D
-from caiman.source_extraction.volpy.spikepursuit import denoise_spikes
+from caiman_functions import to_3D, to_2D
+from spikepursuit import denoise_spikes
 
 
 def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
@@ -136,7 +134,7 @@ def select_masks(Y, shape, mask=None):
     else:
         mask = cv2.dilate(mask,np.ones((4,4),np.uint8),iterations = 1)
         mask = (mask < 1)
-    Y = cm.movie((1.0 - mask)*m).to_2D() 
+    Y = to_2D((1.0 - mask)*m) 
     plt.figure();plt.plot(((m * (1.0 - mask)).mean(axis=(1, 2))))
     return Y, mask 
 
