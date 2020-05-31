@@ -65,7 +65,7 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 Cf = np.concatenate([C_full+YrA,f_full], axis=0)
 x0 = Cf[:,0:batch_size].copy()
 #%%
-model = get_model(template, A_sp_full, b_full, batch_size)
+model = get_model(template, Ab, batch_size)
 model.compile(optimizer='rmsprop', loss='mse')
 #%%
 num_frames = 1800
