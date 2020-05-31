@@ -151,7 +151,7 @@ else:
         trace_nnls = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (-y)[fe]])
     else:
         trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
-    if False:
+    if True:
         trace_nnls = signal_filter(trace_nnls.T,freq = 1/3, fr=frate).T
         trace_nnls -= np.median(trace_nnls, 0)[np.newaxis, :]
         trace_nnls = -trace_nnls.T
