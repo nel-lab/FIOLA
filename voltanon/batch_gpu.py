@@ -17,7 +17,7 @@ from queue import Queue
 import timeit
 
 #%%
-def get_model(template, A_sp, b_full, batch_size):
+def get_model(template, Ab, batch_size):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
@@ -31,7 +31,7 @@ def get_model(template, A_sp, b_full, batch_size):
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
     k_in = tf.keras.layers.Input(shape=(1,), name="k")
     #Calculations to initialize Motion Correction
-    Ab = np.concatenate([A_sp.toarray()[:], b_full], axis=1).astype(np.float32)
+#    Ab = np.concatenate([A_sp.toarray()[:], b_full], axis=1).astype(np.float32)
     AtA = Ab.T@Ab
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
@@ -108,9 +108,9 @@ class Pipeline(object):
     def generator(self):
         #generator waits until data has been enqueued, then yields the data to the dataset
         while True:
+            fr = self.frame_input_q.get()
             out = self.spike_input_q.get()
             (y, x) = out
-            fr = self.frame_input_q.get()
             
             yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
@@ -118,14 +118,14 @@ class Pipeline(object):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
         output = []
         start = timeit.default_timer()
-        for idx in range(self.batch_size, bound+self.batch_size, self.batch_size):
+        for idx in range(self.batch_size, bound, self.batch_size):
 #            st = timeit.default_timer()
-            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
-        
             out = self.output_q.get()
-            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             output.append(out["nnls_1"])
+            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
 #            output.append(timeit.default_timer()-st)
+        output.append(self.output_q.get()["nnls_1"])
         print(timeit.default_timer()-start)
         return output
 #%%
