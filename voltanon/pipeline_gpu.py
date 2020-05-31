@@ -124,12 +124,13 @@ class Pipeline(object):
         output = []
         start = timeit.default_timer()
         for idx in range(1, bound):
-
-            self.frame_input_q.put(self.tot[:, :, idx:idx+1][None, :])
-        
+            
             out = self.output_q.get()
-            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            self.frame_input_q.put(self.tot[:, :, idx:idx+1][None, :])
             output.append(out["nnls_1"])
+            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            
+        output.append(self.output_q.get()["nnls_1"])
         print(timeit.default_timer()-start)
         return output
     

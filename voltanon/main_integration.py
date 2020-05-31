@@ -98,7 +98,6 @@ if do_plot:
     for i in range(2):
         plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     
-
 #%%
 use_GPU = False
 if use_GPU: 
@@ -118,6 +117,24 @@ if use_GPU:
     model.compile(optimizer='rmsprop', loss='mse')
     spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
     traces_viola = spike_extractor.get_spikes(100000)
+    #%%
+    #%% FOR BATCHES:
+    # from batch_gpu import Pipeline, get_model
+    # batch_size = 20
+    # num_frames = 1800
+
+    # model_batch = get_model(template, Ab, batch_size)
+    # model_batch.compile(optimizer = 'rmsprop',loss='mse')
+
+    # mc0 = mov_in[0:batch_size, :, :, None][None, :]
+    # x0 = nnls(Ab,b)[0]
+    # x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
+    # spike_extractor = Pipeline(model, x_old, y_old, mc0, theta_2, mov_in, batch_size)
+    # spikes_gpu = spike_extractor.get_spikes(num_frames)
+    # traces_viola = []
+    # for spike in spikes_gpu:
+    #     for i in range(batch_size):
+    #         traces_viola.append(spike[i])
     #%%
     traces_viola = np.array(traces_viola).squeeze().T
     traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
