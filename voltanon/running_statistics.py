@@ -12,8 +12,71 @@ import numpy as np
 #import scipy
 #from scipy.interpolate import interp1d
 from scipy import stats
-from scipy.signal import argrelextrema
+from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi
+from caiman_functions import signal_filter
 
+
+class OnlineFilter(object):
+    def __init__(self, freq, fr, order=3, mode='high'):
+        '''
+        Object encapsulating Online filtering for spike extraction traces
+        Args:
+            freq: float
+            cutoff frequency
+        
+        order: int
+            order of the filter
+        
+        mode: str
+            'high' for high-pass filtering, 'low' for low-pass filtering
+            
+        '''
+        self.freq = freq
+        self.fr = fr
+        self.mode = mode
+        self.order=order
+        self.normFreq = freq / (fr / 2)        
+        self.filt = butter(self.order, self.normFreq, self.mode, output='sos')         
+        self.z_init = sosfilt_zi(self.filt)
+        
+    
+    def fit(self, sig):
+        """
+        Online filter initialization and running offline
+
+        Parameters
+        ----------
+        sig : ndarray
+            input signal to initialize
+        num_frames_buf : int
+            frames to use for buffering
+
+        Returns
+        -------
+        sig_filt: ndarray
+            filtered signal
+
+        """
+        sig_filt = signal_filter(sig, freq=self.freq, fr=self.fr, order=self.order, mode=self.mode)
+        # result_init, z_init = signal.sosfilt(b, data[:,:20000], zi=z)
+        
+        self.z_init = np.repeat(self.z_init[:,:,None], sig.shape[0], axis=-1)
+    
+        for i in range(0,sig.shape[-1]-1):
+            _ , self.z_init = sosfilt(self.filt, np.expand_dims(sig[:,i], axis=1), zi=self.z_init)
+                        
+        return sig_filt 
+
+    def fit_next(self, sig):
+        
+        sig_filt, self.z_init = sosfilt(self.filt, np.expand_dims(sig,axis=1), zi=self.z_init)
+        return sig_filt.squeeze()
+
+       
+            
+
+        
+        
 def rolling_window(ndarr, window_size, stride):   
         """
         generates efficient rolling window for running statistics

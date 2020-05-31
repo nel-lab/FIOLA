@@ -26,7 +26,7 @@ from metrics import metric
 from nmf_support import hals, select_masks, normalize
 from skimage.io import imread
 import h5py
-
+from running_statistics import OnlineFilter
 #%% files for processing
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
                '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
@@ -126,20 +126,32 @@ if use_GPU:
     trace_all = np.hstack([traces_viola,np.zeros((traces_viola.shape[0],1))])
 
 else:
-    #%% Use nnls to extract signal for neurons
+    #%% Use nnls to extract signal for neurons or not and filter
+    from running_statistics import OnlineFilter       
+    from time import time
     fe = slice(0,None)
     if update_bg:
         trace_nnls = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (-y)[fe]])
     else:
         trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
-    
-    trace_nnls = signal_filter(trace_nnls.T,freq = 1/3, fr=frate).T
-    trace_nnls -= np.median(trace_nnls, 0)[np.newaxis, :]
-    trace_nnls = -trace_nnls.T
-    if do_plot:
-        plt.figure()
-        plt.plot(trace_nnls.T) 
-    trace_all = trace_nnls
+    if False:
+        trace_nnls = signal_filter(trace_nnls.T,freq = 1/3, fr=frate).T
+        trace_nnls -= np.median(trace_nnls, 0)[np.newaxis, :]
+        trace_nnls = -trace_nnls.T
+        trace_all = trace_nnls 
+    else: # filter online
+        trace_all = trace_nnls.T
+        onFilt = OnlineFilter(freq=1/3, fr=frate)
+        trace_filt = np.zeros_like(trace_all)
+        trace_filt[:,:20000] = onFilt.fit(trace_all[:,:20000])    
+        time0 = time()
+        for i in range(20000, trace_all.shape[-1]):
+            trace_filt[:,i] = onFilt.fit_next(trace_all[:,i])
+        print(time()-time0)
+        trace_all -= np.median(trace_all.T, 0)[np.newaxis, :].T
+        trace_all = -trace_filt
+
+
 #%%
 # idxv = 0
 # plt.plot(np.hstack([traces_viola[idxv],0])-trace_nnls[idxv])
@@ -147,7 +159,8 @@ else:
 # #%%
 # plt.plot(trace_nnls[idxv])
 # plt.plot(traces_viola[idxv])
-#%%
+#%% process all traces at once
+
 #%% Extract spikes and compute F1 score
 v_sg = []
 all_f1_scores = []
@@ -209,4 +222,3 @@ print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
 print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
 print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
 print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
-plt.pause(15)

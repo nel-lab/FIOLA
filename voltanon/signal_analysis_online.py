@@ -49,9 +49,6 @@ class SignalAnalysisOnline(object):
         """
         #trace = self.estimates.trace
         nn, tm = trace_in.shape # number of neurons and time steps
-        # trace_in = signal_filter(trace_in, freq = freq , fr=frate)
-        # trace_in -= np.median(trace_in, 0)[np.newaxis, :]
-        # trace_in = -trace_in.T
         # contains all the extracted fluorescence traces
         self.trace = np.zeros((nn, num_frames), dtype=np.float32) 
         self.trace[:, :tm] = trace_in
@@ -103,12 +100,7 @@ class SignalAnalysisOnline(object):
             print(self.n)
             
         t_start = time()
-        # b = signal.butter(15, 0.01, btype='lowpass', output='sos')
-        # z = signal.sosfilt_zi(b)
-        # result, z = signal.sosfilt(b, data, zi=z)        
-        # result = zeros(data.size)
-        # for i, x in enumerate(data):
-        #    result[i], z = signal.sosfilt(b, [x], zi=z)
+       
         # Estimate thresh_sub, median, thresh        
         if (n >= 2.5 * self.window):
             for idx in range(self.trace.shape[0]):

@@ -131,5 +131,6 @@ def signal_filter(sg, freq, fr, order=3, mode='high'):
     """
     normFreq = freq / (fr / 2)
     b, a = signal.butter(order, normFreq, mode)
+    print([order, normFreq, mode])
     sg = np.single(signal.filtfilt(b, a, sg, padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
     return sg
