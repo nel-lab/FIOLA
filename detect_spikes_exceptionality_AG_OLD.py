@@ -499,22 +499,48 @@ if False:
     plt.plot(normalize(sub_1))  
     
     #%%
-    plt.plot(signal_no_subthr)
+    from scipy import signal
 
-    from scipy import zeros, signal, random
     
-    data = img
-#    b, a = scipy.signal.butter(2, 0.1)
-#    filtered = scipy.signal.lfilter(b, a, data)
-#    result= data - filtered
-##    nans, x= nan_helper(data)
-##    data[nans]= np.intezrp(x(nans), x(~nans), data[~nans])
-##    data = scipy.signal.medfilt(data, kernel_size=21)
-##    data = img-data
-    b = signal.butter(15, 0.01, btype='lowpass', output='sos')
+    data = np.repeat(trace_all,2, axis=1).T
+
+    b = signal.butter(1, 0.0016666666666666666, 'high', output='sos')
     z = signal.sosfilt_zi(b)
-    result, z = signal.sosfilt(b, data, zi=z)
-#    plt.plot(result)
-    result = zeros(data.size)
-    for i, x in enumerate(data):
-        result[i], z = signal.sosfilt(b, [x], zi=z)
+    z = np.repeat(z[:,:,None], data.shape[0], axis=-1)
+    result_init, z_init = signal.sosfilt(b, data[:,:20000], zi=z)
+    result_vpy = signal_filter(data,freq=1/3,fr=400)
+
+
+    result_sosonline = np.zeros(data.shape)
+    result_sosonline_2 = np.zeros(data.shape)
+
+    result_sosonline[:,:20000] = result_vpy[:,:20000] 
+    result_sosonline_2[:,:20000] = result_vpy[:,:20000] 
+    z1 = z.copy()
+    for i in range(0,data.shape[-1]):
+        if i<20000:
+            _ , z = signal.sosfilt(b, data[:,i:i+1], zi=z )
+            # _ , z1 = signal.sosfilt(b, data[:,i:i+10], zi=z1 )
+            
+        else:
+            result_sosonline[:,i:i+1], z = signal.sosfilt(b, np.expand_dims(data[:,i], axis=1), zi=z )
+            # result_sosonline_2[:,i:i+2], z1 = signal.sosfilt(b, data[:,i:i+2], zi=z1 )
+#%%
+plt.plot(-result_sosonline[0].T); 
+# plt.plot(-result_sosonline_2[0].T); 
+plt.plot(-result_vpy[0].T)            
+#%%
+from running_statistics import OnlineFilter       
+from time import time
+onFilt = OnlineFilter(1/3, 400)
+sig_filt = np.zeros_like(data)
+sig_filt[:,:20000] = onFilt.fit(data[:,:20000])    
+time0 = time()
+for i in range(20000, data.shape[-1]):
+    sig_filt[:,i] = onFilt.fit_next(data[:,i])
+print(time()-time0)
+plt.plot(-result_vpy[0].T)
+plt.plot(-sig_filt[0].T)
+
+
+#%%
