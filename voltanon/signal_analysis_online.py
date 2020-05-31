@@ -76,7 +76,7 @@ class SignalAnalysisOnline(object):
             peak_height_init = output_list[4]
             self.median[idx] = output_list[5]
             self.scale[idx] = output_list[6]
-            self.thresh_factor = output_list[7]
+            self.thresh_factor = None
             
             self.index_track[idx] = index_init.shape[0]
             self.peak_height_track[idx] = peak_height_init.shape[0]

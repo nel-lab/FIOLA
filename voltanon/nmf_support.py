@@ -116,8 +116,9 @@ def select_masks(Y, shape, mask=None):
     Returns:
         updated mask and Y
     """
-    m = to_3D(Y,shape=shape, order='F')
+    
     if mask is None:
+        m = to_3D(Y,shape=shape, order='F')
         frame = m[:10000].std(axis=0)
         plt.figure()
         plt.imshow(frame, cmap=mpl_cm.Greys_r)
@@ -131,10 +132,12 @@ def select_masks(Y, shape, mask=None):
                 for cidx, pt in enumerate(row):
                     if path.contains_point([cidx, ridx]):
                         mask[ridx, cidx] = False
+        Y = to_2D((1.0 - mask)*m) 
     else:
         mask = cv2.dilate(mask,np.ones((4,4),np.uint8),iterations = 1)
         mask = (mask < 1)
-    Y = to_2D((1.0 - mask)*m) 
+        mask_2D = mask.reshape((mask.shape[0] * mask.shape[1]), order='F')
+        Y = Y * (1.0 - mask_2D)
     # plt.figure();plt.plot(((m * (1.0 - mask)).mean(axis=(1, 2))))
     return Y, mask 
 
