@@ -29,8 +29,8 @@ import h5py
 from running_statistics import OnlineFilter
 #%% files for processing
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
-               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
-               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][-1]
+               '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
+               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][-2]
 lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.tif',
              '456462_Cell_3_40x_1xtube_10A3_mc.tif', '456462_Cell_5_40x_1xtube_10A5_mc.tif',
              '456462_Cell_5_40x_1xtube_10A6_mc.tif', '456462_Cell_5_40x_1xtube_10A7_mc.tif', 
@@ -41,8 +41,8 @@ lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.ti
              '466769_Cell_2_40x_1xtube_10A_4_mc.tif', '466769_Cell_3_40x_1xtube_10A_8_mc.tif']
 fnames = [os.path.join(base_folder, file) for file in lists]
 freq_400 = [True, True, True, True, True, True, False, True, True, True, True, True, False, False, False, False]
-movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons',
-                '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][-1]
+movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons',
+                '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][-2]
 
 #%% Combine datasets
 file_set = [0, 1]
@@ -81,7 +81,7 @@ for i in seq:
     y_seq = y_seq - W@H
     W_tot.append(W)
     H_tot.append(H)
-    plt.figure();plt.plot(W);
+    plt.figure();plt.plot(W)
     plt.figure();plt.imshow(H.reshape(mov.shape[1:], order='F'));plt.colorbar()
 H = np.vstack(H_tot)
 W = np.hstack(W_tot)
@@ -98,44 +98,61 @@ if do_plot:
     for i in range(2):
         plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     
-#%%
-use_GPU = False
-if use_GPU: 
-    mov_in = mov.transpose([1,2,0])
+#%% Motion correct and use NNLS to extract signals
+use_GPU = True
+use_batch = False
+if use_GPU:
+    mov_in = mov 
     Ab = H_new.astype(np.float32)
-    template = np.median(mov_in, axis=-1)
-    mc0 = mov_in[:,:,0:1][None, :]
-    b =  to_2D(mov).T[:, 0]
-    x0 = nnls(Ab,b)[0][:,None]
-    AtA = Ab.T@Ab
-    Atb = Ab.T@b
-    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-    #%%
-    from pipeline_gpu import Pipeline, get_model
-    model = get_model(template, Ab, 30)
-    model.compile(optimizer='rmsprop', loss='mse')
-    spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-    traces_viola = spike_extractor.get_spikes(100000)
-    #%%
-    #%% FOR BATCHES:
-    # from batch_gpu import Pipeline, get_model
-    # batch_size = 20
-    # num_frames = 1800
+    template = np.median(mov_in, axis=0)
+    if not use_batch:
 
-    # model_batch = get_model(template, Ab, batch_size)
-    # model_batch.compile(optimizer = 'rmsprop',loss='mse')
+        b = to_2D(mov).T[:, 0]
+        x0 = nnls(Ab,b)[0][:,None]
+        AtA = Ab.T@Ab
+        Atb = Ab.T@b
+        n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+        theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+        mc0 = mov_in[0:1,:,:, None]
 
-    # mc0 = mov_in[0:batch_size, :, :, None][None, :]
-    # x0 = nnls(Ab,b)[0]
-    # x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
-    # spike_extractor = Pipeline(model, x_old, y_old, mc0, theta_2, mov_in, batch_size)
-    # spikes_gpu = spike_extractor.get_spikes(num_frames)
-    # traces_viola = []
-    # for spike in spikes_gpu:
-    #     for i in range(batch_size):
-    #         traces_viola.append(spike[i])
-    #%%
+        from pipeline_gpu import Pipeline, get_model
+        model = get_model(template, Ab, 30)
+        model.compile(optimizer='rmsprop', loss='mse')
+        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
+        traces_viola = spike_extractor.get_spikes(10)
+
+    else:
+    #FOR BATCHES:
+        batch_size = 2
+        num_frames = 1800
+        num_components = Ab.shape[-1]
+
+        template = np.median(mov_in, axis=0)
+        
+        b = to_2D(mov).T[:, 0:batch_size]
+        x0=[]
+        for i in range(batch_size):
+            x0.append(nnls(Ab,b[:,i])[0])
+        x0 = np.array(x0).T
+        AtA = Ab.T@Ab
+        Atb = Ab.T@b
+        n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+        theta_2 = (Atb/n_AtA).astype(np.float32)
+
+        from batch_gpu import Pipeline, get_model
+
+        model_batch = get_model(template, Ab, num_components, batch_size)
+        model_batch.compile(optimizer = 'rmsprop',loss='mse')
+
+        mc0 = mov_in[0:batch_size, :, :, None][None, :]
+        x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
+        spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
+        spikes_gpu = spike_extractor.get_spikes(10)
+        traces_viola = []
+        for spike in spikes_gpu:
+            for i in range(batch_size):
+                traces_viola.append(spike[i])
+
     traces_viola = np.array(traces_viola).squeeze().T
     traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
     traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
@@ -143,7 +160,7 @@ if use_GPU:
     trace_all = np.hstack([traces_viola,np.zeros((traces_viola.shape[0],1))])
 
 else:
-    #%% Use nnls to extract signal for neurons or not and filter
+    #Use nnls to extract signal for neurons or not and filter
     from running_statistics import OnlineFilter       
     from time import time
     fe = slice(0,None)
