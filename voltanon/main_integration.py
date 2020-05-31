@@ -1,18 +1,11 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sat May 30 09:30:11 2020
-
-@author: andrea
-"""
-
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Created on Thu May 28 22:25:59 2020
+Created on Sat May 30 09:30:11 2020
 Use hals algorithm to refine spatial components extracted by rank-1 nmf. 
-Use nnls and sao for further processing.
-@author: @agiovann and @caichangjia
+Use nnls with gpu for signal extraction 
+Use sao for spike extraction
+@author: @agiovann, @caichangjia, @cynthia
 """
 #%%
 from caiman_functions import signal_filter, to_3D, to_2D
@@ -31,6 +24,7 @@ from running_statistics import OnlineFilter
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
                '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
                '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][-2]
+
 lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.tif',
              '456462_Cell_3_40x_1xtube_10A3_mc.tif', '456462_Cell_5_40x_1xtube_10A5_mc.tif',
              '456462_Cell_5_40x_1xtube_10A6_mc.tif', '456462_Cell_5_40x_1xtube_10A7_mc.tif', 
@@ -39,42 +33,58 @@ lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.ti
              '456462_Cell_5_40x_1xtube_10A8_mc.tif', '456462_Cell_5_40x_1xtube_10A9_mc.tif', 
              '462149_Cell_3_40x_1xtube_10A3_mc.tif', '466769_Cell_2_40x_1xtube_10A_6_mc.tif',
              '466769_Cell_2_40x_1xtube_10A_4_mc.tif', '466769_Cell_3_40x_1xtube_10A_8_mc.tif']
-fnames = [os.path.join(base_folder, file) for file in lists]
+fnames = [os.path.join(base_folder, file) for file in lists[:8]]
 freq_400 = [True, True, True, True, True, True, False, True, True, True, True, True, False, False, False, False]
+
 movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons',
-                '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][-2]
+                '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][0]
 
 #%% Combine datasets
-file_set = [0, 1]
-name_set = fnames[file_set[0]: file_set[1] + 1]
+one_comp = True
 
-name = 'neuron0&1_x[1, -1]_y[1, -1].tif'
-frate = 400
-mov = imread(os.path.join(movie_folder, name))
-with h5py.File(os.path.join(movie_folder, name[:-4]+'_ROIs.hdf5'),'r') as h5:
-   mask = np.array(h5['mov'])
+if one_comp:
+    file_set = [0]
+    name = lists[file_set[0]]
+    mov = imread(os.path.join(base_folder, name))
+    with h5py.File(os.path.join(base_folder, name[:-7]+'_ROI.hdf5'),'r') as h5:
+        mask = np.array(h5['mov'])
+
+else:
+    file_set = [0, 1]
+    name_set = fnames[file_set[0]: file_set[1] + 1]
+    
+    name = 'neuron0&1_x[1, -1]_y[1, -1].tif'
+    frate = 400
+    mov = imread(os.path.join(movie_folder, name))
+    
+    with h5py.File(os.path.join(movie_folder, name[:-4]+'_ROIs.hdf5'),'r') as h5:
+       mask = np.array(h5['mov'])
 
 # original movie
 y = to_2D(-mov).copy()     
 y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
 y_filt = y_filt 
 
-do_plot = False
+do_plot = True
 if do_plot:
     plt.figure()
     plt.imshow(mov[0])
     plt.figure()
-    plt.imshow(mask[0], alpha=0.5)
-    plt.imshow(mask[1], alpha=0.5)
+    for i in range(mask.shape[0]):
+        plt.imshow(mask[i], alpha=0.5)
 
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 20000
 y_seq = y_filt[:num_frames_init,:].copy()
 W_tot = []
 H_tot = []
-seq = [1,0]
+mask_2D = to_2D(mask)
+std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+seq = np.argsort(std)[::-1]
+print(f'sequence of rank1-nmf: {seq}')
+
 for i in seq:
-    model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=True)
+    model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
     y_temp, _ = select_masks(y_seq, mov[:num_frames_init].shape, mask=mask[i])
     W = model.fit_transform(np.maximum(y_temp,0))
     H = model.components_
@@ -88,14 +98,14 @@ W = np.hstack(W_tot)
 #%% Use hals to optimize masks
 update_bg = False
 y_input = np.maximum(y_filt[:num_frames_init], 0)
-y_input =to_3D(y_input, shape=(num_frames_init,30,30), order='F').transpose([1,2,0])
+y_input =to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
 
 H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y.shape[1],1)) / y.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
                              update_bg=update_bg, use_spikes=True)
 plt.close('all')
 if do_plot:
-    for i in range(2):
+    for i in range(mask.shape[0]):
         plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     
 #%% Motion correct and use NNLS to extract signals
@@ -168,14 +178,14 @@ else:
         trace_nnls = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (-y)[fe]])
     else:
         trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
-    if True:
+    if False:
         trace_nnls = signal_filter(trace_nnls.T,freq = 1/3, fr=frate).T
         trace_nnls -= np.median(trace_nnls, 0)[np.newaxis, :]
         trace_nnls = -trace_nnls.T
         trace_all = trace_nnls 
     else: # filter online
         trace_all = trace_nnls.T
-        onFilt = OnlineFilter(freq=1/3, fr=frate)
+        onFilt = OnlineFilter(freq=1/3, fr=frate, mode='high')
         trace_filt = np.zeros_like(trace_all)
         trace_filt[:,:20000] = onFilt.fit(trace_all[:,:20000])    
         time0 = time()
@@ -184,6 +194,19 @@ else:
         print(time()-time0)
         trace_all -= np.median(trace_all.T, 0)[np.newaxis, :].T
         trace_all = -trace_filt
+
+#%%
+#butter, sos = onFilt.fit(trace_all[:,:20000])    
+#plt.figure();plt.plot(butter[0,3000:], label='butter');plt.plot(sos[0,3000:], label='online');plt.legend()
+butter = signal_filter(trace_nnls.T,freq = 1/3, fr=frate).T
+
+plt.plot(-trace_nnls[:,0])
+
+#%%
+plt.plot(normalize(-trace_filt.flatten()), label='online')
+plt.plot(normalize(-butter.flatten()), label='butter')
+#plt.plot(t3, label='volpy')
+plt.legend()
 
 
 #%%
@@ -202,8 +225,8 @@ all_prec = []
 all_rec = []
 all_snr = []
 for idx, k in enumerate(list(file_set)):
-    trace = trace_all[seq[idx]:seq[idx]+1, :]
-    sao = SignalAnalysisOnline(thresh_STD=4)
+    trace = trace_all[seq[idx]:seq[idx]+1, :].copy()
+    sao = SignalAnalysisOnline(thresh_STD=4, percentile_thr_sub=75)
     #sao.fit(trr_postf[:20000], len())
     #trace=dict1['v_sg'][np.newaxis, :]
     sao.fit(trace[:, :20000], num_frames=100000, frate=frate)
@@ -237,7 +260,7 @@ for idx, k in enumerate(list(file_set)):
     all_rec.append(np.array(recall).round(2))
     all_snr.append(sao.SNR[0].round(3))
 #%%
-show_frames = 50000 
+show_frames = 80000 
 #%matplotlib auto
 t1 = normalize(trace_all[0])
 t2 = normalize(trace_all[1])

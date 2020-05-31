@@ -60,11 +60,13 @@ class OnlineFilter(object):
         sig_filt = signal_filter(sig, freq=self.freq, fr=self.fr, order=self.order, mode=self.mode)
         # result_init, z_init = signal.sosfilt(b, data[:,:20000], zi=z)
         
-        self.z_init = np.repeat(self.z_init[:,:,None], sig.shape[0], axis=-1)
+        self.z_init = np.repeat(self.z_init[:,None,:], sig.shape[0], axis=1)
     
+        #sos_all = np.zeros(sig_filt.shape)
+
         for i in range(0,sig.shape[-1]-1):
             _ , self.z_init = sosfilt(self.filt, np.expand_dims(sig[:,i], axis=1), zi=self.z_init)
-                        
+            
         return sig_filt 
 
     def fit_next(self, sig):
