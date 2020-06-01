@@ -41,6 +41,7 @@ movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlappin
 
 #%% Combine datasets
 one_comp = True
+frate=400
 
 if one_comp:
     file_set = [0]
@@ -109,8 +110,10 @@ if do_plot:
         plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     
 #%% Motion correct and use NNLS to extract signals
+import tensorflow as tf
+tf.keras.backend.clear_session()
 use_GPU = True
-use_batch = False
+use_batch = True
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
@@ -129,11 +132,11 @@ if use_GPU:
         model = get_model(template, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
         spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-        traces_viola = spike_extractor.get_spikes(10)
+        traces_viola = spike_extractor.get_spikes(1000)
 
     else:
     #FOR BATCHES:
-        batch_size = 2
+        batch_size = 20
         num_frames = 1800
         num_components = Ab.shape[-1]
 
@@ -157,13 +160,13 @@ if use_GPU:
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_spikes(10)
+        spikes_gpu = spike_extractor.get_spikes(1000)
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):
-                traces_viola.append(spike[i])
+                traces_viola.append([spike[:,:,i]])
 
-    traces_viola = np.array(traces_viola).squeeze().T
+    traces_viola = np.array(traces_viola).squeeze(axis=1).squeeze(axis=1).T
     traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
     traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
     traces_viola = -traces_viola.T
