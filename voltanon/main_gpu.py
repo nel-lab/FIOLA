@@ -7,7 +7,6 @@ Created on Wed May 27 21:18:19 2020
 """
 #%%
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
@@ -38,13 +37,13 @@ with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_ord
     indices = np.array(f['estimates']['A']['indices'])
     indptr = np.array(f['estimates']['A']['indptr'])
     shape = np.array(f['estimates']['A']['shape'])
-    idx_components = f['estimates']['idx_components'][:1]
+    idx_components = f['estimates']['idx_components']
     A_sp_full = scipy.sparse.csc_matrix((data[:], indices[:], indptr[:]), shape[:])
     YrA_full = np.array(f['estimates']['YrA'])
     C_full = np.array(f['estimates']['C']) 
     b_full = np.array(f['estimates']['b'])
-    b_full = b_full[:,:1]
-    f_full = np.array(f['estimates']['f'])[:1]
+    b_full = b_full
+    f_full = np.array(f['estimates']['f'])
     A_sp_full = A_sp_full[:,idx_components ]
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
@@ -56,7 +55,7 @@ with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_ord
 a2 = to_3D(Y_tot, (512, 512, 1825))
 #%%
 #%%
-template = np.median(a2, axis=2)
+template = np.median(a2, axis=-1)
 f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 YrA = YrA_full[:, 0][:, None]
 C = C_full[:, 0][:, None]
@@ -123,12 +122,12 @@ model.compile(optimizer='rmsprop', loss='mse')
 #    spikes2.append(x_old)
 #%%
 mc0 = a2[:, :, 0:1][None, :]
-spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
+spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2.transpose([2,0,1]))
 spikes_gpu = spike_extractor.get_spikes(1825)
 #%%
 spikes = np.array(spikes_gpu).squeeze().T
 #%%
-print(np.linalg.norm(Y_tot[:,:-1]-Ab@spikes)/np.linalg.norm(Y_tot[:,:-1]))
+print(np.linalg.norm(Y_tot-Ab@spikes)/np.linalg.norm(Y_tot))
 #%%
 # plt.plot(spikes)
 for vol, ca in zip(spikes, Cff[:,:300]):
