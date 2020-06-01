@@ -48,7 +48,7 @@ a2 = np.transpose(Y_tot.reshape(512, 512, 1825))
 #%%
 from batch_gpu import Pipeline, get_model
 #%%
-batch_size=1
+batch_size=5
 template = np.median(a2, axis=0)
 f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 YrA = YrA_full[:, 0][:, None]
@@ -65,13 +65,13 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 Cf = np.concatenate([C_full+YrA,f_full], axis=0)
 x0 = Cf[:,0:batch_size].copy()
 #%%
-model = get_model(template, Ab, batch_size)
+model = get_model(template, Ab, 572, batch_size)
 model.compile(optimizer='rmsprop', loss='mse')
 #%%
 num_frames = 1800
 mc0 = a2[0:batch_size, :, :, None][None, :]
 x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
-spike_extractor = Pipeline(model, x_old, y_old, mc0, theta_2, a2, batch_size)
+spike_extractor = Pipeline(model, x_old, y_old, mc0, theta_2, a2, 572, batch_size)
 spikes_gpu = spike_extractor.get_spikes(num_frames)
 #%%
 temp = []

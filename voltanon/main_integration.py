@@ -135,52 +135,71 @@ if do_plot:
     for i in range(mask.shape[0]):
         plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     
-#%%
-use_GPU = False
-if use_GPU: 
-    mov_in = mov.transpose([1,2,0])
+#%% Motion correct and use NNLS to extract signals
+import tensorflow as tf
+tf.keras.backend.clear_session()
+use_GPU = True
+use_batch = True
+if use_GPU:
+    mov_in = mov 
     Ab = H_new.astype(np.float32)
-    template = np.median(mov_in, axis=-1)
-    mc0 = mov_in[:,:,0:1][None, :]
-    b =  to_2D(mov).T[:, 0]
-    x0 = nnls(Ab,b)[0][:,None]
-    AtA = Ab.T@Ab
-    Atb = Ab.T@b
-    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-    #%%
-    from pipeline_gpu import Pipeline, get_model
-    model = get_model(template, Ab, 30)
-    model.compile(optimizer='rmsprop', loss='mse')
-    spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-    traces_viola = spike_extractor.get_spikes(100000)
-    #%%
-    #%% FOR BATCHES:
-    # from batch_gpu import Pipeline, get_model
-    # batch_size = 20
-    # num_frames = 1800
+    template = np.median(mov_in, axis=0)
+    if not use_batch:
 
-    # model_batch = get_model(template, Ab, batch_size)
-    # model_batch.compile(optimizer = 'rmsprop',loss='mse')
+        b = to_2D(mov).T[:, 0]
+        x0 = nnls(Ab,b)[0][:,None]
+        AtA = Ab.T@Ab
+        Atb = Ab.T@b
+        n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+        theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+        mc0 = mov_in[0:1,:,:, None]
 
-    # mc0 = mov_in[0:batch_size, :, :, None][None, :]
-    # x0 = nnls(Ab,b)[0]
-    # x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
-    # spike_extractor = Pipeline(model, x_old, y_old, mc0, theta_2, mov_in, batch_size)
-    # spikes_gpu = spike_extractor.get_spikes(num_frames)
-    # traces_viola = []
-    # for spike in spikes_gpu:
-    #     for i in range(batch_size):
-    #         traces_viola.append(spike[i])
-    #%%
-    traces_viola = np.array(traces_viola).squeeze().T
+        from pipeline_gpu import Pipeline, get_model
+        model = get_model(template, Ab, 30)
+        model.compile(optimizer='rmsprop', loss='mse')
+        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
+        traces_viola = spike_extractor.get_spikes(1000)
+
+    else:
+    #FOR BATCHES:
+        batch_size = 20
+        num_frames = 1800
+        num_components = Ab.shape[-1]
+
+        template = np.median(mov_in, axis=0)
+        
+        b = to_2D(mov).T[:, 0:batch_size]
+        x0=[]
+        for i in range(batch_size):
+            x0.append(nnls(Ab,b[:,i])[0])
+        x0 = np.array(x0).T
+        AtA = Ab.T@Ab
+        Atb = Ab.T@b
+        n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+        theta_2 = (Atb/n_AtA).astype(np.float32)
+
+        from batch_gpu import Pipeline, get_model
+
+        model_batch = get_model(template, Ab, num_components, batch_size)
+        model_batch.compile(optimizer = 'rmsprop',loss='mse')
+
+        mc0 = mov_in[0:batch_size, :, :, None][None, :]
+        x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
+        spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
+        spikes_gpu = spike_extractor.get_spikes(1000)
+        traces_viola = []
+        for spike in spikes_gpu:
+            for i in range(batch_size):
+                traces_viola.append([spike[:,:,i]])
+
+    traces_viola = np.array(traces_viola).squeeze(axis=1).squeeze(axis=1).T
     traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
     traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
     traces_viola = -traces_viola.T
     trace_all = np.hstack([traces_viola,np.zeros((traces_viola.shape[0],1))])
 
 else:
-    #%% Use nnls to extract signal for neurons or not and filter
+    #Use nnls to extract signal for neurons or not and filter
     from running_statistics import OnlineFilter       
     from time import time
     fe = slice(0,None)

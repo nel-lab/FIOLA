@@ -17,7 +17,7 @@ from queue import Queue
 import timeit
 
 #%%
-def get_model(template, Ab, batch_size):
+def get_model(template, Ab, num_components, batch_size):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
@@ -26,8 +26,8 @@ def get_model(template, Ab, batch_size):
 
 #    template = template[c_shp_x+10:-(c_shp_x+10),c_shp_y+10:-(c_shp_y+10), None, None]
 
-    y_in = tf.keras.layers.Input(shape=tf.TensorShape([572, batch_size]), name="y") # Input Layer for components
-    x_in = tf.keras.layers.Input(shape=tf.TensorShape([572, batch_size]), name="x") # Input layer for components
+    y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
+    x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
     k_in = tf.keras.layers.Input(shape=(1,), name="k")
     #Calculations to initialize Motion Correction
@@ -51,20 +51,21 @@ def get_model(template, Ab, batch_size):
         x_kk = nnls(x_kk)
    
     #create final model, returns it and the first weight
-    model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
-    return model
+    mod = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
+    return mod
 
 #%%
     
 class Pipeline(object):
     
-    def __init__(self, model, y_0, x_0, mc_0, tht2, tot, batch_size):
+    def __init__(self, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size):
         """
         Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
         To run, after initializing, run self.get_spikes()
         """
         self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
         self.batch_size = batch_size
+        self.num_components = num_components
         self.tot = tot
         self.dim_x, self.dim_y = self.mc0.shape[2], self.mc0.shape[3]
         self.zero_tensor = [[0.0]]
@@ -77,7 +78,7 @@ class Pipeline(object):
         self.estimator = self.load_estimator()
         
         #seed the queues
-        self.frame_input_q.put(self.mc0)
+        self.frame_input_q.put(mc_0)
         self.spike_input_q.put((y_0, x_0))
 
         #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
@@ -100,8 +101,8 @@ class Pipeline(object):
                                                                "x": tf.float32,
                                                                "k": tf.float32}, 
                                                  output_shapes={"m":(1, self.batch_size, self.dim_x, self.dim_y, 1),
-                                                                "y":(1, 572, self.batch_size),
-                                                                "x":(1, 572, self.batch_size),
+                                                                "y":(1, self.num_components, self.batch_size),
+                                                                "x":(1, self.num_components, self.batch_size),
                                                                 "k":(1, 1)})
         return dataset
     
@@ -111,7 +112,6 @@ class Pipeline(object):
             fr = self.frame_input_q.get()
             out = self.spike_input_q.get()
             (y, x) = out
-            
             yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
     def get_spikes(self, bound):
@@ -120,9 +120,10 @@ class Pipeline(object):
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
 #            st = timeit.default_timer()
+
             out = self.output_q.get()
-            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             output.append(out["nnls_1"])
+            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
 #            output.append(timeit.default_timer()-st)
         output.append(self.output_q.get()["nnls_1"])
@@ -161,8 +162,8 @@ class MotionCorrect(keras.layers.Layer):
         self.template=self.template_0[self.c_shp_x+ms_w:-(self.c_shp_x+ms_w),self.c_shp_y+ms_h:-(self.c_shp_y+ms_h), None, None]
         self.batch_size = batch_size
 
-        self.ms_h = ms_h
-        self.ms_w = ms_w
+        self.ms_h = ms_h//4
+        self.ms_w = ms_w//4
         self.strides = strides
         self.padding = padding
         self.epsilon = epsilon
