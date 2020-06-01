@@ -131,12 +131,13 @@ spikes = np.array(spikes_gpu).squeeze().T
 print(np.linalg.norm(Y_tot-Ab@spikes)/np.linalg.norm(Y_tot))
 #%%
 # plt.plot(spikes)
-for vol, ca in zip(spikes, Cff[:,:300]):
+if False:
+    for vol, ca in zip(spikes, Cff[:,:300]):
 #    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
-    plt.cla()
-    plt.plot((vol), label='volpy')
-    plt.plot((ca), label='caiman')    
-    plt.xlim([0,300])
-    plt.pause(1)
+        plt.cla()
+        plt.plot((vol), label='volpy')
+        plt.plot((ca), label='caiman')    
+        plt.xlim([0,300])
+        plt.pause(1)
 
 
