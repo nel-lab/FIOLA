@@ -7,7 +7,6 @@ Created on Wed May 27 21:18:19 2020
 """
 #%%
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
@@ -26,13 +25,15 @@ from tensorflow.python.keras import backend as K
 from caiman_functions import to_3D
 #%%
 # base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/'
-base_folder = '/home/andrea/software/SANDBOX/src/'
+#base_folder = '/home/andrea/software/SANDBOX/src/'
+base_folder = '/mnt/home/agiovann/SOFTWARE/SANDBOX/src/'
 with np.load(base_folder+'regression_n.01.01_less_neurons.npz', allow_pickle=True) as ld:
     Y_tot = ld['Y']
 import h5py
 import scipy
 # with h5py.File('/home/nellab/caiman_data/example_movies/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
-with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+#with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
+with h5py.File('/mnt/home/agiovann/SOFTWARE/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
     
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])

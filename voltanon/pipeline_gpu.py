@@ -68,7 +68,7 @@ class Pipeline(object):
         To run, after initializing, run self.get_spikes()
         @todo: check if nAtA is computed at every iteration!
         """
-        self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
+        self.model, self.mc0, self.y_0, self.x_0, self.tht2 = model, mc_0, y_0, x_0, tht2
         self.tot = tot
         self.num_neurons = tht2.shape[0]
         self.dim_x, self.dim_y = self.mc0.shape[1], self.mc0.shape[2]
@@ -83,7 +83,7 @@ class Pipeline(object):
         
         #seed the queues
         self.frame_input_q.put(self.mc0)
-        self.spike_input_q.put((y_0, x_0))
+        self.spike_input_q.put((self.y_0, self.x_0))
 
         #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
             #pull from the generator.
@@ -133,5 +133,7 @@ class Pipeline(object):
             
         output.append(self.output_q.get()["nnls_1"])
         print(timeit.default_timer()-start)
+        self.frame_input_q.put(self.mc0)
+        self.spike_input_q.put((self.y_0, self.x_0))
         return output
     

@@ -87,10 +87,8 @@ class Pipeline(object):
         self.extraction_thread.start()
         
     def extract(self):
-        print("start extraction", self.frame_input_q.qsize())
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
 #            print(i.keys())
-            print("in extraction")
             self.output_q.put(i)
     
     def load_estimator(self):
@@ -114,8 +112,6 @@ class Pipeline(object):
             fr = self.frame_input_q.get()
             out = self.spike_input_q.get()
             (y, x) = out
-            print(y,x)
-            
             yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
     def get_spikes(self, bound):
@@ -124,10 +120,10 @@ class Pipeline(object):
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
 #            st = timeit.default_timer()
-            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
 
             out = self.output_q.get()
             output.append(out["nnls_1"])
+            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
 #            output.append(timeit.default_timer()-st)
         output.append(self.output_q.get()["nnls_1"])
@@ -166,8 +162,8 @@ class MotionCorrect(keras.layers.Layer):
         self.template=self.template_0[self.c_shp_x+ms_w:-(self.c_shp_x+ms_w),self.c_shp_y+ms_h:-(self.c_shp_y+ms_h), None, None]
         self.batch_size = batch_size
 
-        self.ms_h = ms_h
-        self.ms_w = ms_w
+        self.ms_h = ms_h//4
+        self.ms_w = ms_w//4
         self.strides = strides
         self.padding = padding
         self.epsilon = epsilon
