@@ -7,7 +7,6 @@ Created on Wed May 27 21:18:19 2020
 """
 #%%
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
