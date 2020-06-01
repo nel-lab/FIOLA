@@ -51,7 +51,7 @@ if n_neurons in ['1', '2']:
 elif n_neurons == 'many':
     movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data'][0]
     
-    movie_lists = ['demo_voltage_imaging.hdf5', 
+    movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um.hdf5']
 #%% Choosing datasets
 if n_neurons == '1':
@@ -78,7 +78,7 @@ elif n_neurons == 'many':
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
-    with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
+    with h5py.File(os.path.join(movie_folder, name[:-8]+'_ROIs.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
 
 
@@ -100,7 +100,7 @@ if do_plot:
             plt.imshow(mask[i], alpha=0.5)
 
 #%% Use nmf sequentially to extract all neurons in the region
-num_frames_init = 20000
+num_frames_init = 10000
 y_seq = y_filt[:num_frames_init,:].copy()
 W_tot = []
 H_tot = []
@@ -245,10 +245,10 @@ else:
 #%%
 if n_neurons == 'many':
     trace = trace_all[:].copy()
-    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=50)
-    sao.fit(trace[:, :20000], num_frames=trace.shape[1], frate = frate)
-    #for n in range(10000, trace.shape[1]):
-    #    sao.fit_next(trace[:, n: n+1], n)
+    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+    sao.fit(trace[:, :10000], num_frames=trace.shape[1], frate = frate)
+    for n in range(10000, trace.shape[1]):
+        sao.fit_next(trace[:, n: n+1], n)
     sao.compute_SNR()
     print(f'thresh:{sao.thresh}')
     print(f'SNR: {sao.SNR}')
@@ -261,17 +261,18 @@ if n_neurons == 'many':
     estimates = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/estimates.npy', 
                         allow_pickle=True).item()
     #%%
-    idx_volpy = 7
+    idx_volpy = 0
     idx = np.where(seq==idx_volpy)[0][0]
     
+    spikes_online = list(set(sao.index[idx]) - set([0]))
     plt.figure()
-    plt.plot(sao.trace_rm[idx], label='online')
-    plt.plot(normalize(estimates['t'][idx_volpy]), label='volpy')
-    plt.vlines(list(set(sao.index[idx])), -2, -1, color='r')
+    plt.plot(sao.trace_rm[idx], label=f'online_{len(spikes_online)}')
+    plt.plot(normalize(estimates['t'][idx_volpy]), label=f'volpy_{estimates["spikes"][idx_volpy].shape[0]}')
+    plt.vlines(spikes_online, -2, -1, color='r')
     plt.vlines(estimates['spikes'][idx_volpy], -3, -2, color='black')
     print(len(list(set(sao.index[idx]))))
     plt.legend()
-
+    
 #%% Extract spikes and compute F1 score
 if n_neurons in ['1', '2']:
     v_sg = []
@@ -282,7 +283,7 @@ if n_neurons in ['1', '2']:
     for idx, k in enumerate(list(file_set)):
         trace = trace_all[seq[idx]:seq[idx]+1, :].copy()
         #trace = dc_blocked[np.newaxis,:].copy()
-        sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+        sao = SignalAnalysisOnline(thresh_STD=7, percentile_thr_sub=99)
         #sao.fit(trr_postf[:20000], len())
         #trace=dict1['v_sg'][np.newaxis, :]
         sao.fit(trace[:, :20000], num_frames=100000, frate=frate)
@@ -317,6 +318,11 @@ if n_neurons in ['1', '2']:
         all_snr.append(sao.SNR[0].round(3))
 #%%
 if n_neurons == '1':
+    #plt.plot(dict1['v_t'], sao.trace.flatten())
+    plt.plot(dict1['v_t'], normalize(sao.trace.flatten()))
+    plt.plot(dict1['e_t'], normalize(dict1['e_sg'])/10)
+    plt.vlines(dict1_v_sp_, -2, -1)    
+
 
 elif n_neurons == '2':
     show_frames = 80000 

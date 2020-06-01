@@ -17,7 +17,7 @@ from visualization import plot_marton
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
                '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
-               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][-1]
+               '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new'][1]
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
              '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
              '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
@@ -103,10 +103,10 @@ for k in np.array(list(range(0, 8))):
     #indexes = find_spikes_rh(img, thresh_height)[0]
     #indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
     img = img.astype(np.float32)
-    sao = SignalAnalysisOnline(thresh_STD=None)
-    #trace = img[np.newaxis, :]
-    trace = np.array([img for i in range(50)])
-    sao.fit(trace[:, :20000], num_frames=100000)
+    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+    trace = img[np.newaxis, :]
+    #trace = np.array([img for i in range(50)])
+    sao.fit(trace[:, :20000], num_frames=100000, frate=400)
     for n in range(20000, img.shape[0]):
         sao.fit_next(trace[:, n: n+1], n)
     indexes = np.array((list(set(sao.index[0]) - set([0]))))  
