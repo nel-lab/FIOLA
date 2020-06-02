@@ -18,7 +18,7 @@ from queue import Queue
 import timeit
 import scipy
 #%%
-def get_model(template, center_dims, Ab, num_layers=10):
+def get_model(template, center_dims, Ab, num_layers=5):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
@@ -122,19 +122,20 @@ class Pipeline(object):
     def get_spikes(self, bound):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
         output = [0]*bound
-        times = [0]*bound
+        # times = [0]*bound
         start = timeit.default_timer()
         for idx in range(1, bound):
-            out = self.output_q.get()
-            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
             self.frame_input_q.put(self.tot[idx:idx+1,:,:, None])
 
+            out = self.output_q.get()
+            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
             output[idx-1] = out["nnls_1"]
-            times[idx-1]= timeit.default_timer()-start
+            # times[idx-1]= timeit.default_timer()-start
             
         output[-1] = (self.output_q.get()["nnls_1"])
         print(timeit.default_timer()-start)
         self.frame_input_q.put(self.mc0)
         self.spike_input_q.put((self.y_0, self.x_0))
-        return (output, times)
+        # return (output, times)
+        return output
     
