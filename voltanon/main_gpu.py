@@ -33,6 +33,7 @@ import scipy
 with h5py.File('/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/JG10982_171121_field3_stim_00002_00001_results.hdf5','r') as f:
 # with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
 # with h5py.File('/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/example_movies/k56_20160608_RSM_125um_41mW_zoom2p2_00001_00034_results.hdf5','r') as f:
+
     
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])

@@ -68,7 +68,7 @@ class SignalAnalysisOnline(object):
         t_start = time()
         # initialize for each neuron: @todo parallelize
         for idx, tr in enumerate(trace_in):        
-            output_list = find_spikes_rh(tr, self.thresh_factor, do_scale=self.do_scale)                         
+            output_list = find_spikes_rh(tr, self.thresh_factor, do_scale=self.do_scale, thresh_percentile=self.percentile_thr_sub)                         
             self.trace_rm[idx, :tm] = output_list[0]
             index_init = output_list[1]
             self.thresh_sub[idx] = output_list[2] 

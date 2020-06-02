@@ -221,7 +221,7 @@ def nan_helper(y):
 #%%
 def find_spikes_rh(t, thresh_height=None, window_length = 2, 
                            width_descending_peak=0.7,
-                           do_scale=False):
+                           do_scale=False, thresh_percentile=99):
     """ Find spikes based on the relative height of peaks
     Args:
         t: 1-D array
@@ -283,7 +283,7 @@ def find_spikes_rh(t, thresh_height=None, window_length = 2,
 
     # Only select peaks above subthreshold
     tt = -t[t<0]
-    thresh_sub = np.percentile(tt, 99)
+    thresh_sub = np.percentile(tt, thresh_percentile)
     index_sub = np.where(t > thresh_sub)[0]
     index = np.intersect1d(index,index_sub)    
 

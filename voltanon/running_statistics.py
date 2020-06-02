@@ -169,16 +169,20 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_
         mnt = (minima_2nd-thresh)
         mnt = mnt[mnt<0]
         thresh += mnt[np.maximum(-len(mnt)+1,-number_maxima_before)]
+    #else:
+    #    thresh = 100
+        
+    thresh_7 = compute_std(peak_height) * 7.5
     
     """
     print(f'previous thresh: {prev_thresh}')
     print(f'current thresh: {thresh}')  
     """
-    
     plt.figure()
     plt.plot(x_val, pdf,'c')    
     plt.plot(x_val[2:],second_der*500,'r')  
     plt.plot(thresh,0, '*')   
+    plt.vlines(thresh_7, 0, 2, color='r')
     plt.pause(0.1)
     
     return thresh
