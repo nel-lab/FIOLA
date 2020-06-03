@@ -24,23 +24,27 @@ import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 from caiman_functions import to_3D, to_2D
 #%%
-base_folder = '/home/nellab/SOFTWARE/SANDBOX/src/'
-# base_folder = '/home/andrea/software/SANDBOX/src/'
-# with np.load('/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/JG10982_171121_field3_stim_00002_00001.tif', allow_pickle=True) as ld:
-#     Y_tot = ld['Y']
+base_folder = '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls/'
+
+caiman_saved_file = base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5'
+a2 = np.load(base_folder+"n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy")
+# a2 = io.imread(base_folder+"JG10982_171121_field3_stim_00002_00001.tif")
+# a2 = io.imread("/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/example_movies/k56_20160608_RSM_125um_41mW_zoom2p2_00001_00034.tif")
+Y_tot = to_2D(a2).T
+
 import h5py
 import scipy
-with h5py.File('/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/JG10982_171121_field3_stim_00002_00001_results.hdf5','r') as f:
+with h5py.File(caiman_saved_file,'r') as f:
 # with h5py.File('/home/andrea/software/SANDBOX/src/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5','r') as f:
 # with h5py.File('/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/example_movies/k56_20160608_RSM_125um_41mW_zoom2p2_00001_00034_results.hdf5','r') as f:
-
-    
     data = np.array(f['estimates']['A']['data'])
     indices = np.array(f['estimates']['A']['indices'])
     indptr = np.array(f['estimates']['A']['indptr'])
     shape = np.array(f['estimates']['A']['shape'])
-    # idx_components = np.array(f['estimates']['idx_components'])
-    idx_components = np.arange(shape[-1])
+    try:
+        idx_components = np.array(f['estimates']['idx_components'])
+    except:
+        idx_components = np.arange(shape[-1])
     A_sp_full = scipy.sparse.csc_matrix((data[:], indices[:], indptr[:]), shape[:])
     YrA_full = np.array(f['estimates']['YrA'])
     C_full = np.array(f['estimates']['C']) 
@@ -52,12 +56,6 @@ with h5py.File('/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/JG
     YrA_full = YrA_full[idx_components]
 #%%
 
-a2 = io.imread("/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/JG10982_171121_field3_stim_00002_00001.tif")
-# a2 = io.imread("/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/example_movies/k56_20160608_RSM_125um_41mW_zoom2p2_00001_00034.tif")
-#a = np.load(base_folder+'movie.npy')
-#a = np.array(a[:, :, :])
-# a2 = to_3D(a)
-Y_tot = to_2D(a2).T
 
 #%%
 template = np.median(a2, axis=0)
@@ -143,8 +141,6 @@ model = get_model(template, (256, 256), Ab.astype(np.float32), 30)
 #%%
 model.compile(optimizer='rmsprop', loss='mse')
 #%%
-
-#%%
 #spikes2 = []
 #x_old, y_old = x0[None, :], x0[None, :]
 #for idx in range(10):
@@ -159,20 +155,26 @@ mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
 spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
 out = spike_extractor.get_spikes(1825)
 #%%
-spikes_gpu = out[0]
-spikes = np.array(spikes_gpu).squeeze().T
+spikes_gpu = out
+spikes = np.array(spikes_gpu).T.squeeze()
 #%%
 print(np.linalg.norm(Y_tot-Ab@spikes)/np.linalg.norm(Y_tot))
+
 #%%
 # plt.plot(spikes)
 if False:
     for vol, ca in zip(spikes, Cff[:,:300]):
 #    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
+
         plt.cla()
         plt.plot((vol), label='volpy')
         plt.plot((ca), label='caiman')    
         plt.xlim([0,300])
         plt.pause(1)
+#%%
+del model
+del spike_extractor
+tf.keras.backend.clear_session()
 
 
 
