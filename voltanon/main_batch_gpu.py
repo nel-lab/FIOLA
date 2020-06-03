@@ -65,7 +65,9 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 Cf = np.concatenate([C_full+YrA,f_full], axis=0)
 x0 = Cf[:,0:batch_size].copy()
 #%%
-model = get_model(template, Ab, 572, batch_size)
+num_neurons = 572
+center_dims = (256, 256)
+model = get_model(template, center_dims, Ab, num_neurons, batch_size)
 model.compile(optimizer='rmsprop', loss='mse')
 #%%
 num_frames = 1800

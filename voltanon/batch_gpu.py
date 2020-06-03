@@ -17,7 +17,7 @@ from queue import Queue
 import timeit
 
 #%%
-def get_model(template, Ab, num_components, batch_size):
+def get_model(template, center_dims, Ab, num_components, batch_size):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
@@ -38,7 +38,7 @@ def get_model(template, Ab, num_components, batch_size):
 #    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
     #Initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template, batch_size)   
+    mc_layer = MotionCorrect(template, center_dims, batch_size)   
     mc = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
@@ -116,28 +116,30 @@ class Pipeline(object):
 
     def get_spikes(self, bound):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
-        output = []
+        output = [0]*bound
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
 #            st = timeit.default_timer()
 
             out = self.output_q.get()
-            output.append(out["nnls_1"])
+            output[idx-1] = out["nnls_1"]
             self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
 #            output.append(timeit.default_timer()-st)
-        output.append(self.output_q.get()["nnls_1"])
+        output[-1] = self.output_q.get()["nnls_1"]
         print(timeit.default_timer()-start)
         return output
 #%%
 class MotionCorrect(keras.layers.Layer):
-    def __init__(self, template, batch_size, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
+    def __init__(self, template, center_dims, batch_size, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
         """
         Tenforflow layer which perform motion correction on batches of frames. Notice that the input must be a 
         tensorflow tensor with dimension batch x width x height x channel
         Args:
            template: ndarray
                template against which to register
+            center_dims: tuple of ints
+                dimensions after cropping movie and template
            ms_h: int
                estimated minimum value of vertical shift
            ms_w: int
@@ -156,14 +158,18 @@ class MotionCorrect(keras.layers.Layer):
         """
         super().__init__(**kwargs)
         self.shp_x, self.shp_y = template.shape[0], template.shape[1]
-        self.c_shp_x, self.c_shp_y = self.shp_x//4, self.shp_y//4
+        self.center_dims = center_dims
+        self.c_shp_x, self.c_shp_y = (self.shp_x - center_dims[0])//2, (self.shp_y - center_dims[1])//2
 
         self.template_0 = template
-        self.template=self.template_0[self.c_shp_x+ms_w:-(self.c_shp_x+ms_w),self.c_shp_y+ms_h:-(self.c_shp_y+ms_h), None, None]
+        self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
+        
+        if self.template.shape[0] < 10 or self.template.shape[1] < 10:
+            raise ValueError("The vertical or horizontal shift you entered is too large for the given video dimensions. Enter a smaller shift.")
         self.batch_size = batch_size
 
-        self.ms_h = ms_h//4
-        self.ms_w = ms_w//4
+        self.ms_h = ms_h
+        self.ms_w = ms_w
         self.strides = strides
         self.padding = padding
         self.epsilon = epsilon
@@ -180,7 +186,7 @@ class MotionCorrect(keras.layers.Layer):
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         X = X[0]
-        X_center = X[:, self.c_shp_x:-self.c_shp_x, self.c_shp_y:-self.c_shp_y, :]
+        X_center = X[:, self.c_shp_x:(self.shp_x-self.c_shp_x), self.c_shp_y:(self.shp_y-self.c_shp_y), :]
 
         # pass in center for normalization
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
@@ -205,7 +211,7 @@ class MotionCorrect(keras.layers.Layer):
     def get_config(self):
         base_config = super().get_config().copy()
         return {**base_config, "template": self.template_0,"strides": self.strides, "batch_size":self.batch_size,
-                "padding": self.padding, "epsilon": self.epsilon, 
+                "center_dims":self.center_dims,"padding": self.padding, "epsilon": self.epsilon, 
                                         "ms_h": self.ms_h,"ms_w": self.ms_w }  
         
     def normalize_template(self, template, epsilon=0.00000001):

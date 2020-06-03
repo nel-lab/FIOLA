@@ -18,7 +18,7 @@ from queue import Queue
 import timeit
 import scipy
 #%%
-def get_model(template, Ab, num_layers=10):
+def get_model(template, center_dims, Ab, num_layers=5):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
@@ -42,7 +42,7 @@ def get_model(template, Ab, num_layers=10):
 #    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
     #Initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template)   
+    mc_layer = MotionCorrect(template, center_dims)   
     mc = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
@@ -121,19 +121,21 @@ class Pipeline(object):
 
     def get_spikes(self, bound):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
-        output = []
+        output = [0]*bound
+        # times = [0]*bound
         start = timeit.default_timer()
         for idx in range(1, bound):
-
             self.frame_input_q.put(self.tot[idx:idx+1,:,:, None])
 
             out = self.output_q.get()
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
-            output.append(out["nnls_1"])
+            output[idx-1] = out["nnls_1"]
+            # times[idx-1]= timeit.default_timer()-start
             
-        output.append(self.output_q.get()["nnls_1"])
+        output[-1] = (self.output_q.get()["nnls_1"])
         print(timeit.default_timer()-start)
         self.frame_input_q.put(self.mc0)
         self.spike_input_q.put((self.y_0, self.x_0))
+        # return (output, times)
         return output
     

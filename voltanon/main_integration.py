@@ -49,9 +49,10 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[4, -2]_y[4, -2].tif', 
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
-    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data'][0]
+    movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
+                    ''][0]
     
-    movie_lists = ['demo_voltage_imaging.hdf5', 
+    movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um.hdf5']
 #%% Choosing datasets
 if n_neurons == '1':
@@ -78,7 +79,7 @@ elif n_neurons == 'many':
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
-    with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
+    with h5py.File(os.path.join(movie_folder, name[:-8]+'_ROIs.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
 
 
@@ -100,7 +101,7 @@ if do_plot:
             plt.imshow(mask[i], alpha=0.5)
 
 #%% Use nmf sequentially to extract all neurons in the region
-num_frames_init = 20000
+num_frames_init = 10000
 y_seq = y_filt[:num_frames_init,:].copy()
 W_tot = []
 H_tot = []
@@ -137,13 +138,14 @@ if do_plot:
     
 #%% Motion correct and use NNLS to extract signals
 import tensorflow as tf
-tf.keras.backend.clear_session()
+
 use_GPU = True
-use_batch = True
+use_batch = False
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
     template = np.median(mov_in, axis=0)
+    center_dims = (template.shape[0], template.shape[1])
     if not use_batch:
 
         b = to_2D(mov).T[:, 0]
@@ -155,10 +157,10 @@ if use_GPU:
         mc0 = mov_in[0:1,:,:, None]
 
         from pipeline_gpu import Pipeline, get_model
-        model = get_model(template, Ab, 30)
+        model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
         spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-        traces_viola = spike_extractor.get_spikes(1000)
+        traces_viola = spike_extractor.get_spikes(20000)
 
     else:
     #FOR BATCHES:
@@ -180,7 +182,7 @@ if use_GPU:
 
         from batch_gpu import Pipeline, get_model
 
-        model_batch = get_model(template, Ab, num_components, batch_size)
+        model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
 
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
@@ -192,7 +194,7 @@ if use_GPU:
             for i in range(batch_size):
                 traces_viola.append([spike[:,:,i]])
 
-    traces_viola = np.array(traces_viola).squeeze(axis=1).squeeze(axis=1).T
+    traces_viola = np.array(traces_viola).squeeze().T
     traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
     traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
     traces_viola = -traces_viola.T
@@ -245,10 +247,10 @@ else:
 #%%
 if n_neurons == 'many':
     trace = trace_all[:].copy()
-    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=50)
-    sao.fit(trace[:, :20000], num_frames=trace.shape[1], frate = frate)
-    #for n in range(10000, trace.shape[1]):
-    #    sao.fit_next(trace[:, n: n+1], n)
+    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+    sao.fit(trace[:, :10000], num_frames=trace.shape[1], frate = frate)
+    for n in range(10000, trace.shape[1]):
+        sao.fit_next(trace[:, n: n+1], n)
     sao.compute_SNR()
     print(f'thresh:{sao.thresh}')
     print(f'SNR: {sao.SNR}')
@@ -258,20 +260,21 @@ if n_neurons == 'many':
     print(f'Spikes based on mask sequence: {(sao.index>0).sum(1)[np.argsort(seq)]}')
 
     #%%    
-    estimates = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/estimates.npy', 
+    estimates = np.load('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/estimates.npy', 
                         allow_pickle=True).item()
     #%%
-    idx_volpy = 7
+    idx_volpy = 0
     idx = np.where(seq==idx_volpy)[0][0]
     
+    spikes_online = list(set(sao.index[idx]) - set([0]))
     plt.figure()
-    plt.plot(sao.trace_rm[idx], label='online')
-    plt.plot(normalize(estimates['t'][idx_volpy]), label='volpy')
-    plt.vlines(list(set(sao.index[idx])), -2, -1, color='r')
+    plt.plot(sao.trace_rm[idx], label=f'online_{len(spikes_online)}')
+    plt.plot(normalize(estimates['t'][idx_volpy]), label=f'volpy_{estimates["spikes"][idx_volpy].shape[0]}')
+    plt.vlines(spikes_online, -2, -1, color='r')
     plt.vlines(estimates['spikes'][idx_volpy], -3, -2, color='black')
     print(len(list(set(sao.index[idx]))))
     plt.legend()
-
+    
 #%% Extract spikes and compute F1 score
 if n_neurons in ['1', '2']:
     v_sg = []
@@ -282,7 +285,7 @@ if n_neurons in ['1', '2']:
     for idx, k in enumerate(list(file_set)):
         trace = trace_all[seq[idx]:seq[idx]+1, :].copy()
         #trace = dc_blocked[np.newaxis,:].copy()
-        sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+        sao = SignalAnalysisOnline(thresh_STD=7, percentile_thr_sub=99)
         #sao.fit(trr_postf[:20000], len())
         #trace=dict1['v_sg'][np.newaxis, :]
         sao.fit(trace[:, :20000], num_frames=100000, frate=frate)
@@ -317,6 +320,11 @@ if n_neurons in ['1', '2']:
         all_snr.append(sao.SNR[0].round(3))
 #%%
 if n_neurons == '1':
+    #plt.plot(dict1['v_t'], sao.trace.flatten())
+    plt.plot(dict1['v_t'], normalize(sao.trace.flatten()))
+    plt.plot(dict1['e_t'], normalize(dict1['e_sg'])/10)
+    plt.vlines(dict1_v_sp_, -2, -1)    
+
 
 elif n_neurons == '2':
     show_frames = 80000 
