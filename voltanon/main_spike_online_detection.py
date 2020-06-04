@@ -21,7 +21,12 @@ base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
              '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
              '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
-             '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz', ]
+             '462149_Cell_1_40x_1xtube_10A1_output.npz', '462149_Cell_1_40x_1xtube_10A2_output.npz',
+             '456462_Cell_4_40x_1xtube_10A4_output.npz', '456462_Cell_6_40x_1xtube_10A10_output.npz',
+             '456462_Cell_5_40x_1xtube_10A8_output.npz', '456462_Cell_5_40x_1xtube_10A9_output.npz',
+             '462149_Cell_3_40x_1xtube_10A3_output.npz', '466769_Cell_2_40x_1xtube_10A_6_output.npz',
+             '466769_Cell_2_40x_1xtube_10A_4_output.npz', '466769_Cell_3_40x_1xtube_10A_8_output.npz',
+            '09282017Fish1-1_output.npz', '10052017Fish2-2_output.npz', 'Mouse_Session_1.npz' ]
 file_list = [os.path.join(base_folder, file)for file in lists]
 
 temp = file_list[0].split('/')[-1].split('_')
@@ -34,12 +39,15 @@ N_opt = [2,2,2,2,2,2]
 all_f1_scores = []
 all_prec = []
 all_rec = []
+compound_f1_scores = []
+compound_prec = []
+compound_rec = []
 
 all_corr_subthr = []
 
 mode = ['online', 'minimum', 'percentile', 'v_sub', 'low_pass', 'double'][0]
 
-for k in np.array(list(range(0, 8))):
+for k in np.array(list(range(8, 16))):
     if (k == 6) or (k==3):
         thresh_height = None
     else:
@@ -103,7 +111,7 @@ for k in np.array(list(range(0, 8))):
     #indexes = find_spikes_rh(img, thresh_height)[0]
     #indexes = find_spikes_rh_online(img, thresh_height, window=10000, step=5000)
     img = img.astype(np.float32)
-    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+    sao = SignalAnalysisOnline(thresh_STD=4, percentile_thr_sub=99)
     trace = img[np.newaxis, :]
     #trace = np.array([img for i in range(50)])
     sao.fit(trace[:, :20000], num_frames=100000, frate=400)
@@ -113,12 +121,13 @@ for k in np.array(list(range(0, 8))):
     
     dict1_v_sp_ = dict1['v_t'][indexes]
     
-    range_run = estimate_running_std(np.diff(img).squeeze(), 20000, 5000, q_min=0.000001, q_max=99.999999)
-    std_run = estimate_running_std(np.diff(img).squeeze(), 20000, 5000, q_min=25, q_max=75)
-    plt.plot(range_run/std_run)
-    for i in range(len(dict1['sweep_time']) - 1):
-        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
-    dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+    #range_run = estimate_running_std(np.diff(img).squeeze(), 20000, 5000, q_min=0.000001, q_max=99.999999)
+    #std_run = estimate_running_std(np.diff(img).squeeze(), 20000, 5000, q_min=25, q_max=75)
+    #plt.plot(range_run/std_run)
+    if dict1['sweep_time'] is not None:
+        for i in range(len(dict1['sweep_time']) - 1):
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
 #    
 #    dict1_v_sp_ = dict1['v_sp']
 #    precision, recall, F1, sub_corr, e_match, v_match, mean_time = metric(dict1['sweep_time'], dict1['e_sg'], 
@@ -135,6 +144,14 @@ for k in np.array(list(range(0, 8))):
     all_f1_scores.append(np.nanmean(np.array(F1)).round(2))
     all_prec.append(np.nanmean(np.array(precision)).round(2))
     all_rec.append(np.nanmean(np.array(recall)).round(2))
+
+    p = len(e_match)/len(v_spike_aligned)
+    r = len(e_match)/len(e_spike_aligned)
+    f = (2 / (1 / p + 1 / r))
+    
+    compound_prec.append(round(p, 3))
+    compound_rec.append(round(r, 3))
+    compound_f1_scores.append(round(f, 3))
      
     continue
     
@@ -146,3 +163,8 @@ print(f'average_sub:{np.mean(all_corr_subthr,axis=0)}')
 print(f'F1:{np.array([np.mean(fsc) for fsc in all_f1_scores]).round(2)}')
 print(f'prec:{np.array([np.mean(fsc) for fsc in all_prec]).round(2)}'); 
 print(f'rec:{np.array([np.mean(fsc) for fsc in all_rec]).round(2)}')
+
+print(f'average_comoundF1:{np.array(compound_f1_scores).mean()}')
+print(f'comoundF1:{compound_f1_scores}')
+print(f'comoundpr:{compound_prec}')
+print(f'comoundrec:{compound_rec}')

@@ -132,31 +132,43 @@ def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=Fals
     e_spike_aligned = []
     v_spike_aligned = []
     
-    for i in range(len(sweep_time)):
-        print(f'sweep{i}')
-        if i == 0:
-            scope = [max([e_t.min(), v_t.min()]), sweep_time[i][-1]]
-        elif i == len(sweep_time) - 1:
-            scope = [sweep_time[i][0], min([e_t.max(), v_t.max()])]
-        else:
-            scope = [sweep_time[i][0], sweep_time[i][-1]]
-        mean_time.append(1 / 2 * (scope[0] + scope[-1]))
-        
-        pr, re, F, match, spike = spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.05, save=save)
-        corr = sub_correlation(i, v_t, e_sub, v_sub, scope, save=save)
+    
+    if True:
+        for i in range(len(sweep_time)):
+            print(f'sweep{i}')
+            if i == 0:
+                scope = [max([e_t.min(), v_t.min()]), sweep_time[i][-1]]
+            elif i == len(sweep_time) - 1:
+                scope = [sweep_time[i][0], min([e_t.max(), v_t.max()])]
+            else:
+                scope = [sweep_time[i][0], sweep_time[i][-1]]
+            mean_time.append(1 / 2 * (scope[0] + scope[-1]))
+            
+            pr, re, F, match, spike = spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.05, save=save)
+            corr = sub_correlation(i, v_t, e_sub, v_sub, scope, save=save)
+            precision.append(pr)
+            recall.append(re)
+            F1.append(F)
+            sub_corr.append(corr)
+            e_match.append(match[0])
+            v_match.append(match[1])
+            e_spike_aligned.append(spike[0])
+            v_spike_aligned.append(spike[1])
+            
+        e_match = np.concatenate(e_match)
+        v_match = np.concatenate(v_match)
+        e_spike_aligned = np.concatenate(e_spike_aligned)
+        v_spike_aligned = np.concatenate(v_spike_aligned)
+    else: 
+        scope = [e_t.min(), e_t.max()]
+        pr, re, F, match, spike = spike_comparison(None, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=500, save=False)
         precision.append(pr)
         recall.append(re)
         F1.append(F)
-        sub_corr.append(corr)
-        e_match.append(match[0])
-        v_match.append(match[1])
-        e_spike_aligned.append(spike[0])
-        v_spike_aligned.append(spike[1])
-        
-    e_match = np.concatenate(e_match)
-    v_match = np.concatenate(v_match)
-    e_spike_aligned = np.concatenate(e_spike_aligned)
-    v_spike_aligned = np.concatenate(v_spike_aligned)
+        e_match = match[0]
+        v_match = match[1]
+        e_spike_aligned = spike[0]
+        v_spike_aligned = spike[1]
 
 
     return precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned
