@@ -74,10 +74,6 @@ class OnlineFilter(object):
         sig_filt, self.z_init = sosfilt(self.filt, np.expand_dims(sig,axis=1), zi=self.z_init)
         return sig_filt.squeeze()
 
-       
-            
-
-        
         
 def rolling_window(ndarr, window_size, stride):   
         """

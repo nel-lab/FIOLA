@@ -73,7 +73,7 @@ def extract_exceptional_events(z_signal, input_erf=False, thres_STD=5, N=2, min_
 def find_spikes(signal_orig, signal_no_subthr=None, normalize_signal=False, thres_STD=3.5, thres_STD_ampl=4, 
                 mode='anomaly', only_rising=False, samples_covariance=10000, min_dist=1, N=2, 
                 win_size=20000, stride=5000, spike_before=3, spike_after=4,
-                q_min=25, q_max=75, bidirectional=False):
+                q_min=25, q_max=75, bidirectional=False, thresh_sub=99):
     """
     Function that extracts spikes from np.diff(signal). In general the only 
     parameters that should be adapted are thres_STD ('anomaly' and 'exceptionality')
@@ -191,7 +191,7 @@ def find_spikes(signal_orig, signal_no_subthr=None, normalize_signal=False, thre
     elif mode == 'multi_peak':
         # changjia HERE
         win_size, stride = 10000, 5000
-        indexes, erf, z_signal = find_spikes_rh_online(signal_orig, thresh_height=thres_STD, 
+        indexes, erf, z_signal = find_spikes_rh_online(signal_orig, thresh_height=thres_STD, thresh_percentile=thresh_sub,
                                         window=win_size, step=stride, do_scale=True)
         estimator = [None]*1
         
@@ -365,7 +365,7 @@ def find_spikes_rh_multiple(t, t_rm, t_in, median, scale, thresh, thresh_sub,\
 
 
   #%%  
-def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=True):
+def find_spikes_rh_online(t, thresh_height=4, thresh_percentile=99, window=10000, step=5000, do_scale=True):
     """ Find spikes based on the relative height of peaks online
     Args:
         t: 1-D array
@@ -386,9 +386,9 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=
             index of spikes
     """
     _, index, thresh_sub_init, thresh_init, peak_height, median_init, scale_init, thresh_factor = find_spikes_rh(t[:20000], 
-                                                                       thresh_height, do_scale=do_scale)
-    if thresh_factor > 8:
-        thresh_factor = 8
+                                                                       thresh_height, do_scale=do_scale, thresh_percentile=thresh_percentile)
+    if thresh_factor > 7.5:
+        thresh_factor = 7.5
     elif thresh_factor < 3.3:
         thresh_factor = 3
     
@@ -412,7 +412,7 @@ def find_spikes_rh_online(t, thresh_height=4, window=10000, step=5000, do_scale=
             # Estimate thresh_sub
             if (i > window) and (i % step == 0):
                 tt = -ts[i - window : i][ts[i - window : i] < 0]  
-                thresh_sub.append(np.percentile(tt, 99))
+                thresh_sub.append(np.percentile(tt, thresh_percentile))
                 print(f'{i} frames processed')
             
             if (i >= 2.5* window) and (i % step == 100):

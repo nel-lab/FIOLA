@@ -61,7 +61,7 @@ all_rec = []
 all_snr = []
 
 #%% Choosing datasets
-for kk in range(12, 13):
+for kk in range(8, 16):
     print(f'now processing neurons number {kk}')
     file_set = [kk]
     name = movie_lists[file_set[0]]
@@ -158,15 +158,16 @@ for kk in range(12, 13):
         trace_filt = np.zeros(trace.shape)        
         for tp in range(trace.shape[1]):
             if tp > 0:
-                trace_filt[:, tp] = trace[:, tp] - trace[:, tp - 1] + 0.995 * trace_filt[:, tp - 1]
+                trace_filt[:, tp] = trace[:, tp] - trace[:, tp - 1] + 0.9 * trace_filt[:, tp - 1]
         trace_all = -trace_filt
-        
+
+   #plt.plot(trace_all/trace_all.max(), label='mean');plt.plot(trace1.flatten()/trace1.flatten().max(), label='nmf');plt.legend()
 #%% Extract spikes and compute F1 score
     print(f'Spikes detection and F1 score')
     for idx, k in enumerate(list(file_set)):
         trace = trace_all[seq[idx]:seq[idx]+1, :].copy()
         #trace = dc_blocked[np.newaxis,:].copy()
-        sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+        sao = SignalAnalysisOnline(thresh_STD=4, percentile_thr_sub=99)
         #sao.fit(trr_postf[:20000], len())
         #trace=dict1['v_sg'][np.newaxis, :]
         sao.fit(trace[:, :20000], num_frames=100000, frate=frate)

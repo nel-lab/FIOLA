@@ -52,7 +52,7 @@ elif n_neurons == 'many':
     movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data'][0]
     
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
-                   'FOV4_50um.hdf5']
+                   'FOV4_50um_mc.hdf5']
 #%% Choosing datasets
 if n_neurons == '1':
     file_set = [6]
@@ -74,7 +74,7 @@ elif n_neurons == '2':
        mask = np.array(h5['mov'])
 
 elif n_neurons == 'many':
-    name = movie_lists[0]
+    name = movie_lists[1]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
@@ -245,7 +245,7 @@ else:
 #%%
 if n_neurons == 'many':
     trace = trace_all[:].copy()
-    sao = SignalAnalysisOnline(thresh_STD=None, percentile_thr_sub=99)
+    sao = SignalAnalysisOnline(thresh_STD=4, percentile_thr_sub=99)
     sao.fit(trace[:, :10000], num_frames=trace.shape[1], frate = frate)
     for n in range(10000, trace.shape[1]):
         sao.fit_next(trace[:, n: n+1], n)
@@ -261,7 +261,7 @@ if n_neurons == 'many':
     estimates = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/estimates.npy', 
                         allow_pickle=True).item()
     #%%
-    idx_volpy = 0
+    idx_volpy = 3
     idx = np.where(seq==idx_volpy)[0][0]
     
     spikes_online = list(set(sao.index[idx]) - set([0]))
@@ -269,7 +269,7 @@ if n_neurons == 'many':
     plt.plot(sao.trace_rm[idx], label=f'online_{len(spikes_online)}')
     plt.plot(normalize(estimates['t'][idx_volpy]), label=f'volpy_{estimates["spikes"][idx_volpy].shape[0]}')
     plt.vlines(spikes_online, -2, -1, color='r')
-    plt.vlines(estimates['spikes'][idx_volpy], -3, -2, color='black')
+    plt.vlines(estimates['spikes'][idx_volpy], -2, -1, color='black')
     print(len(list(set(sao.index[idx]))))
     plt.legend()
     
