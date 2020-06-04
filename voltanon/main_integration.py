@@ -49,7 +49,8 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[4, -2]_y[4, -2].tif', 
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
-    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data'][0]
+    movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
+                    ''][0]
     
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5']
@@ -137,13 +138,14 @@ if do_plot:
     
 #%% Motion correct and use NNLS to extract signals
 import tensorflow as tf
-tf.keras.backend.clear_session()
+
 use_GPU = True
-use_batch = True
+use_batch = False
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
     template = np.median(mov_in, axis=0)
+    center_dims = (template.shape[0], template.shape[1])
     if not use_batch:
 
         b = to_2D(mov).T[:, 0]
@@ -155,10 +157,10 @@ if use_GPU:
         mc0 = mov_in[0:1,:,:, None]
 
         from pipeline_gpu import Pipeline, get_model
-        model = get_model(template, Ab, 30)
+        model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
         spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-        traces_viola = spike_extractor.get_spikes(1000)
+        traces_viola = spike_extractor.get_spikes(20000)
 
     else:
     #FOR BATCHES:
@@ -180,7 +182,7 @@ if use_GPU:
 
         from batch_gpu import Pipeline, get_model
 
-        model_batch = get_model(template, Ab, num_components, batch_size)
+        model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
 
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
@@ -192,7 +194,7 @@ if use_GPU:
             for i in range(batch_size):
                 traces_viola.append([spike[:,:,i]])
 
-    traces_viola = np.array(traces_viola).squeeze(axis=1).squeeze(axis=1).T
+    traces_viola = np.array(traces_viola).squeeze().T
     traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
     traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
     traces_viola = -traces_viola.T
@@ -258,7 +260,7 @@ if n_neurons == 'many':
     print(f'Spikes based on mask sequence: {(sao.index>0).sum(1)[np.argsort(seq)]}')
 
     #%%    
-    estimates = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/estimates.npy', 
+    estimates = np.load('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/estimates.npy', 
                         allow_pickle=True).item()
     #%%
     idx_volpy = 3
