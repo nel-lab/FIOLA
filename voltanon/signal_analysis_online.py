@@ -303,15 +303,19 @@ class SignalAnalysisOnlineZ(object):
             trace_in /= self.scale[:, -1:]
         self.t0[:, n:(n + 1)] = trace_in.copy()
         self.sub[:, n] = self.filt.fit_next(self.t0[:, n])
-        self.t[:, n:(n + 1)] = self.t0[:, n:(n + 1)] - self.sub[:, n:(n + 1)]
-        if self.n > self.frames_init + 1:
-            temp = self.t[:, self.n - 4 : self.n + 1]
-            self.t_s[:, self.n - 2] = (temp * self.PTA).sum(axis=1)[:, np.newaxis]
+        self.t[:, n:(n + 1)] = self.t0[:, n:(n + 1)] - self.sub[:, n:(n + 1)]  # time n remove subthreshold
+        if self.n > self.frames_init + 1:                                      
+            temp = self.t[:, self.n - 4 : self.n + 1]                          # time n-2 do template matching 
+            self.t_s[:, self.n - 2] = (temp * self.PTA).sum(axis=1)
             self.t_s[:, self.n - 2] = self.t_s[:, self.n - 2] - self.median2[:, -1]
-        for idx in range(self.nn):
-            if self.t_s[idx, self.n - 2] > self.thresh[idx, -1]:
-                self.index[idx, self.index_track[idx]] = (self.n - 2)     
-                self.index_track[idx] +=1  
+        if self.n > self.frames_init +2:                                        # time n-3 confirm spikes
+            for idx in range(self.nn):
+                if (self.t_s[idx, self.n -3] > self.t_s[idx, self.n -2]) and (self.t_s[idx, self.n -3] > self.t_s[idx, self.n -4]):
+                    if (self.t_s[idx, self.n - 3] > self.thresh[idx, -1]):
+                        self.index[idx, self.index_track[idx]] = (self.n - 3)     
+                        self.index_track[idx] +=1  
+        self.t_detect.append(time() - t_start)
+        return self
         
     def update_median(self, idx):
         tt = self.trace[idx, self.n - np.int(self.window*2.5):self.n]
@@ -326,6 +330,8 @@ class SignalAnalysisOnlineZ(object):
         if idx == 0:
             self.scale = np.append(self.scale, self.scale[:, -1:], axis=1)
         self.scale[idx, -1] = - np.percentile(tt, 1)
+        #self.scale[idx, -1] = np.percentile(tt, 99)
+        
         return self
 
     def update_thresh(self, idx):
@@ -335,16 +341,15 @@ class SignalAnalysisOnlineZ(object):
         if self.robust_std:
             thresh_new = (-np.percentile(tt, 25) * 2 / 1.35) * self.thresh_factor[idx]
         else:    
-            thresh_new = compute_std(tt) * self.thresh_factor[idx]
+            thresh_new = compute_std(tt) * self.thresh_factor[idx] * (0.989) ** int(self.n / self.window)
         self.thresh[idx, -1] = thresh_new
         return self
         
     def compute_SNR(self):
         for idx in range(self.trace.shape[0]):
-            mean_height = self.t0[idx][self.index[idx][self.index[idx] > 0]].mean()
-            #mean_height = self.peak_height[idx][self.peak_height[idx] > 0].mean()
-            std = compute_std(self.t0[idx][self.t0[idx] < 0])
-            snr = mean_height / std
+            sg = np.percentile(self.t[idx], 99)
+            std = np.percentile(self.t[idx], 75) *2 / 1.35
+            snr = sg / std
             self.SNR[idx] = snr
         
 

@@ -73,7 +73,7 @@ test_set = np.array([2, 6, 10, 14])
 training_set = np.array([ 0,  1,  3,  4,  5,  7,  8,  9, 11, 12, 13, 15])
 mouse_fish_set = np.array([16, 17, 18])
 #%% Choosing datasets
-for i in test_set:
+for i in training_set:
     if n_neurons == '1':
         file_set = [i]
         name = movie_lists[file_set[0]]
@@ -122,7 +122,7 @@ for i in test_set:
                 plt.imshow(mask[i], alpha=0.5)
     
     #%% Use nmf sequentially to extract all neurons in the region
-    num_frames_init = 10000
+    num_frames_init = 20000
     y_seq = y_filt[:num_frames_init,:].copy()
     W_tot = []
     H_tot = []
@@ -132,7 +132,7 @@ for i in test_set:
     print(f'sequence of rank1-nmf: {seq}')
     
     for i in seq:
-        model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
+        model = NMF(n_components=1, init='nndsvd', max_iter=200, verbose=False)
         y_temp, _ = select_masks(y_seq, mov[:num_frames_init].shape, mask=mask[i])
         W = model.fit_transform(np.maximum(y_temp,0))
         H = model.components_
@@ -279,8 +279,8 @@ for i in test_set:
             saoz = SignalAnalysisOnlineZ()
             #sao.fit(trr_postf[:20000], len())
             #trace=dict1['v_sg'][np.newaxis, :]
-            saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False)
-            saoz.fit(trace_all[:20000], trace_all.shape[1])
+            saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False, do_scale=True)
+            saoz.fit(trace_all[:, :20000], trace_all.shape[1])
             for n in range(20000, trace_all.shape[1]):
                 saoz.fit_next(trace_all[:, n:n+1], n)
             saoz.compute_SNR()

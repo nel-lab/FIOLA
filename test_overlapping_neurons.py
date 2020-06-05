@@ -21,7 +21,7 @@ from skimage.io import imread
 import h5py
 from running_statistics import OnlineFilter
 #%% files for processing
-n_neurons = ['1', '2', 'many'][0]
+n_neurons = ['1', '2', 'many'][1]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
@@ -44,13 +44,19 @@ if n_neurons in ['1', '2']:
     
     fnames = [os.path.join(movie_folder, file) for file in movie_lists]
     
-    combined_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons',
+    combined_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/overlapping_neurons',
                     '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][0]
     
-    combined_lists = ['neuron0&1_x[1, -1]_y[1, -1].tif', 
-                   'neuron0&1_x[2, -2]_y[2, -2].tif', 
-                   'neuron1&2_x[4, -2]_y[4, -2].tif', 
-                   'neuron1&2_x[6, -2]_y[8, -2].tif']
+    combined_lists = ['neuron0&1_x[7, -3]_y[5, -4]_0percent.tif',
+                      'neuron0&1_x[6, -3]_y[3, -3]_10percent.tif', 
+                      'neuron0&1_x[5, -1]_y[3, -2]_25percent.tif',
+                      'neuron0&2_x[7, -2]_y[5, -4]_0percent.tif',
+                      'neuron0&2_x[5, -1]_y[4, -3]_10percent.tif',
+                      'neuron0&2_x[3, -2]_y[3, -1]_25percent.tif',                      
+                      'neuron1&2_x[6, -2]_y[11, -3]_0percent.tif',
+                      'neuron1&2_x[6, -2]_y[9, -2]_10percent.tif',
+                      'neuron1&2_x[5, -2]_y[6, -2]_25percent.tif']
+
 elif n_neurons == 'many':
     movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
                     '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data'][1]
@@ -64,16 +70,15 @@ all_rec = []
 all_corr_subthr = []
 all_thresh = []
 all_snr = []
+all_neurons = []
 compound_f1_scores = []
 compound_prec = []
 compound_rec = []
 v_sg = []
-all_set = np.arange(0, 16)
-test_set = np.array([2, 6, 10, 14])
-training_set = np.array([ 0,  1,  3,  4,  5,  7,  8,  9, 11, 12, 13, 15])
-mouse_fish_set = np.array([16, 17, 18])
+
+all_set = np.arange(0, 9)
 #%% Choosing datasets
-for i in test_set:
+for i in all_set:
     if n_neurons == '1':
         file_set = [i]
         name = movie_lists[file_set[0]]
@@ -88,9 +93,10 @@ for i in test_set:
             mask = mask[np.newaxis,:]
     
     elif n_neurons == '2':
-        file_set = [0, 1]
-        name = combined_lists[0]
-        frate = 400
+        name = combined_lists[i]
+        print(f'now processing {name}')
+        file_set = [int(name[6]), int(name[8])]
+        frate = 400.8
         mov = imread(os.path.join(combined_folder, name))
         with h5py.File(os.path.join(combined_folder, name[:-4]+'_ROIs.hdf5'),'r') as h5:
            mask = np.array(h5['mov'])
@@ -120,9 +126,14 @@ for i in test_set:
         else:            
             for i in range(mask.shape[0]):
                 plt.imshow(mask[i], alpha=0.5)
-    
+            print(name)
+            plt.title(f'overlapping area:{(mask[0]*mask[1]).sum()/(mask[0].sum()+mask[1].sum())*2 }')
+            plt.show()
+            plt.pause(3)
+            
+
     #%% Use nmf sequentially to extract all neurons in the region
-    num_frames_init = 10000
+    num_frames_init = 20000
     y_seq = y_filt[:num_frames_init,:].copy()
     W_tot = []
     H_tot = []
@@ -267,89 +278,111 @@ for i in test_set:
     
     #%% Extract spikes and compute F1 score
     if n_neurons in ['1', '2']:
+        all_f1_scores.append([])
+        all_prec.append([])
+        all_rec.append([])
+        all_thresh.append([])
+        all_snr.append([])
+        all_neurons.append([])
+        compound_f1_scores.append([])                
+        compound_prec.append([])
+        compound_rec.append([])
         for idx, k in enumerate(list(file_set)):
-            name_traces = '/'.join(fnames[k].split('/')[:-2] + ['one_neuron_result', 
-                                       fnames[k].split('/')[-1][:-7]+'_output.npz'])
-            # F1 score
-            dict1 = np.load(name_traces, allow_pickle=True)
-            length = dict1['v_sg'].shape[0]
-            
             trace = trace_all[seq[idx]:seq[idx]+1, :].copy()
             #trace = dc_blocked[np.newaxis,:].copy()
             saoz = SignalAnalysisOnlineZ()
             #sao.fit(trr_postf[:20000], len())
             #trace=dict1['v_sg'][np.newaxis, :]
+            name_traces = '/'.join(fnames[k].split('/')[:-2] + ['one_neuron_result', 
+                                       fnames[k].split('/')[-1][:-7]+'_output.npz'])
+            
+            dict1 = np.load(name_traces, allow_pickle=True)
+            length = dict1['v_sg'].shape[0]
             saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False)
-            saoz.fit(trace_all[:20000], trace_all.shape[1])
-            for n in range(20000, trace_all.shape[1]):
-                saoz.fit_next(trace_all[:, n:n+1], n)
+            saoz.fit(trace[:, :20000], length)
+            for n in range(20000, length):
+                saoz.fit_next(trace[:, n:n+1], n)
             saoz.compute_SNR()
             indexes = np.array(list(set(saoz.index[0]) - set([0])))
             thresh = saoz.thresh_factor[0, 0]
             snr = saoz.SNR
             indexes = np.delete(indexes, np.where(indexes >= dict1['v_t'].shape[0])[0])
+            # F1 score
             
+            
+            #lt.figure();
+            #plt.plot(dict1['v_t'], saoz.t_s[0]);
+            
+            #plt.hlines(saoz.thresh[:,0], 0, 100000);
+            #plt.hlines(saoz.thresh[:,-1], 0, 100000, color='r');
+            #plt.vlines(dict1['v_t'][indexes], -1.5, -1, 'r')
+            #plt.vlines(dict1['e_sp'], -2, -1.5)
+            #plt.show()
             dict1_v_sp_ = dict1['v_t'][indexes]
             v_sg.append(dict1['v_sg'])
                 
-            if belong_Marton:
-                for i in range(len(dict1['sweep_time']) - 1):
-                    dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
-                dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
-            
+            for i in range(len(dict1['sweep_time']) - 1):
+                dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+        
             precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
                                 = metric(dict1['sweep_time'], dict1['e_sg'], 
                                       dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
                                       dict1['v_sg'], dict1_v_sp_ , 
-                                      dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=belong_Marton)
+                                      dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=True)
             
             p = len(e_match)/len(v_spike_aligned)
             r = len(e_match)/len(e_spike_aligned)
             f = (2 / (1 / p + 1 / r))
-    print(np.array(F1).round(2).mean())
-    all_f1_scores.append(np.array(F1).round(2))
-    all_prec.append(np.array(precision).round(2))
-    all_rec.append(np.array(recall).round(2))
-    all_thresh.append(thresh)
-    all_snr.append(snr)
-    compound_f1_scores.append(f)                
-    compound_prec.append(p)
-    compound_rec.append(r)
-    print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
-    #print(f'average_sub:{np.nanmean(all_corr_subthr,axis=0)}')
-    print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
-    print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
-    print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
-    print(f'average_compound_f1:{np.mean(np.array(compound_f1_scores)).round(3)}')
-    print(f'compound_f1:{np.array(compound_f1_scores).round(2)}')
-    print(f'compound_prec:{np.array(compound_prec).round(2)}')
-    print(f'compound_rec:{np.array(compound_rec).round(2)}')
-    print(f'snr:{np.array(all_snr).round(2)}')
-    dict2 = {}
-    dict2['trace'] = saoz.trace
-    dict2['indexes'] = sorted(indexes)
-    dict2['t_s'] = saoz.t_s
-    dict2['snr'] = saoz.SNR
-    dict2['sub'] = saoz.sub
-    dict2['template'] = saoz.PTA
-    dict2['thresh'] = saoz.thresh
-    dict2['thresh_factor'] = saoz.thresh_factor
-    save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result'
-    np.save(os.path.join(save_folder, 'spike_detection_saoz_'+ name[:-7]  +'_output'), dict2)
+            print(np.array(F1).round(2).mean())
+            all_f1_scores[-1].append(np.array(F1).round(2))
+            all_prec[-1].append(np.array(precision).round(2))
+            all_rec[-1].append(np.array(recall).round(2))
+            all_thresh[-1].append(thresh)
+            all_snr[-1].append(snr)
+            all_neurons[-1].append(k)
+            compound_f1_scores[-1].append(f)                
+            compound_prec[-1].append(p)
+            compound_rec[-1].append(r)
+            """
+            print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
+            print(f'average_sub:{np.nanmean(all_corr_subthr,axis=0)}')
+            print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
+            print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
+            print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
+            """
+            #print(f'average_compound_f1:{np.mean(np.array(compound_f1_scores)).round(3)}')
+            print(f'compound_f1:{compound_f1_scores}')
+            print(f'compound_prec:{compound_prec}')
+            print(f'compound_rec:{compound_rec}')
+            #print(f'snr:{np.array(all_snr).round(2)}')
+            dict2 = {}
+            dict2['trace'] = saoz.trace
+            dict2['indexes'] = sorted(indexes)
+            dict2['t_s'] = saoz.t_s
+            dict2['snr'] = saoz.SNR
+            dict2['sub'] = saoz.sub
+            dict2['template'] = saoz.PTA
+            dict2['thresh'] = saoz.thresh
+            dict2['thresh_factor'] = saoz.thresh_factor
+            save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neurons'
+            np.save(os.path.join(save_folder, f'{name[:-4]}_neuron_{k}_output'), dict2)
             
 #%%
-dict1 = {}
-dict1['average_F1'] = np.mean([np.nanmean(fsc) for fsc in all_f1_scores])
-dict1['F1'] = np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)
-dict1['prec'] = np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)
-dict1['rec'] = np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)
-dict1['average_compound_f1'] = np.mean(np.array(compound_f1_scores)).round(3)
-dict1['compound_f1'] = np.array(compound_f1_scores).round(2)
-dict1['compound_prec'] = np.array(compound_prec).round(2)
-dict1['compound_rec'] =  np.array(compound_rec).round(2)
-dict1['snr'] = np.array(all_snr).round(2).T
 
-np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/saoz_training.npy', dict1)
+dict1 = {}
+dict1['file_seq'] = combined_lists
+dict1['neurons_pair'] = all_neurons
+dict1['average_F1'] = all_f1_scores
+dict1['F1'] = all_f1_scores
+dict1['prec'] = all_prec
+dict1['rec'] = all_rec
+dict1['average_compound_f1'] = compound_f1_scores
+dict1['compound_f1'] = compound_f1_scores
+dict1['compound_prec'] = compound_prec
+dict1['compound_rec'] =  compound_rec
+dict1['snr'] = all_snr
+np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/overlapping_result.npy', dict1)
 
 
 
@@ -367,14 +400,22 @@ elif n_neurons == '2':
     #%matplotlib auto
     t1 = normalize(trace_all[0])
     t2 = normalize(trace_all[1])
-    t3 = normalize(v_sg[0])
-    t4 = normalize(v_sg[1])
-    plt.plot(dict1['v_t'][:show_frames], t1[:show_frames] + 0.5, label='neuron1')
+    #t3 = normalize(v_sg[0])
+    #t4 = normalize(v_sg[1])
+    plt.figure()
+    plt.plot(dict1['v_t'][:show_frames], t1[:show_frames], label='neuron1')
     plt.plot(dict1['v_t'][:show_frames], t2[:show_frames], label='neuron2')
-    plt.plot(dict1['v_t'][:show_frames], t3[:show_frames] + 0.5, label='gt1')
-    plt.plot(dict1['v_t'][:show_frames], t4[:show_frames], label='gt2')
+    #plt.plot(dict1['v_t'][:show_frames], t3[:show_frames] , label='gt1')
+    plt.plot(dict1['v_t'][:show_frames], normalize(saoz.trace.flatten()[:show_frames]))
+    #plt.plot(dict1['v_t'][:show_frames], normalize(saoz.t_s.flatten()[:show_frames]))
+    
+    #plt.plot(dict1['v_t'][:show_frames], t4[:show_frames], label='gt2')
+    
+    #plt.plot(dict1['e_t'], dict1['e_sg'])
     #plt.plot(dict1['e_t'], t4-3, label='ele')
-    #plt.vlines(dict1['e_sp'], -3, -2.5, color='black')
+    plt.vlines(dict1['v_t'][indexes], -1.5, -1, color='black')
+    plt.vlines(dict1['e_sp'], -1, -0.5, color='red')
+
     plt.legend()
   
 #%%   

@@ -15,7 +15,7 @@ from nmf_support import combine_datasets
 
 #%% files for processing
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
-               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
                '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
 lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.tif',
              '456462_Cell_3_40x_1xtube_10A3_mc.tif', '456462_Cell_5_40x_1xtube_10A5_mc.tif',
@@ -29,10 +29,10 @@ fnames = [os.path.join(base_folder, file) for file in lists]
 freq_400 = [True, True, True, True, True, True, False, True, True, True, True, True, False, False, False, False]
 
 #%% Combine datasets
-x_shifts = [4, -2]
-y_shifts = [4, -2]
-file_set = [1, 2]
-name_set = fnames[file_set[0]: file_set[1] + 1]
+x_shifts = [6, -2]
+y_shifts = [6, -3]
+file_set = [0, 2]
+name_set = [fnames[file_set[0]], fnames[file_set[1]]]
 m1 = cm.load(name_set[0])
 m2 = cm.load(name_set[1])
 movies = [cm.load(name) for name in name_set]
@@ -48,13 +48,14 @@ plt.figure();plt.imshow(m2[0]);plt.colorbar()
 mov, mask = combine_datasets(movies, masks, num_frames, x_shifts=x_shifts, 
                              y_shifts=y_shifts, weights=None, shape=(30, 30))
 
-plt.figure();plt.imshow(mov[0])
-plt.figure();plt.imshow(mask[0], alpha=0.5);plt.imshow(mask[1], alpha=0.5)
+plt.figure();plt.imshow(mov[0]);plt.show()
+plt.figure();plt.imshow(mask[0], alpha=0.5);plt.imshow(mask[1], alpha=0.5);plt.show()
 
+print((mask[0]*mask[1]).sum()/(mask[0].sum()+mask[1].sum())*2)
 #%%
-saving_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'
-cm.movie(mov).save(os.path.join(saving_folder, f'neuron{file_set[0]}&{file_set[1]}_x{x_shifts}_y{y_shifts}.tif'))
-cm.movie(np.array(mask)).save(os.path.join(saving_folder, f'neuron{file_set[0]}&{file_set[1]}_x{x_shifts}_y{y_shifts}_ROIs.hdf5'))
+saving_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/overlapping_neurons'
+cm.movie(mov).save(os.path.join(saving_folder, f'neuron{file_set[0]}&{file_set[1]}_x{x_shifts}_y{y_shifts}_0percent.tif'))
+cm.movie(np.array(mask)).save(os.path.join(saving_folder, f'neuron{file_set[0]}&{file_set[1]}_x{x_shifts}_y{y_shifts}_0percent_ROIs.hdf5'))
 
 
 

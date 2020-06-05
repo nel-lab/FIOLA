@@ -16,6 +16,7 @@ from running_statistics import OnlineFilter
 def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False):
     median = np.median(img)
     scale = -np.percentile(img-median, 1)
+    #scale = np.percentile(img-median, 99)
     if do_scale == True:
         t0 = (img - median) / scale
     else:
@@ -56,12 +57,16 @@ def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False):
     if robust_std:
         thresh_list = np.arange(3.3, 5.0, 0.1)    
     else:
-        thresh_list = np.arange(3.5, 5.1, 0.1)
+        thresh_list = np.arange(2.7, 5.1, 0.1)
     for thresh_factor in thresh_list:
         thresh_temp = thresh_factor * std
         n_peaks = len(signal.find_peaks(data, height=thresh_temp)[0])    
         n_false = len(signal.find_peaks(ff1, height=thresh_temp)[0])
-        if n_false / n_peaks < 0.15:
+        if n_peaks == 0:
+            thresh_factor = 3.5
+            thresh2 = thresh_factor * std
+            break
+        if n_false / n_peaks < 0.20:
             thresh2 = thresh_temp
             print(f'n_false/n_peaks:{n_false / n_peaks}')
             break

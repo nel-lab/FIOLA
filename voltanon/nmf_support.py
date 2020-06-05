@@ -16,6 +16,7 @@ from caiman_functions import to_3D, to_2D
 from spikepursuit import denoise_spikes
 
 
+
 def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
     """ Hierarchical alternating least square method for solving NMF problem
     Y = A*C + b*f
@@ -95,7 +96,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
             for i in range(Cf.shape[0]):
                 if i != Cf.shape[0] - 1 : 
                     _, _, Cf_processed[i], _, _, _ = denoise_spikes(Cf[i], window_length=3, 
-                                      threshold=4, threshold_method='adaptive_threshold')
+                                      threshold=3.5, threshold_method='simple')
         Cf = Cf_processed
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         # for i in range(Ab.shape[1]):

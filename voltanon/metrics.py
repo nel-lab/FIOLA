@@ -121,7 +121,7 @@ def sub_correlation(i, v_t, e_sub, v_sub, scope, save=False):
         plt.savefig(f'{volpy_path}/spike_sweep{i}_subthreshold.pdf')
     return corr
 
-def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=False):
+def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=False, belong_Marton=True):
     precision = []
     recall = []
     F1 = []
@@ -133,7 +133,7 @@ def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=Fals
     v_spike_aligned = []
     
     
-    if True:
+    if belong_Marton:
         for i in range(len(sweep_time)):
             print(f'sweep{i}')
             if i == 0:

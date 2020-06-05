@@ -20,7 +20,7 @@ from running_statistics import estimate_running_std
 from template_matching import find_spikes_tm, find_spikes_tm_online
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
-               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron'][1]
+               '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron_result'][1]
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
              '456462_Cell_3_40x_1xtube_10A3_output.npz', '456462_Cell_5_40x_1xtube_10A5_output.npz',
              '456462_Cell_5_40x_1xtube_10A6_output.npz', '456462_Cell_5_40x_1xtube_10A7_output.npz', 
@@ -73,7 +73,7 @@ perc_subthr = 20
 all_results = []
 thresh_factor=[]
 scale = []
-
+frate_all = []
 for thres_STD in [thres_STD]:#range(23,24,1):
     res_dict = dict()
     all_f1_scores = []
@@ -81,10 +81,11 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     all_rec = []
     all_corr_subthr = []
     all_thresh = []
+    all_snr = []
     compound_f1_scores = []
     compound_prec = []
     compound_rec = []
-    for file in np.array(file_list)[8:9]:
+    for file in np.array(file_list)[1:2]:
         print(f'now processing file {file}')
         dict1 = np.load(file, allow_pickle=True)
         spike_purs = False
@@ -118,16 +119,18 @@ for thres_STD in [thres_STD]:#range(23,24,1):
                                                 np.corrcoef((dict1['e_sub']),
                                                 (dict1['v_sub']))[0,1]])
             
+            
             """
-            """
-            if dict1['sweep_time'] == np.array(None):
-                if 'Fish' in file:
-                    frate = 300
-                else:
-                    frate = 400
+            if 'Fish' in file:
+                frate = 300
+            elif 'Mouse' in file:
+                frate = 400
             else:
                 frate = 1/np.median(np.diff(dict1['v_t']))
-            """
+                
+            
+
+            
             #signal_no_subthr = img - subthreshold_signal
         #    signal_no_subthr = dict1['v_sg'] - dict1['v_sub']
             
@@ -146,12 +149,14 @@ for thres_STD in [thres_STD]:#range(23,24,1):
             #indexes = find_spikes_tm(img, frate)[0]
             
             trace_all = img[np.newaxis, :]
-            saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False)
-            saoz.fit(trace_all[:20000], len(img))
+            saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False, do_scale=True)
+            saoz.fit(trace_all[:,:20000], len(img))
             for n in range(20000, trace_all.shape[1]):
                 saoz.fit_next(trace_all[:, n:n+1], n)
+            saoz.compute_SNR()
             indexes = np.array(list(set(saoz.index[0]) - set([0])))
             thresh = saoz.thresh_factor[0, 0]
+            snr = saoz.SNR
             
             #t_s, sub1 = find_spikes_tm(img, freq=15, frate=400)[5:7]
             plt.figure();plt.plot(saoz.t_s[0]);
@@ -164,15 +169,16 @@ for thres_STD in [thres_STD]:#range(23,24,1):
             dict1_v_sp_ = dict1['v_t'][indexes]
             #dict1_v_sp_ = dict1['v_sp']
             
+        
             for i in range(len(dict1['sweep_time']) - 1):
                 dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
             dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
-        
+    
             precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
                                 = metric(dict1['sweep_time'], dict1['e_sg'], 
                                       dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
                                       dict1['v_sg'], dict1_v_sp_ , 
-                                      dict1['v_t'], dict1['v_sub'],save=False)
+                                      dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=True)
                                 
             p = len(e_match)/len(v_spike_aligned)
             r = len(e_match)/len(e_spike_aligned)
@@ -194,6 +200,7 @@ for thres_STD in [thres_STD]:#range(23,24,1):
             all_prec.append(np.array(precision).round(2))
             all_rec.append(np.array(recall).round(2))
             all_thresh.append(thresh)
+            all_snr.append(snr)
             compound_f1_scores.append(f)                
             compound_prec.append(p)
             compound_rec.append(r)
@@ -209,12 +216,29 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
     print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
     print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
+    print(f'average_compound_f1:{np.mean(np.array(compound_f1_scores)).round(3)}')
+    print(f'compound_f1:{np.array(compound_f1_scores).round(2)}')
+    print(f'compound_prec:{np.array(compound_prec).round(2)}')
+    print(f'compound_rec:{np.array(compound_rec).round(2)}')
+    print(f'snr:{np.array(all_snr).round(2)}')
 
     all_results.append(res_dict)
 
 #%%
+trace_all = np.stack([img for i in range(50)])
+saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False, do_scale=True)
+saoz.fit(trace_all[:,:20000], len(img))
+for n in range(20000, trace_all.shape[1]):
+    saoz.fit_next(trace_all[:, n:n+1], n)
+
+#%%
+plt.plot(saoz.t_detect)
+plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/timing/timing_spikes_detection_50neurons.pdf')
+
+
+#%%
 #plt.plot(dict1['v_t'], dict1['v_sg'])   
-plt.vlines(dict1['e_sp'], -300, -100,'r')
+plt.vlines(dict1['e_sp'], -10, -8,'r')
 #plt.plot(dict1['v_t'], img)
 plt.plot(dict1['v_t'], img)
     

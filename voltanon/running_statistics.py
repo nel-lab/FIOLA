@@ -59,7 +59,6 @@ class OnlineFilter(object):
         """
         sig_filt = signal_filter(sig, freq=self.freq, fr=self.fr, order=self.order, mode=self.mode)
         # result_init, z_init = signal.sosfilt(b, data[:,:20000], zi=z)
-        
         self.z_init = np.repeat(self.z_init[:,None,:], sig.shape[0], axis=1)
     
         #sos_all = np.zeros(sig_filt.shape)
