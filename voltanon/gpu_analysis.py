@@ -102,8 +102,8 @@ def HALS4activity(Yr, A, noisyC, AtA=None, iters=5, tol=1e-3, groups=None,
         num_iters += 1
     return C, noisyC
 #%%
-base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data"
-mov_ind = -1
+base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls"
+mov_ind = 0
 filename = ["/k56_20160608_RSM_125um_41mW_zoom2p2_00001_00034_results.hdf5",
              "/JG10982_171121_field3_stim_00002_00001_results.hdf5",
              "/memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5",
@@ -118,7 +118,7 @@ path1 = base_folder + tifname
 
 namespace = ["k56", "jg", "neu", "vol"][mov_ind]
 #%%
-voltage = True
+voltage = False
 if not voltage:
     import h5py
     import scipy
@@ -154,77 +154,78 @@ else:
     Y_tot = to_2D(a2).T
     mov = a2[:5000]
 #%% FOR VOLTAGE
-y = to_2D(-mov).copy()     
-y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
-y_filt = y_filt
-Y = Y_tot[:,:300]
-#%%
-do_plot = False
-num_frames_init = 5000
-y_seq = y_filt[:num_frames_init,:].copy()
-W_tot = []
-H_tot = []
-mask_2D = to_2D(mask)
-std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-seq = np.argsort(std)[::-1]
-print(f'sequence of rank1-nmf: {seq}')
+if voltage:
+    y = to_2D(-mov).copy()     
+    y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
+    y_filt = y_filt
+    Y = Y_tot[:,:300]
 
-for i in seq:
-    model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
-    y_temp, _ = select_masks(y_seq, mov[:num_frames_init].shape, mask=mask[i])
-    W = model.fit_transform(np.maximum(y_temp,0))
-    H = model.components_
-    y_seq = y_seq - W@H
-    W_tot.append(W)
-    H_tot.append(H)
-    if do_plot:
-        plt.figure();plt.plot(W);
-        plt.figure();plt.imshow(H.reshape(mov.shape[1:], order='F'));plt.colorbar()
-H = np.vstack(H_tot)
-W = np.hstack(W_tot)
-#%%
-update_bg = False
-y_input = np.maximum(y_filt[:num_frames_init], 0)
-y_input =to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
+    do_plot = False
+    num_frames_init = 5000
+    y_seq = y_filt[:num_frames_init,:].copy()
+    W_tot = []
+    H_tot = []
+    mask_2D = to_2D(mask)
+    std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+    seq = np.argsort(std)[::-1]
+    print(f'sequence of rank1-nmf: {seq}')
     
-H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y.shape[1],1)) / y.shape[1],
-                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                              update_bg=update_bg, use_spikes=True)
+    for i in seq:
+        model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
+        y_temp, _ = select_masks(y_seq, mov[:num_frames_init].shape, mask=mask[i])
+        W = model.fit_transform(np.maximum(y_temp,0))
+        H = model.components_
+        y_seq = y_seq - W@H
+        W_tot.append(W)
+        H_tot.append(H)
+        if do_plot:
+            plt.figure();plt.plot(W);
+            plt.figure();plt.imshow(H.reshape(mov.shape[1:], order='F'));plt.colorbar()
+    H = np.vstack(H_tot)
+    W = np.hstack(W_tot)
 
-#%%
-mov_in = mov 
-Ab = H_new.astype(np.float32)
-template = np.median(mov_in, axis=0)
-center_dims = (template.shape[0], template.shape[1])
+    update_bg = False
+    y_input = np.maximum(y_filt[:num_frames_init], 0)
+    y_input =to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
+        
+    H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y.shape[1],1)) / y.shape[1],
+                                  np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
+                                  update_bg=update_bg, use_spikes=True)
+    
 
-b = to_2D(mov).T[:, 0]
-x0 = nnls(Ab,b)[0][:,None]
-AtA = Ab.T@Ab
-Atb = Ab.T@b
-n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-mc0 = mov_in[0:1,:,:, None]
-#%% HALS
-count = 0
-hals = []
-for frame in Y.T[1:]:
-    count += 1
-    cc = (HALS4activity(frame, Ab, noisyC = W[-1], AtA=AtA, iters=5, groups=None)[0])
-    hals.append(cc)
-hals = np.array(hals)
-#%%
-
-from pipeline_gpu import Pipeline, get_model
-model = get_model(template, center_dims, Ab, 30)
-model.compile(optimizer='rmsprop', loss='mse')
-spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-traces_viola = spike_extractor.get_spikes(5000)
-#%%
-
-#%%
-traces = np.array(traces_viola).squeeze().T
-# gt = np.load(base_folder+"/FOV4_50um_estimates.npz", allow_pickle=True)[()]["t"][:,:5000]
-plt.plot(traces[0]);plt.plot(hals.T[0])
+    mov_in = mov 
+    Ab = H_new.astype(np.float32)
+    template = np.median(mov_in, axis=0)
+    center_dims = (template.shape[0], template.shape[1])
+    
+    b = to_2D(mov).T[:, 0]
+    x0 = nnls(Ab,b)[0][:,None]
+    AtA = Ab.T@Ab
+    Atb = Ab.T@b
+    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+    mc0 = mov_in[0:1,:,:, None]
+    #%% HALS
+    count = 0
+    hals = []
+    for frame in Y.T[1:]:
+        count += 1
+        cc = (HALS4activity(frame, Ab, noisyC = W[-1], AtA=AtA, iters=5, groups=None)[0])
+        hals.append(cc)
+    hals = np.array(hals)
+    #%%
+    
+    from pipeline_gpu import Pipeline, get_model
+    model = get_model(template, center_dims, Ab, 30)
+    model.compile(optimizer='rmsprop', loss='mse')
+    spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
+    traces_viola = spike_extractor.get_spikes(5000)
+    #%%
+    
+    #%%
+    traces = np.array(traces_viola).squeeze().T
+    # gt = np.load(base_folder+"/FOV4_50um_estimates.npz", allow_pickle=True)[()]["t"][:,:5000]
+    plt.plot(traces[0]);plt.plot(hals.T[0])
 #%% CALCIUM
 if voltage == False:
     template = np.median(a2, axis=0)
@@ -245,19 +246,20 @@ if voltage == False:
     Cf = np.concatenate([C+YrA,f], axis=0)
     x0 = Cf[:,0].copy()[:,None]
 #%%
-mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
+    mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
 #%%
-tf.keras.backend.clear_session()
-layer_depths = [30]
-for d in layer_depths:
-    filepath = namespace + str(d)
-    model = get_model(template, (256, 256), Ab.astype(np.float32), d)
-    model.compile(optimizer='rmsprop', loss='mse')
-    spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
-    out = spike_extractor.get_spikes(1825)
-    spikes_gpu = out[0]
-    spikes = np.array(spikes_gpu).squeeze().T
-    np.save(filepath, spikes)
+    tf.keras.backend.clear_session()
+    layer_depths = [30]
+    for d in layer_depths:
+        filepath = namespace + str(d)
+        model = get_model(template, (256, 256), Ab.astype(np.float32), d)
+        model.compile(optimizer='rmsprop', loss='mse')
+        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
+        out = spike_extractor.get_spikes(30)
+        spikes_gpu = out[0]
+        spikes = np.array(spikes_gpu).squeeze().T
+        np.save(filepath+"traces", spikes)
+        np.save(filepath+"times", out[1])
 #%%
 Cf_bc = [Cf[:,0].copy()]
 count = 0
@@ -279,3 +281,16 @@ for i in range(100,150):
     plt.cla()
 #%%
 np.savez('FOV1_35_vol_data.npz', nnlsgt = np.load("FOV_1_35_nnls.npy"), nnls5 = np.load("FOV1_35_5.npy"),nnls10 = np.load("FOV1_35_10.npy"), nnls20=np.load("FOV1_35_20.npy"), nnls30=np.load("FOV1_35_30.npy"), Y_tot=y, Ab=Ab)
+#%%
+from skimage.transform import resize
+from motion_correction_gpu import MotionCorrectTest
+# frame_sizes = [256, 512, 768]
+frame_sizes = [256]
+for size in frame_sizes:
+    mov = resize(a2, (a2.shape[0], size, size))
+    template = np.median(mov, axis=0)
+    mot_corr = MotionCorrectTest(template, (size, size))
+    shifts = []
+    for i in range(50):
+        out = mot_corr(a2[i, :,:,None][None, :])
+        shifts.append(out[1])
