@@ -85,7 +85,7 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     compound_f1_scores = []
     compound_prec = []
     compound_rec = []
-    for file in np.array(file_list)[training_set]:
+    for file in np.array(file_list)[1:2]:
         print(f'now processing file {file}')
         dict1 = np.load(file, allow_pickle=True)
         spike_purs = False
