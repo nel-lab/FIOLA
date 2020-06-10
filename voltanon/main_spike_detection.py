@@ -85,7 +85,7 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     compound_f1_scores = []
     compound_prec = []
     compound_rec = []
-    for file in np.array(file_list)[1:2]:
+    for file in np.array(file_list)[training_set]:
         print(f'now processing file {file}')
         dict1 = np.load(file, allow_pickle=True)
         spike_purs = False
@@ -224,18 +224,10 @@ for thres_STD in [thres_STD]:#range(23,24,1):
 
     all_results.append(res_dict)
 
-#%%
-trace_all = np.stack([img for i in range(50)])
-saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False, do_scale=True)
-saoz.fit(trace_all[:,:20000], len(img))
-for n in range(20000, trace_all.shape[1]):
-    saoz.fit_next(trace_all[:, n:n+1], n)
 
 #%%
-plt.plot(saoz.t_detect)
-plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/timing/timing_spikes_detection_50neurons.pdf')
-
-
+mm = np.array(saoz.t_detect)
+l1 = np.diff(np.where(mm>0.004)[0])
 #%%
 #plt.plot(dict1['v_t'], dict1['v_sg'])   
 plt.vlines(dict1['e_sp'], -10, -8,'r')

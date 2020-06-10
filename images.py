@@ -243,7 +243,7 @@ ax.set_title('Scores by neuron group')
 ax.set_xticks(x)
 ax.set_xticklabels(label)
 ax.legend()
-plt.savefig(os.path.join(save_folder, 'overlapping_neurons_F1' ))
+plt.savefig(os.path.join(save_folder, 'overlapping_neurons_F1.pdf' ))
 
 
 

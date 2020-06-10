@@ -29,8 +29,8 @@ fnames = [os.path.join(base_folder, file) for file in lists]
 freq_400 = [True, True, True, True, True, True, False, True, True, True, True, True, False, False, False, False]
 
 #%% Combine datasets
-x_shifts = [6, -2]
-y_shifts = [6, -3]
+x_shifts = [7, -2]
+y_shifts = [5, -4]
 file_set = [0, 2]
 name_set = [fnames[file_set[0]], fnames[file_set[1]]]
 m1 = cm.load(name_set[0])
