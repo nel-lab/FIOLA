@@ -57,7 +57,7 @@ def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False):
     if robust_std:
         thresh_list = np.arange(3.3, 5.0, 0.1)    
     else:
-        thresh_list = np.arange(2.7, 5.1, 0.1)
+        thresh_list = np.arange(3.5, 5.1, 0.1)
     for thresh_factor in thresh_list:
         thresh_temp = thresh_factor * std
         n_peaks = len(signal.find_peaks(data, height=thresh_temp)[0])    
