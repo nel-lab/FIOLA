@@ -117,7 +117,6 @@ def gaussian_blur_2D(movie_in,
 
         return movie_out
 
-
 def resize(mov_in, fx=1, fy=1, fz=1, interpolation=cv2.INTER_AREA):
         """
         Resizing caiman movie into a new one. Note that the temporal
@@ -182,6 +181,31 @@ def to_3D(mov2D, shape, order='F'):
     """
     return np.reshape(mov2D, shape, order=order)
 
+def bin_median(mat, window=10, exclude_nans=True):
+    """ compute median of 3D array in along axis o by binning values
+    Args:
+        mat: ndarray
+            input 3D matrix, time along first dimension
+        window: int
+            number of frames in a bin
+    Returns:
+        img:
+            median image
+    Raises:
+        Exception 'Path to template does not exist:'+template
+    """
+    T, d1, d2 = np.shape(mat)
+    if T < window:
+        window = T
+    num_windows = np.int(old_div(T, window))
+    num_frames = num_windows * window
+    if exclude_nans:
+        img = np.nanmedian(np.nanmean(np.reshape(
+            mat[:num_frames], (window, num_windows, d1, d2)), axis=0), axis=0)
+    else:
+        img = np.median(np.mean(np.reshape(
+            mat[:num_frames], (window, num_windows, d1, d2)), axis=0), axis=0)
+    return img
 
 def signal_filter(sg, freq, fr, order=3, mode='high'):
     """

@@ -16,7 +16,6 @@ from motion_correction_gpu import MotionCorrect
 from nnls_gpu import NNLS, compute_theta2
 from queue import Queue
 import timeit
-import scipy
 #%%
 def get_model(template, center_dims, Ab, num_layers=5):
     """
@@ -27,15 +26,14 @@ def get_model(template, center_dims, Ab, num_layers=5):
     template = template.astype(np.float32)
     num_components = Ab.shape[-1]  
 #    c_shp_x, c_shp_y = shp_x//4, shp_y//4
-
 #    template = template[c_shp_x+10:-(c_shp_x+10),c_shp_y+10:-(c_shp_y+10), None, None]
 
     y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="y") # Input Layer for components
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="x") # Input layer for components
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
     k_in = tf.keras.layers.Input(shape=(1,), name="k")
+ 
     #Calculations to initialize Motion Correction
-    
     AtA = Ab.T@Ab
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
@@ -58,8 +56,7 @@ def get_model(template, center_dims, Ab, num_layers=5):
     model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
     return model
 
-#%%
-    
+#%%    
 class Pipeline(object):
     
     def __init__(self, model, y_0, x_0, mc_0, tht2, tot):

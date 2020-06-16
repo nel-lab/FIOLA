@@ -18,7 +18,7 @@ from signal_analysis_online import SignalAnalysisOnlineZ
 from skimage import measure
 from sklearn.decomposition import NMF
 
-from caiman_functions import signal_filter, to_3D, to_2D
+from caiman_functions import signal_filter, to_3D, to_2D, bin_median
 from metrics import metric
 from nmf_support import hals, select_masks, normalize
 from skimage.io import imread
@@ -132,6 +132,7 @@ seq = np.argsort(std)[::-1]
 print(f'sequence of rank1-nmf: {seq}')
 
 small_mask = True  # Much faster in speed
+do_plot = False
 for i in seq:
     print(f'now processing neuron {i}')
     model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
@@ -180,16 +181,18 @@ if do_plot:
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/FOV4_50um_H_new.npy', H_new)
-#H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
+H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
 use_GPU = True
 use_batch = False
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
-    template = np.median(mov_in, axis=0)
+    #template = np.median(mov_in, axis=0)
+    template = bin_median(mov_in, exclude_nans=False)
     center_dims = (template.shape[0], template.shape[1])
     if not use_batch:
-        b = to_2D(mov).T[:, 0]
+        #b = to_2D(mov).T[:, 0]
+        b = mov[0].reshape(-1, order='F')
         x0 = nnls(Ab,b)[0][:,None]
         AtA = Ab.T@Ab
         Atb = Ab.T@b
@@ -209,9 +212,10 @@ if use_GPU:
         num_frames = 20000
         num_components = Ab.shape[-1]
 
-        template = np.median(mov_in, axis=0)
-        
-        b = to_2D(mov).T[:, 0:batch_size]
+        #template = np.median(mov_in, axis=0)
+        template = bin_median(mov_in, exclude_nans=False)
+        #b = to_2D(mov).T[:, 0:batch_size]
+        b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
         x0=[]
         for i in range(batch_size):
             x0.append(nnls(Ab,b[:,i])[0])
@@ -222,10 +226,8 @@ if use_GPU:
         theta_2 = (Atb/n_AtA).astype(np.float32)
 
         from batch_gpu import Pipeline, get_model
-
         model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
-
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
@@ -280,7 +282,7 @@ else:
 #%% Viola spike extraction
 if n_neurons == 'many':
     trace = trace_all[:].copy()
-    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=15)
+    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=15, detrend=True, flip=True)
     saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
     for n in range(10000, trace.shape[1]):
         saoz.fit_next(trace[:, n: n+1], n)
@@ -298,13 +300,13 @@ if n_neurons == 'many':
     estimates = np.load(name_estimates[0], allow_pickle=True).item()
     
     #%% Check neurons
-    idx = -1
+    idx = 1
     idx_volpy = seq[idx]
     #idx = np.where(seq==idx_volpy)[0][0]
     spikes_online = list(set(saoz.index[idx]) - set([0]))
     plt.figure();plt.imshow(H_new[:,idx].reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure()
-    plt.plot(normalize(saoz.trace[idx]), color='blue', label=f'online_{len(spikes_online)}')
+    plt.plot(normalize(saoz.t_d[idx]), color='blue', label=f'online_{len(spikes_online)}')
     plt.plot(normalize(saoz.t_s[idx]), color='red', label=f'online_t_s')
     plt.plot(normalize(estimates['t'][idx_volpy]), color='orange', label=f'volpy_{estimates["spikes"][idx_volpy].shape[0]}')
     plt.vlines(spikes_online, -1.6, -1.2, color='blue', label='online_spikes')

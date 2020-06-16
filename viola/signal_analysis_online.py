@@ -18,16 +18,22 @@ from running_statistics import OnlineFilter
 
 #%%
 class SignalAnalysisOnlineZ(object):
-    def __init__(self, window = 10000, step = 5000, do_scale=False, robust_std=False,
-                 frate=400, freq=15):
+    def __init__(self, window = 10000, step = 5000, detrend=True, flip=True, 
+                 do_scale=False, robust_std=False, frate=400, freq=15, 
+                 thresh_range=[3.5, 5], mfp=0.2, do_plot=False):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
             window: int
                 window over which to compute the running statistics
             step: int
-                stride over which to compute the running statistics                
-            do_scale: Bool
+                stride over which to compute the running statistics
+            detrend: bool
+                whether to remove the trend due to photobleaching 
+            flip: bool
+                whether to flip the signal after removing trend.
+                True for voltron indicator. False for others
+            do_scale: bool
                 whether to scale the input trace or not
             robust_std: bool
                 whether to use robust way to estimate noise
@@ -35,15 +41,29 @@ class SignalAnalysisOnlineZ(object):
                 movie frame rate
             freq: float
                 frequency for removing subthreshold activity
+            thresh_range: list
+                Range of threshold factor. Real threshold is threshold factor 
+                multiply by the estimated noise level. The default is [3.5,5.0].
+            mfp : float
+                Maximum estimated false positive. An upper bound for estimated false 
+                positive rate based on noise. Higher value means more FP and less FN. 
+                The default is 0.2.
+            do_plot: bool
+                Whether to plot or not.
                 
         '''
         self.t_detect = []
         self.window = window
         self.step = step
+        self.detrend = detrend
+        self.flip = flip
         self.do_scale = do_scale
         self.robust_std = robust_std
         self.freq = freq
         self.frate = frate
+        self.thresh_range = thresh_range
+        self.mfp = mfp
+        self.do_plot = do_plot
         self.filt = OnlineFilter(freq, frate, order=1, mode='low')
         
         
@@ -61,7 +81,7 @@ class SignalAnalysisOnlineZ(object):
         self.nn = nn
         self.frames_init = tm
         self.trace = np.zeros((nn, num_frames), dtype=np.float32) 
-        self.trace[:, :tm] = trace_in.copy()
+        self.t_d = np.zeros((nn, num_frames), dtype=np.float32) 
         # contains @todo
         self.t0 = np.zeros((nn, num_frames), dtype=np.float32) 
         self.t = np.zeros((nn, num_frames), dtype=np.float32) 
@@ -82,8 +102,22 @@ class SignalAnalysisOnlineZ(object):
 
         t_start = time()
         # initialize for each neuron: @todo parallelize
-        for idx, tr in enumerate(trace_in):   
-            output_list = find_spikes_tm(tr, self.freq, self.frate, self.do_scale, self.robust_std)
+        if self.flip:
+            self.trace[:, :tm] =  - trace_in.copy()
+        else:
+            self.trace[:, :tm] = trace_in.copy()
+       
+        if self.detrend:
+            for tp in range(trace_in.shape[1]):
+                if tp > 0:
+                    self.t_d[:, tp] = self.trace[:, tp] - self.trace[:, tp - 1] + 0.995 * self.t_d[:, tp - 1]
+        else:
+            self.t_d = self.trace.copy()
+        
+        for idx, tr in enumerate(self.t_d[:, :tm]):   
+            output_list = find_spikes_tm(tr, self.freq, self.frate, self.do_scale, 
+                                         self.robust_std, self.thresh_range, 
+                                         self.mfp, self.do_plot)
             self.index_track[idx] = output_list[0].shape[0]
             self.index[idx, :self.index_track[idx]] = output_list[0]
             self.thresh[idx] = output_list[1]
@@ -126,12 +160,20 @@ class SignalAnalysisOnlineZ(object):
             elif temp == 2:
                 self.update_thresh(idx)
 
-        # Normalize and remove subthreshold
-        self.trace[:, n:(n + 1)] = trace_in.copy()
-        trace_in -= self.median[:, -1:]
+        # Detrend, normalize and remove subthreshold
+        if self.flip:
+            self.trace[:, n:(n + 1)] = - trace_in.copy()
+        else:
+            self.trace[:, n:(n + 1)] = trace_in.copy()
+        if self.detrend:
+            self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)] - self.trace[:, (n - 1):n] + 0.995 * self.t_d[:, (n - 1):n]
+        else:
+            self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)]
+        temp = self.t_d[:, n:(n+1)].copy()        
+        temp -= self.median[:, -1:]
         if self.do_scale == True:
-            trace_in /= self.scale[:, -1:]
-        self.t0[:, n:(n + 1)] = trace_in.copy()
+            temp /= self.scale[:, -1:]
+        self.t0[:, n:(n + 1)] = temp.copy()
         self.sub[:, n] = self.filt.fit_next(self.t0[:, n])
         self.t[:, n:(n + 1)] = self.t0[:, n:(n + 1)] - self.sub[:, n:(n + 1)]  # time n remove subthreshold
         
@@ -152,14 +194,14 @@ class SignalAnalysisOnlineZ(object):
         return self
         
     def update_median(self, idx):
-        tt = self.trace[idx, self.n - np.int(self.window*2.5):self.n]
+        tt = self.t_d[idx, self.n - np.int(self.window*2.5):self.n]
         if idx == 0:
             self.median = np.append(self.median, self.median[:, -1:], axis=1)
         self.median[idx, -1] = np.median(tt)
         return self
     
     def update_scale(self, idx):
-        tt = self.trace[idx, self.n - np.int(self.window*2.5):self.n]
+        tt = self.t_d[idx, self.n - np.int(self.window*2.5):self.n]
         #tt = self.trace[idx, :self.n]
         if idx == 0:
             self.scale = np.append(self.scale, self.scale[:, -1:], axis=1)
