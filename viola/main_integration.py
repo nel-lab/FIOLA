@@ -20,7 +20,7 @@ from sklearn.decomposition import NMF
 
 from caiman_functions import signal_filter, to_3D, to_2D, bin_median
 from metrics import metric
-from nmf_support import hals, select_masks, normalize
+from nmf_support import hals, select_masks, normalize, nmf_sequential
 from skimage.io import imread
 from running_statistics import OnlineFilter
 #%% files for processing
@@ -122,47 +122,15 @@ if do_plot:
             plt.imshow(mask[i], alpha=0.5)
 
 #%% Use nmf sequentially to extract all neurons in the region
-num_frames_init = 20000
+num_frames_init = 10000
 y_seq = y_filt[:num_frames_init,:].copy()
-W_tot = []
-H_tot = []
+
 mask_2D = to_2D(mask)
 std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
 seq = np.argsort(std)[::-1]
 print(f'sequence of rank1-nmf: {seq}')
 
-small_mask = True  # Much faster in speed
-do_plot = False
-for i in seq:
-    print(f'now processing neuron {i}')
-    model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
-    y_temp, _ = select_masks(y_seq, mov[:num_frames_init].shape, mask=mask[i])
-    if small_mask:
-        mask_dilate = cv2.dilate(mask[i],np.ones((4,4),np.uint8),iterations = 1)
-        x0 = np.where(mask_dilate>0)[0].min()
-        x1 = np.where(mask_dilate>0)[0].max()
-        y0 = np.where(mask_dilate>0)[1].min()
-        y1 = np.where(mask_dilate>0)[1].max()
-        context_region = np.zeros(mask_dilate.shape)
-        context_region[x0:x1+1, y0:y1+1] = 1
-        context_region = context_region.reshape([-1], order='F')
-        y_temp_small = y_temp[:, context_region>0]
-        W = model.fit_transform(np.maximum(y_temp_small,0))
-        H_small = model.components_
-        #plt.imshow(H_small.reshape([x1-x0+1, y1-y0+1], order='F')); plt.colorbar()
-        H = np.zeros((1, y_temp.shape[1]))
-        H[:, context_region>0] = H_small
-    else:
-        W = model.fit_transform(np.maximum(y_temp,0))
-        H = model.components_
-    y_seq = y_seq - W@H
-    W_tot.append(W)
-    H_tot.append(H)
-    if do_plot:
-        plt.figure();plt.plot(W);
-        plt.figure();plt.imshow(H.reshape(mov.shape[1:], order='F'));plt.colorbar()
-H = np.vstack(H_tot)
-W = np.hstack(W_tot)
+W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
 
 #%% Use hals to optimize masks
 update_bg = False
@@ -204,7 +172,7 @@ if use_GPU:
         model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
         spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-        traces_viola = spike_extractor.get_spikes(20000)
+        traces_viola = spike_extractor.get_spikes(3000)
 
     else:
     #FOR BATCHES:

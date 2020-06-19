@@ -12,10 +12,9 @@ import numpy as np
 import pylab as plt
 import scipy.ndimage as nd
 import scipy.sparse as spr
+from sklearn.decomposition import NMF
 from caiman_functions import to_3D, to_2D
 from spikepursuit import denoise_spikes
-
-
 
 def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
     """ Hierarchical alternating least square method for solving NMF problem
@@ -103,6 +102,61 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
         #     plt.figure();plt.imshow(Ab[:, i].reshape(Y.shape[0:2], order='F'));plt.colorbar()
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
+
+def nmf_sequential(y_seq, mask, seq, small_mask=True):
+    """ Use rank-1 nmf to sequentially extract neurons' spatial filters.
+    
+    Parameters
+    ----------
+    y_seq : ndarray, T * (# of pixel)
+        Movie after detrend. It should be in 2D format.
+    mask : ndarray, T * d1 * d2
+        Masks of neurons
+    seq : ndarray
+        order of rank-1 nmf on neurons.  
+    small_mask : bool, optional
+        Use small context region when doing rank-1 nmf. The default is True.
+
+    Returns
+    -------
+    W : ndarray
+        Temporal components of neurons.
+    H : ndarray
+        Spatial components of neuron.
+
+    """
+    W_tot = []
+    H_tot = []    
+    for i in seq:
+        print(f'now processing neuron {i}')
+        model = NMF(n_components=1, init='nndsvd', max_iter=100, verbose=False)
+        y_temp, _ = select_masks(y_seq, (y_seq.shape[0], mask.shape[1], mask.shape[2]), mask=mask[i])
+        if small_mask:
+            mask_dilate = cv2.dilate(mask[i],np.ones((4,4),np.uint8),iterations = 1)
+            x0 = np.where(mask_dilate>0)[0].min()
+            x1 = np.where(mask_dilate>0)[0].max()
+            y0 = np.where(mask_dilate>0)[1].min()
+            y1 = np.where(mask_dilate>0)[1].max()
+            context_region = np.zeros(mask_dilate.shape)
+            context_region[x0:x1+1, y0:y1+1] = 1
+            context_region = context_region.reshape([-1], order='F')
+            y_temp_small = y_temp[:, context_region>0]
+            W = model.fit_transform(np.maximum(y_temp_small,0))
+            H_small = model.components_
+            #plt.imshow(H_small.reshape([x1-x0+1, y1-y0+1], order='F')); plt.colorbar()
+            H = np.zeros((1, y_temp.shape[1]))
+            H[:, context_region>0] = H_small
+        else:
+            W = model.fit_transform(np.maximum(y_temp,0))
+            H = model.components_
+        y_seq = y_seq - W@H
+        W_tot.append(W)
+        H_tot.append(H)
+    H = np.vstack(H_tot)
+    W = np.hstack(W_tot)
+        
+    return W, H
+    
 
 def select_masks(Y, shape, mask=None):
     """ Select a mask for nmf
