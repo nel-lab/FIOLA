@@ -31,7 +31,7 @@ class NNLS(keras.layers.Layer):
         
         """
         super().__init__(**kwargs)
-        self.th1 = theta_1.astype(np.float32)
+        self.th1 = theta_1.astype(np.float16)
 
     def call(self, X):
         """
@@ -56,7 +56,7 @@ class compute_theta2(keras.layers.Layer):
         self.n_AtA = n_AtA
         
     def call(self, X):
-        Y = tf.matmul(X, self.A)
+        Y = tf.matmul(X, tf.cast(self.A, tf.float16))
         Y = tf.divide(Y, self.n_AtA)
         Y = tf.transpose(Y)
         return Y    
