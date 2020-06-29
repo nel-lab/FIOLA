@@ -96,10 +96,10 @@ class Pipeline(object):
 
     def get_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.generator, 
-                                                 output_types={"m": tf.float32,
-                                                               "y": tf.float32,
-                                                               "x": tf.float32,
-                                                               "k": tf.float32}, 
+                                                 output_types={"m": tf.float16,
+                                                               "y": tf.float16,
+                                                               "x": tf.float16,
+                                                               "k": tf.float16}, 
                                                  output_shapes={"m":(1, self.dim_x, self.dim_y, 1),
                                                                 "y":(1, self.num_neurons, 1),
                                                                 "x":(1, self.num_neurons, 1),

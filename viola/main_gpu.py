@@ -24,7 +24,7 @@ import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 from caiman_functions import to_3D, to_2D
 #%%
-base_folder = '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls/'
+base_folder = '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls/'
 
 caiman_saved_file = base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5'
 a2 = np.load(base_folder+"n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy")
@@ -54,7 +54,6 @@ with h5py.File(caiman_saved_file,'r') as f:
     A_sp_full = A_sp_full[:,idx_components ]
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
-#%%
 
 
 #%%
@@ -77,8 +76,9 @@ Cf = np.concatenate([C+YrA,f], axis=0)
 x0 = Cf[:,0].copy()[:,None]
 #%%
 # q = Queue()
+tf.keras.backend.set_floatx("float16")
 from pipeline_gpu import Pipeline, get_model
-model = get_model(template, (256, 256), Ab.astype(np.float32), 30)
+model = get_model(template, (256, 256), Ab.astype(np.float16), 30)
 #%%
 # from motion_correction_gpu import MotionCorrect
 # cfnn1 = []
