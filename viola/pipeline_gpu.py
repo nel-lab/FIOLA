@@ -20,18 +20,17 @@ import timeit
 def get_model(template, center_dims, Ab, num_layers=5):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
+    outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
     """
     shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
     Ab = Ab.astype(np.float32)
     template = template.astype(np.float32)
-    num_components = Ab.shape[-1]  
-#    c_shp_x, c_shp_y = shp_x//4, shp_y//4
-#    template = template[c_shp_x+10:-(c_shp_x+10),c_shp_y+10:-(c_shp_y+10), None, None]
+    num_components = Ab.shape[-1]
 
     y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="y") # Input Layer for components
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="x") # Input layer for components
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
-    k_in = tf.keras.layers.Input(shape=(1,), name="k")
+    k_in = tf.keras.layers.Input(shape=(1,), name="k") #Input layer for the counter within the NNLS layers
  
     #Calculations to initialize Motion Correction
     AtA = Ab.T@Ab
@@ -61,7 +60,7 @@ class Pipeline(object):
     def __init__(self, model, y_0, x_0, mc_0, tht2, tot):
         """
         Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
-        To run, after initializing, run self.get_spikes()
+        To run, after initializing, run self.get_traces()
         @todo: check if nAtA is computed at every iteration!
         """
         self.model, self.mc0, self.y_0, self.x_0, self.tht2 = model, mc_0, y_0, x_0, tht2
@@ -74,21 +73,21 @@ class Pipeline(object):
         self.spike_input_q = Queue()
         self.output_q = Queue()
         
-        #load estimator from the keras model
+        #loads estimator from the keras model
         self.estimator = self.load_estimator()
         
         #seed the queues
         self.frame_input_q.put(self.mc0)
         self.spike_input_q.put((self.y_0, self.x_0))
 
-        #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
-            #pull from the generator.
+        """Starts extracting frames: extract calls the estimator to predict using the outputs from the generator. 
+        Generator works by grabbing the LAST calculated trace and the CURRENT frame and yielding them to the model."""
         self.extraction_thread = Thread(target=self.extract, daemon=True)
         self.extraction_thread.start()
         
     def extract(self):
+        # Outputs a dictionary with the outputs from the model (y, x, k, th2)
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-#            print(i.keys())
             self.output_q.put(i)
     
     def load_estimator(self):
@@ -109,14 +108,15 @@ class Pipeline(object):
     def generator(self):
         #generator waits until data has been enqueued, then yields the data to the dataset
         while True:
-            out = self.spike_input_q.get()
+            out = self.spike_input_q.get() # the previous run's traces
             (y, x) = out
-            fr = self.frame_input_q.get()
+            fr = self.frame_input_q.get() # current frame
             
             yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
-    def get_spikes(self, bound):
-        #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
+    def get_traces(self, bound):
+        #to be called separately. Input "bound" represents the number of frames. 
+        #Starts at one because of initial values put on queue.
         output = [0]*bound
         # times = [0]*bound
         start = timeit.default_timer()
