@@ -40,7 +40,6 @@ class MotionCorrect(keras.layers.Layer):
         self.shp_x, self.shp_y = template.shape[0], template.shape[1]
         self.center_dims = center_dims
         self.c_shp_x, self.c_shp_y = (self.shp_x - center_dims[0])//2, (self.shp_y - center_dims[1])//2
-        print(self.c_shp_x)
     
         
         self.template_0 = template
@@ -67,7 +66,6 @@ class MotionCorrect(keras.layers.Layer):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         # print(X).shape
         X_center = X[:, self.c_shp_x:(self.shp_x-self.c_shp_x), self.c_shp_y:(self.shp_y-self.c_shp_y)]
-        print(X_center.shape)
         # X_center = X[:,:,:]
 
         # pass in center for normalization
@@ -85,10 +83,10 @@ class MotionCorrect(keras.layers.Layer):
         
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
         
-        X_corrected = tfa.image.translate(tf.cast(X, tf.float32), tf.cast(tf.squeeze(tf.stack([ys, xs], axis=1)), tf.float32), 
+        X_corrected = tfa.image.translate(X, (tf.squeeze(tf.stack([ys, xs], axis=1))), 
                                             interpolation="BILINEAR")
         # return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :], [xs, ys])
-        return tf.cast(tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :], tf.float16)
+        return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :])
 
 
     def get_config(self):
@@ -101,14 +99,14 @@ class MotionCorrect(keras.layers.Layer):
         # remove mean and divide by std
         template_zm = template - tf.reduce_mean(template, axis=[0,1], keepdims=True)
         template_var = tf.reduce_sum(tf.square(template_zm), axis=[0,1], keepdims=True) + epsilon
-        return tf.cast(template_zm, tf.float16), tf.cast(template_var, tf.float16)
+        return tf.cast(template_zm, tf.float32), tf.cast(template_var, tf.float32)
         
     def normalize_image(self, imgs, shape_template, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001):
         # remove mean and standardize so that normalized cross correlation can be computed
         imgs_zm = imgs - tf.reduce_mean(imgs, axis=[1,2], keepdims=True)
-        localsum_sq = tf.nn.conv2d(tf.square(imgs), tf.ones(shape_template, tf.float16), 
+        localsum_sq = tf.nn.conv2d(tf.square(imgs), tf.ones(shape_template), 
                                                padding=padding, strides=strides)
-        localsum = tf.nn.conv2d(imgs,tf.ones(shape_template, tf.float16), 
+        localsum = tf.nn.conv2d(imgs,tf.ones(shape_template), 
                                                padding=padding, strides=strides)
         
         
@@ -129,7 +127,7 @@ class MotionCorrect(keras.layers.Layer):
         argmax_x = tf.cast(argmax, tf.int32) // tf.shape(tensor)[2]
         argmax_y = tf.cast(argmax, tf.int32) % tf.shape(tensor)[2]
         # stack and return 2D coordinates
-        return tf.cast(tf.stack((argmax_x, argmax_y), axis=1), tf.float16)
+        return tf.cast(tf.stack((argmax_x, argmax_y), axis=1), tf.float32)
         
     def extract_fractional_peak(self, tensor_ncc, ms_h, ms_w):
         """ use gaussian interpolation to extract a fractional shift
@@ -145,8 +143,8 @@ class MotionCorrect(keras.layers.Layer):
         shifts_int_cast = tf.cast(shifts_int,tf.int64)
         sh_x, sh_y = shifts_int_cast[:,0],shifts_int_cast[:,1]
         
-        sh_x_n = tf.cast(-(sh_x - ms_h), tf.float16)
-        sh_y_n = tf.cast(-(sh_y - ms_w), tf.float16)
+        sh_x_n = tf.cast(-(sh_x - ms_h), tf.float32)
+        sh_y_n = tf.cast(-(sh_y - ms_w), tf.float32)
         
         tensor_ncc_log = tf.math.log(tensor_ncc)
 
@@ -223,7 +221,6 @@ class MotionCorrectTest(keras.layers.Layer):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
         # print(X).shape
         X_center = X[:, self.c_shp_x:(self.shp_x-self.c_shp_x), self.c_shp_y:(self.shp_y-self.c_shp_y)]
-        print(X_center.shape)
         # X_center = X[:,:,:]
 
         # pass in center for normalization

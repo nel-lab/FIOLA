@@ -76,9 +76,8 @@ Cf = np.concatenate([C+YrA,f], axis=0)
 x0 = Cf[:,0].copy()[:,None]
 #%%
 # q = Queue()
-tf.keras.backend.set_floatx("float16")
 from pipeline_gpu import Pipeline, get_model
-model = get_model(template, (256, 256), Ab.astype(np.float16), 30)
+model = get_model(template, (256, 256), Ab.astype(np.float32), 30)
 #%%
 # from motion_correction_gpu import MotionCorrect
 # cfnn1 = []
