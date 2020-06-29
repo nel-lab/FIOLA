@@ -205,7 +205,7 @@ if voltage:
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
     mc0 = mov_in[0:1,:,:, None]
-    # HALS
+    #%% HALS
     count = 0
     hals = []
     for frame in Y.T[1:]:
@@ -220,27 +220,17 @@ if voltage:
     model.compile(optimizer='rmsprop', loss='mse')
     spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
     traces_viola = spike_extractor.get_spikes(5000)
-
+    #%%
+    
+    #%%
     traces = np.array(traces_viola).squeeze().T
     # gt = np.load(base_folder+"/FOV4_50um_estimates.npz", allow_pickle=True)[()]["t"][:,:5000]
     plt.plot(traces[0]);plt.plot(hals.T[0])
-#%%
-Cf_bc = [Cf[:,0].copy()]
-count = 0
-times = []
-for frame in Y.T[1:]:
-    count += 1
-    cc = (HALS4activity(frame, A, noisyC = Cf_bc[-1], AtA=AtA, iters=5, groups=None)[0])
-#    Cf_bc.append(HALS4activity(frame, A, noisyC = Cf_bc[-1], AtA=AtA, iters=5, groups=None)[0])
-    times.append(time()-t_0)
-print(time()-t_0) 
-Cf_bc = np.squeeze(np.array(Cf_bc).T)
-print(np.linalg.norm(Y-Ab@Cf_bc)/np.linalg.norm(Y))    
 #%% CALCIUM
 if voltage == False:
     Y_tot = to_2D(a2).T
     template = np.median(a2, axis=0)
-    f, Y =  f_full[:, 0][:, None], a2[:, 0][:, None]
+    f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
     YrA = YrA_full[:, 0][:, None]
     C = C_full[:, 0][:, None]
     
@@ -271,7 +261,18 @@ if voltage == False:
         spikes = np.array(spikes_gpu).squeeze().T
         np.save(filepath+"traces", spikes)
         np.save(filepath+"times", out[1])
-  
+#%%
+Cf_bc = [Cf[:,0].copy()]
+count = 0
+times = []
+for frame in Y.T[1:]:
+    count += 1
+    cc = (HALS4activity(frame, A, noisyC = Cf_bc[-1], AtA=AtA, iters=5, groups=None)[0])
+#    Cf_bc.append(HALS4activity(frame, A, noisyC = Cf_bc[-1], AtA=AtA, iters=5, groups=None)[0])
+    times.append(time()-t_0)
+print(time()-t_0) 
+Cf_bc = np.squeeze(np.array(Cf_bc).T)
+print(np.linalg.norm(Y-Ab@Cf_bc)/np.linalg.norm(Y))  
 #%%
 gt = np.load("k56_groundtruth.npy")
 a = np.load("k565.npy")
