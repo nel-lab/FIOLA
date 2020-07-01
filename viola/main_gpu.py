@@ -23,8 +23,8 @@ import timeit
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 from caiman_functions import to_3D, to_2D
-#%%
-base_folder = '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls/'
+#%% folder setup and file import
+base_folder = '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls/'
 
 caiman_saved_file = base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5'
 a2 = np.load(base_folder+"n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy")
@@ -54,10 +54,9 @@ with h5py.File(caiman_saved_file,'r') as f:
     A_sp_full = A_sp_full[:,idx_components ]
     C_full = C_full[idx_components]
     YrA_full = YrA_full[idx_components]
-#%%
 
 
-#%%
+#%% initial calculations
 template = np.median(a2, axis=0)
 f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 YrA = YrA_full[:, 0][:, None]
@@ -75,10 +74,36 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 Cff = np.concatenate([C_full+YrA_full,f_full], axis=0)
 Cf = np.concatenate([C+YrA,f], axis=0)
 x0 = Cf[:,0].copy()[:,None]
-#%%
-# q = Queue()
+#%% creation of the model
+#model takes as input: the template, the desired "center" size , the Ab object, and the number of NNLS layers. 
 from pipeline_gpu import Pipeline, get_model
 model = get_model(template, (256, 256), Ab.astype(np.float32), 30)
+model.compile(optimizer='rmsprop', loss='mse')
+#%% creation of the Pipeline object and extraction of traces
+from motion_correction_gpu import MotionCorrect
+mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
+trace_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
+out = trace_extractor.get_traces(50)
+#%% reshaping output traces
+traces_gpu = out
+traces = np.array(traces_gpu).T.squeeze()
+#%%
+print(np.linalg.norm(Y_tot-Ab@traces)/np.linalg.norm(Y_tot))
+#%% plotting
+# plt.plot(spikes)
+if False:
+    for vol, ca in zip(traces, Cff[:,:300]):
+#    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
+
+        plt.cla()
+        plt.plot((vol), label='volpy')
+        plt.plot((ca), label='caiman')    
+        plt.xlim([0,300])
+        plt.pause(1)
+#%%
+del model
+del trace_extractor
+tf.keras.backend.clear_session()
 #%%
 # from motion_correction_gpu import MotionCorrect
 # cfnn1 = []
@@ -139,8 +164,6 @@ model = get_model(template, (256, 256), Ab.astype(np.float32), 30)
 #     plt.plot((ca), label='caiman')    
 #     plt.pause(1)
 #%%
-model.compile(optimizer='rmsprop', loss='mse')
-#%%
 #spikes2 = []
 #x_old, y_old = x0[None, :], x0[None, :]
 #for idx in range(10):
@@ -149,32 +172,7 @@ model.compile(optimizer='rmsprop', loss='mse')
 #    nnls_out = model([fr, x_old, y_old, tf.convert_to_tensor([[0]], dtype=tf.int8)])[0]
 #    y_old, x_old = nnls_out[0], nnls_out[1]
 #    spikes2.append(x_old)
-#%%
-from motion_correction_gpu import MotionCorrect
-mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
-spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
-out = spike_extractor.get_spikes(1825)
-#%%
-spikes_gpu = out
-spikes = np.array(spikes_gpu).T.squeeze()
-#%%
-print(np.linalg.norm(Y_tot-Ab@spikes)/np.linalg.norm(Y_tot))
 
-#%%
-# plt.plot(spikes)
-if False:
-    for vol, ca in zip(spikes, Cff[:,:300]):
-#    print(tf.reduce_sum(vol), tf.reduce_sum(ca))
-
-        plt.cla()
-        plt.plot((vol), label='volpy')
-        plt.plot((ca), label='caiman')    
-        plt.xlim([0,300])
-        plt.pause(1)
-#%%
-del model
-del spike_extractor
-tf.keras.backend.clear_session()
 
 
 

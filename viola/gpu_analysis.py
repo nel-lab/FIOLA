@@ -228,6 +228,7 @@ if voltage:
     plt.plot(traces[0]);plt.plot(hals.T[0])
 #%% CALCIUM
 if voltage == False:
+    Y_tot = to_2D(a2).T
     template = np.median(a2, axis=0)
     f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
     YrA = YrA_full[:, 0][:, None]
@@ -245,9 +246,9 @@ if voltage == False:
     Cff = np.concatenate([C_full+YrA_full,f_full], axis=0)
     Cf = np.concatenate([C+YrA,f], axis=0)
     x0 = Cf[:,0].copy()[:,None]
-#%%
+
     mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
-#%%
+
     tf.keras.backend.clear_session()
     layer_depths = [30]
     for d in layer_depths:
