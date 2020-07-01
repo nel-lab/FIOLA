@@ -18,13 +18,13 @@ from signal_analysis_online import SignalAnalysisOnlineZ
 from skimage import measure
 from sklearn.decomposition import NMF
 
-from caiman_functions import signal_filter, to_3D, to_2D, bin_median
+from caiman_functions import signal_filter, to_3D, to_2D, bin_median, play
 from metrics import metric
 from nmf_support import hals, select_masks, normalize, nmf_sequential
 from skimage.io import imread
 from running_statistics import OnlineFilter
 #%% files for processing
-n_neurons = ['1', '2', 'many'][2]
+n_neurons = ['1', '2', 'many'][0]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
@@ -63,7 +63,7 @@ elif n_neurons == 'many':
     
 #%% Choosing datasets
 if n_neurons == '1':
-    file_set = [i]
+    file_set = [1]
     name = movie_lists[file_set[0]]
     belong_Marton = True
     if ('Fish' in name) or ('Mouse' in name):
@@ -129,7 +129,6 @@ mask_2D = to_2D(mask)
 std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
 seq = np.argsort(std)[::-1]
 print(f'sequence of rank1-nmf: {seq}')
-
 W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
 
 #%% Use hals to optimize masks
@@ -149,17 +148,15 @@ if do_plot:
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/FOV4_50um_H_new.npy', H_new)
-H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = True
+#H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
+use_GPU = False
 use_batch = False
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
-    #template = np.median(mov_in, axis=0)
     template = bin_median(mov_in, exclude_nans=False)
-    center_dims = (template.shape[0], template.shape[1])
+    center_dims = (128,128)#(template.shape[0], template.shape[1])
     if not use_batch:
-        #b = to_2D(mov).T[:, 0]
         b = mov[0].reshape(-1, order='F')
         x0 = nnls(Ab,b)[0][:,None]
         AtA = Ab.T@Ab
@@ -172,7 +169,7 @@ if use_GPU:
         model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
         spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-        traces_viola = spike_extractor.get_spikes(3000)
+        traces_viola = spike_extractor.get_spikes(20000)
 
     else:
     #FOR BATCHES:
@@ -180,9 +177,7 @@ if use_GPU:
         num_frames = 20000
         num_components = Ab.shape[-1]
 
-        #template = np.median(mov_in, axis=0)
         template = bin_median(mov_in, exclude_nans=False)
-        #b = to_2D(mov).T[:, 0:batch_size]
         b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
         x0=[]
         for i in range(batch_size):
@@ -206,10 +201,7 @@ if use_GPU:
                 traces_viola.append([spike[:,:,i]])
 
     traces_viola = np.array(traces_viola).squeeze().T
-    traces_viola = signal_filter(traces_viola,freq = 1/3, fr=frate).T
-    traces_viola -= np.median(traces_viola, 0)[np.newaxis, :]
-    traces_viola = -traces_viola.T
-    trace_all = np.hstack([traces_viola,np.zeros((traces_viola.shape[0],1))])
+    trace_all = traces_viola.copy()
 
 else:
     #Use nnls to extract signal for neurons or not and filter
@@ -220,32 +212,7 @@ else:
         trace_nnls = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (-y)[fe]])
     else:
         trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
-    filter_method = ['offline', 'butter', 'dc_blocker'][2]
-    if filter_method == 'offline':
-        trace_nnls = signal_filter(trace_nnls.T,freq = 1/3, fr=frate).T
-        trace_nnls -= np.median(trace_nnls, 0)[np.newaxis, :]
-        trace_nnls = -trace_nnls.T
-        trace_all = trace_nnls 
-    elif filter_method == 'butter': # filter online
-        freq = 1/3
-        trace_all = trace_nnls.T
-        onFilt = OnlineFilter(freq=freq, fr=frate, mode='high')
-        trace_filt = np.zeros_like(trace_all)
-        trace_filt[:,:20000] = onFilt.fit(trace_all[:,:20000])    
-        time0 = time()
-        for i in range(20000, trace_all.shape[-1]):
-            trace_filt[:,i] = onFilt.fit_next(trace_all[:,i])
-        print(time()-time0)
-        trace_all -= np.median(trace_all.T, 0)[np.newaxis, :].T
-        trace_all = -trace_filt
-    elif filter_method == 'dc_blocker':
-        trace = trace_nnls.T
-        trace_filt = np.zeros(trace.shape)        
-        for tp in range(trace.shape[1]):
-            if tp > 0:
-                trace_filt[:, tp] = trace[:, tp] - trace[:, tp - 1] + 0.995 * trace_filt[:, tp - 1]
-        trace_all = -trace_filt
-        trace_all = trace_all - np.median(trace_all)
+    trace_all = trace_nnls.T.copy() 
     
 #%% Viola spike extraction
 if n_neurons == 'many':
@@ -255,47 +222,50 @@ if n_neurons == 'many':
     for n in range(10000, trace.shape[1]):
         saoz.fit_next(trace[:, n: n+1], n)
     saoz.compute_SNR()
+    saoz.reconstruct_signal()
     print(f'thresh:{saoz.thresh}')
     print(f'SNR: {saoz.SNR}')
     print(f'Mean_SNR: {np.array(saoz.SNR).mean()}')
     #print(f'sequence of rank1-nmf: {seq}')
     #print(f'Spikes:{(saoz.index>0).sum(1)}')
     print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)[np.argsort(seq)]}')
-
+   
     #%% Load VolPy result
     name_estimates = ['demo_voltage_imaging_estimates.npy', 'FOV4_50um_estimates.npz']
     name_estimates = [os.path.join(movie_folder, name) for name in name_estimates]
     estimates = np.load(name_estimates[0], allow_pickle=True).item()
     
     #%% Check neurons
-    idx = 1
+    idx = 3
     idx_volpy = seq[idx]
     #idx = np.where(seq==idx_volpy)[0][0]
     spikes_online = list(set(saoz.index[idx]) - set([0]))
-    plt.figure();plt.imshow(H_new[:,idx].reshape(mov.shape[1:], order='F'));plt.colorbar()
+    #plt.figure();plt.imshow(H_new[:,idx].reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure()
-    plt.plot(normalize(saoz.t_d[idx]), color='blue', label=f'online_{len(spikes_online)}')
-    plt.plot(normalize(saoz.t_s[idx]), color='red', label=f'online_t_s')
+    plt.plot(saoz.t0[idx], color='blue', label=f'online_{len(spikes_online)}')
+    #plt.plot(normalize(saoz.t[idx]), color='red', label=f'online_t_s')
     plt.plot(normalize(estimates['t'][idx_volpy]), color='orange', label=f'volpy_{estimates["spikes"][idx_volpy].shape[0]}')
+    #plt.plot(normalize(saoz.t_rec[idx]), color='red', label=f'online_t_rec')
+    plt.plot(saoz.t_sub[idx], color='red', label=f'online_t_sub')
     plt.vlines(spikes_online, -1.6, -1.2, color='blue', label='online_spikes')
-    plt.vlines(estimates['spikes'][idx_volpy], -1.8, -1.4, color='orange', label='online_spikes')
+    plt.vlines(estimates['spikes'][idx_volpy], -1.8, -1.4, color='orange', label='volpy_spikes')
     print(len(list(set(saoz.index[idx]))))
     plt.legend()   
 
     #%% Traces
     #idx_list = np.where((saoz.index_track>30))[0]
-    idx_volpy = np.where(np.array([len(estimates['spikes'][k]) for k in range(len(estimates['spikes']))])>50)[0]
+    idx_volpy = np.where(np.array([len(estimates['spikes'][k]) for k in range(len(estimates['spikes']))])>150)[0]
     idx_list = np.array([np.where(seq==idx_volpy[k])[0][0] for k in range(idx_volpy.size)])
     length = idx_list.size
     fig, ax = plt.subplots(idx_list.size,1)
     colorsets = plt.cm.tab10(np.linspace(0,1,10))
     colorsets = colorsets[[0,1,2,3,4,5,6,8,9],:]
-    scope=[11000, 14000]
+    scope=[0, 20000]
     
     for n, idx in enumerate(idx_list):
         idx_volpy = seq[idx]
         ax[n].plot(np.arange(20000), normalize(estimates['t'][idx_volpy]), 'c', linewidth=0.5, color='orange', label='volpy')
-        ax[n].plot(np.arange(20000), normalize(saoz.trace[idx, :20000]), 'c', linewidth=0.5, color='blue', label='viola')
+        ax[n].plot(np.arange(20000), normalize(saoz.t_s[idx, :20000]), 'c', linewidth=0.5, color='blue', label='viola')
         #ax[n].plot(np.arange(20000), normalize(saoz.t_s[idx, :20000]), 'c', linewidth=0.5, color='red', label='viola')
         #ax[n].plot(normalize(saoz.t_s[idx]), color='blue', label=f'viola_t_s')
     
@@ -351,10 +321,9 @@ if n_neurons in ['1', '2']:
         
         trace = trace_all[seq[idx]:seq[idx]+1, :].copy()
         #trace = dc_blocked[np.newaxis,:].copy()
-        saoz = SignalAnalysisOnlineZ()
+        saoz = SignalAnalysisOnlineZ(do_scale=True, thresh_range=[2.8, 5], frate=frate, robust_std=False, detrend=True, flip=True)
         #saoz.fit(trr_postf[:20000], len())
         #trace=dict1['v_sg'][np.newaxis, :]
-        saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False)
         saoz.fit(trace_all[:20000], trace_all.shape[1])
         for n in range(20000, trace_all.shape[1]):
             saoz.fit_next(trace_all[:, n:n+1], n)
@@ -425,10 +394,7 @@ dict1['compound_rec'] =  np.array(compound_rec).round(2)
 dict1['snr'] = np.array(all_snr).round(2).T
 
 np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/saoz_training.npy', dict1)
-
-
-
-    
+   
 #%%
 if n_neurons == '1':
 #plt.plot(dict1['v_t'], saoz.trace.flatten())
@@ -457,3 +423,54 @@ print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
 print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
 print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
 print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
+
+#%% corr
+corr = []
+#file_set = np.arange(0,8)
+names = []
+file_set = np.array([7])
+for idx, k in enumerate(list(file_set)):
+    name_traces = '/'.join(fnames[k].split('/')[:-2] + ['one_neuron_result', 
+                               fnames[k].split('/')[-1][:-7]+'_output.npz'])
+    # F1 score
+    dict1 = np.load(name_traces, allow_pickle=True)
+    corr.append(np.corrcoef(dict1['e_sub'][:20000], dict1['v_sub'][:20000])[0, 1])
+    names.append(fnames[k].split('/')[-1][:13])
+    
+#%%
+import matplotlib
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
+import matplotlib.pyplot as plt
+
+plt.bar(file_set, corr)    
+plt.xticks(file_set, names, rotation='vertical', fontsize=4)  
+plt.ylabel('corrcoef')  
+np.array(corr).mean()
+plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Backup/2020-06-29-Jannelia-meeting/bar_plot.pdf')
+#%%
+plt.figure()
+plt.plot(normalize(dict1['e_sub'][:20000]), label='ephys sub')
+plt.plot(normalize(dict1['v_sub'][:20000]), label='volpy sub')
+#np.corrcoef(dict1['e_sub'][:20000], dict1['v_sub'][:20000])
+plt.legend()
+plt.xlim([0,3000])
+plt.ylim([-1,1])
+plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Backup/2020-06-29-Jannelia-meeting/dataset_7.pdf')
+
+#%% reconstruction
+shape = mask.shape[1:]
+scope = [0, 1000]
+saoz.reconstruct_movie(H_new, shape, scope)
+
+#%%
+mov_new = saoz.mov_rec.copy()
+play(mov_new, fr=400, q_min=0.01)        
+#mv_bl = mv.computeDFF(secsWindow=0.1)[0]
+
+#%%
+y = to_2D(-mov[scope[0]:scope[1]]).copy()
+y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
+mov_detrend = to_3D(y_filt, shape=mov[scope[0]:scope[1]].shape)
+play(mov_detrend, q_min=80, q_max=98)
+

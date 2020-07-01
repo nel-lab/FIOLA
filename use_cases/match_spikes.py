@@ -104,10 +104,56 @@ def match_spikes_greedy(s1, s2, max_dist):
             del l2[0]
     return idx1, idx2
 
+def compute_F1(s1, s2, idx1, idx2):
+    """
+    Compute F1 scores, precision and recall.
+
+    Parameters
+    ----------
+    s1,s2 : ndarray
+        Spike time of two methods. Note we assume s1 as ground truth spikes.
+    
+    idx1, idx2 : ndarray
+        Matched spikes indexes with respect to s1 and s2
+
+    Returns
+    -------
+    F1 : float
+        Measures of how well spikes are matched with ground truth spikes. 
+        The higher F1 score, the better.
+        F1 = 2 * (precision * recall) / (precision + recall)
+    precision, recall : float
+        Precision and recall rate of spikes matching.
+        precision = TP / (TP + FP)
+        recall = TP / (TP + FN)
+
+    """
+    TP = len(idx1)
+    FP = len(s2) - TP
+    FN = len(s1) - TP
+    
+    if len(s1) == 0:
+        F1 = np.nan
+        precision = np.nan
+        recall = np.nan
+    else:
+        try:    
+            precision = TP / (TP + FP)
+        except ZeroDivisionError:
+            precision = 0
+        recall = TP / (TP + FN)
+        try:
+            F1 = 2 * (precision * recall) / (precision + recall) 
+        except ZeroDivisionError:
+            F1 = 0
+            
+    return F1, precision, recall
+    
 #%% small test
+# Note here we assume s1 as our ground truth spikes !!
 random.seed(2020)
-s1 =  np.array(sorted(random.sample(range(5000), 1000)))
-s2 =  np.array(sorted(random.sample(range(5000), 1000)))
+s1 =  np.array(sorted(random.sample(range(5000), 400)))
+s2 =  np.array(sorted(random.sample(range(5000), 1200)))
 D = compute_distances(s1, s2, max_dist=3)
 idx1_linear, idx2_linear = match_spikes_linear_sum(D)
 idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=3)
@@ -123,4 +169,12 @@ for j in range(len(idx1_greedy)):
 
 # two methods provide the same number of pairs
 print(f'Same number of pairs? {len(idx1_linear) == len(idx1_greedy)}')
+
+# Compute measures
+F1, precision, recall = compute_F1(s1, s2, idx1_greedy, idx2_greedy)
+print(f'F1:{round(F1, 3)}, precision:{round(precision,3)}, recall:{round(recall, 3)}')
+
+
+
+
 

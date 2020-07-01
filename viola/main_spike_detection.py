@@ -17,7 +17,7 @@ from metrics import metric
 import os
 from spike_extraction_routines import estimate_subthreshold_signal, extract_exceptional_events, find_spikes
 from running_statistics import estimate_running_std
-from template_matching import find_spikes_tm, find_spikes_tm_online
+from template_matching import find_spikes_tm
 #%%
 base_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/data_new',
                '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron_result'][1]
@@ -85,7 +85,7 @@ for thres_STD in [thres_STD]:#range(23,24,1):
     compound_f1_scores = []
     compound_prec = []
     compound_rec = []
-    for file in np.array(file_list)[1:2]:
+    for file in np.array(file_list)[all_set]:
         print(f'now processing file {file}')
         dict1 = np.load(file, allow_pickle=True)
         spike_purs = False

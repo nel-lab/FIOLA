@@ -14,10 +14,34 @@ import matplotlib.pyplot as plt
 import logging
 import cv2
 
+def play(mov, fr=400, backend='opencv', magnification=1, interpolation=cv2.INTER_LINEAR, offset=0, gain=1, q_max=100, q_min=1):
+    if q_max < 100:
+        maxmov = np.nanpercentile(mov[0:10], q_max)
+    else:
+        maxmov = np.nanmax(mov)
+    if q_min > 0:
+        minmov = np.nanpercentile(mov[0:10], q_min)
+    else:
+        minmov = np.nanmin(mov)
+        
+    for iddxx, frame in enumerate(mov):
+        if backend == 'opencv':
+            if magnification != 1:
+                frame = cv2.resize(frame, None, fx=magnification, fy=magnification, interpolation=interpolation)
+            frame = (offset + frame - minmov) * gain / (maxmov - minmov)
+            cv2.imshow('frame', frame)
+            if cv2.waitKey(int(1. / fr * 1000)) & 0xFF == ord('q'):
+                break
+            
+    cv2.waitKey(100)
+    cv2.destroyAllWindows()
+    for i in range(10):
+        cv2.waitKey(100)
 
 def normalize(a):
     return (a-np.median(a))/(np.max(a)-np.min(a))
 
+"""
 def play(mov, fr=30, gain=1.0, magnification=1):    
     for frame in mov:
         if cv2.waitKey(int(1. / fr * 1000)) & 0xFF == ord('q'):
@@ -27,6 +51,7 @@ def play(mov, fr=30, gain=1.0, magnification=1):
         
     cv2.destroyAllWindows()
     return None
+"""
        
 def resize(mov_in, fx=1, fy=1, fz=1, interpolation=cv2.INTER_AREA):
         """

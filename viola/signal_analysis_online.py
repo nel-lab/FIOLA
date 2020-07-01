@@ -20,7 +20,8 @@ from running_statistics import OnlineFilter
 class SignalAnalysisOnlineZ(object):
     def __init__(self, window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, robust_std=False, frate=400, freq=15, 
-                 thresh_range=[3.5, 5], mfp=0.2, do_plot=False):
+                 thresh_range=[3.5, 5], mfp=0.2, online_filter_method = 'median_filter',
+                 filt_window = 9, do_plot=False):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -48,6 +49,11 @@ class SignalAnalysisOnlineZ(object):
                 Maximum estimated false positive. An upper bound for estimated false 
                 positive rate based on noise. Higher value means more FP and less FN. 
                 The default is 0.2.
+            online_filter_method: str
+                Use 'median_filter' or 'butter' for doing online filter. 'median filter'
+                is more accurate but also introduce more lags
+            filt_window: int
+                window size for the median filter                
             do_plot: bool
                 Whether to plot or not.
                 
@@ -63,6 +69,8 @@ class SignalAnalysisOnlineZ(object):
         self.frate = frate
         self.thresh_range = thresh_range
         self.mfp = mfp
+        self.online_filter_method = online_filter_method
+        self.filt_window = filt_window
         self.do_plot = do_plot
         self.filt = OnlineFilter(freq, frate, order=1, mode='low')
         
@@ -86,7 +94,7 @@ class SignalAnalysisOnlineZ(object):
         self.t0 = np.zeros((nn, num_frames), dtype=np.float32) 
         self.t = np.zeros((nn, num_frames), dtype=np.float32) 
         self.t_s = np.zeros((nn, num_frames), dtype=np.float32) 
-        self.sub = np.zeros((nn, num_frames), dtype=np.float32) 
+        self.t_sub = np.zeros((nn, num_frames), dtype=np.float32) 
 
         # running statistics
         self.median = np.zeros((nn,1), dtype=np.float32)
@@ -125,7 +133,7 @@ class SignalAnalysisOnlineZ(object):
             self.t0[idx, :tm] = output_list[3]
             self.t[idx, :tm] = output_list[4]
             self.t_s[idx, :tm] = output_list[5]
-            self.sub[idx, :tm] = output_list[6]
+            self.t_sub[idx, :tm] = output_list[6]
             self.median[idx] = output_list[7]
             self.scale[idx] = output_list[8]
             self.thresh_factor[idx] = output_list[9]
@@ -174,22 +182,43 @@ class SignalAnalysisOnlineZ(object):
         if self.do_scale == True:
             temp /= self.scale[:, -1:]
         self.t0[:, n:(n + 1)] = temp.copy()
-        self.sub[:, n] = self.filt.fit_next(self.t0[:, n])
-        self.t[:, n:(n + 1)] = self.t0[:, n:(n + 1)] - self.sub[:, n:(n + 1)]  # time n remove subthreshold
         
-        # Template matching
-        if self.n > self.frames_init + 1:                                      
-            temp = self.t[:, self.n - 4 : self.n + 1]                          # time n-2 do template matching 
-            self.t_s[:, self.n - 2] = (temp * self.PTA).sum(axis=1)
-            self.t_s[:, self.n - 2] = self.t_s[:, self.n - 2] - self.median2[:, -1]
-        
-        # Find spikes above threshold
-        if self.n > self.frames_init +2:                                        # time n-3 confirm spikes
-            temp = self.t_s[:, self.n - 4: self.n -1].copy()
-            idx_list = np.where((temp[:, 1] > temp[:, 0]) * (temp[:, 1] > temp[:, 2]) * (temp[:, 1] > self.thresh[:, -1]))[0]
-            if idx_list.size > 0:
-                self.index[idx_list, self.index_track[idx_list]] = self.n - 3
-                self.index_track[idx_list] +=1
+        sub_index = self.n - int((self.filt_window - 1) / 2)
+        if self.online_filter_method == 'median_filter':
+            if self.n >= self.frames_init + (self.filt_window - 1) / 2:
+                temp = self.t0[:, self.n - self.filt_window + 1: self.n + 1]
+                self.t_sub[:, sub_index] = np.median(temp, 1)
+                self.t[:, sub_index:sub_index + 1] = self.t0[:, sub_index:sub_index + 1] - self.t_sub[:, sub_index:sub_index + 1]
+            
+            if self.n > self.frames_init + 1 + (self.filt_window - 1) / 2:                                      
+                temp = self.t[:, sub_index - 4 : sub_index + 1]                          # time n-2 do template matching 
+                self.t_s[:, sub_index - 2] = (temp * self.PTA).sum(axis=1)
+                self.t_s[:, sub_index - 2] = self.t_s[:, sub_index - 2] - self.median2[:, -1]
+            
+            # Find spikes above threshold
+            if self.n > self.frames_init +2 + (self.filt_window - 1) / 2:                                        # time n-3 confirm spikes
+                temp = self.t_s[:, sub_index - 4: sub_index -1].copy()
+                idx_list = np.where((temp[:, 1] > temp[:, 0]) * (temp[:, 1] > temp[:, 2]) * (temp[:, 1] > self.thresh[:, -1]))[0]
+                if idx_list.size > 0:
+                    self.index[idx_list, self.index_track[idx_list]] = sub_index - 3
+                    self.index_track[idx_list] +=1
+        elif self.online_filter_method == 'butter':
+            self.t_sub[:, n] = self.filt.fit_next(self.t0[:, n])
+            self.t[:, n:(n + 1)] = self.t0[:, n:(n + 1)] - self.t_sub[:, n:(n + 1)]  # time n remove subthreshold
+            
+            # Template matching
+            if self.n > self.frames_init + 1:                                      
+                temp = self.t[:, self.n - 4 : self.n + 1]                          # time n-2 do template matching 
+                self.t_s[:, self.n - 2] = (temp * self.PTA).sum(axis=1)
+                self.t_s[:, self.n - 2] = self.t_s[:, self.n - 2] - self.median2[:, -1]
+            
+            # Find spikes above threshold
+            if self.n > self.frames_init +2:                                        # time n-3 confirm spikes
+                temp = self.t_s[:, self.n - 4: self.n -1].copy()
+                idx_list = np.where((temp[:, 1] > temp[:, 0]) * (temp[:, 1] > temp[:, 2]) * (temp[:, 1] > self.thresh[:, -1]))[0]
+                if idx_list.size > 0:
+                    self.index[idx_list, self.index_track[idx_list]] = self.n - 3
+                    self.index_track[idx_list] +=1
         self.t_detect.append(time() - t_start)
         return self
         
@@ -227,8 +256,23 @@ class SignalAnalysisOnlineZ(object):
             std = np.percentile(self.t[idx], 75) *2 / 1.35
             snr = sg / std
             self.SNR[idx] = snr
-        
-
+        return self
+            
+    def reconstruct_signal(self):
+        self.t_rec = np.zeros(self.trace.shape)
+        for idx in range(self.trace.shape[0]):
+            spikes = np.array(list(set(self.index[idx])-set([0])))
+            if spikes.size > 0:
+                self.t_rec[idx, spikes] = 1
+                self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]) * self.scale[idx,0], 'same')   
+        return self
+                
+    def reconstruct_movie(self, A, shape, scope):
+        self.A = A.reshape((shape[0], shape[1], -1), order='F')
+        self.C = self.t_rec[:, 0:1000]
+        self.mov_rec = np.dot(self.A, self.C).transpose((2,0,1))    
+        return self
+ 
 #%%
 class SignalAnalysisOnline(object):
     def __init__(self, thresh_STD=None, window = 10000, step = 5000, do_scale=True,
