@@ -24,7 +24,7 @@ from nmf_support import hals, select_masks, normalize, nmf_sequential
 from skimage.io import imread
 from running_statistics import OnlineFilter
 #%% files for processing
-n_neurons = ['1', '2', 'many'][0]
+n_neurons = ['1', '2', 'many'][2]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
@@ -56,10 +56,12 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
     movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data'][1]
-    
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons'][1]
+   
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
-                   'FOV4_50um_mc.hdf5']
+                   'FOV4_50um_mc.hdf5',
+                   '06152017Fish1-2_portion.hdf5', 
+                   'FOV4_50um.hdf5']
     
 #%% Choosing datasets
 if n_neurons == '1':
@@ -84,11 +86,11 @@ elif n_neurons == '2':
        mask = np.array(h5['mov'])
 
 elif n_neurons == 'many':
-    name = movie_lists[0]
+    name = movie_lists[3]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
-    with h5py.File(os.path.join(movie_folder, name[:-8]+'_ROIs.hdf5'),'r') as h5:
+    with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
 
 #%% Preliminary processing
@@ -99,7 +101,7 @@ mov[:, -border_pixel:, :] = mov[:, -border_pixel-1:-border_pixel, :]
 mov[:, :, :border_pixel] = mov[:, :, border_pixel:border_pixel + 1]
 mov[:, :, -border_pixel:] = mov[:, :, -border_pixel-1:-border_pixel]
       
-# original movie
+# original movie !!!!
 y = to_2D(-mov).copy()
 use_signal_filter = True   
 if use_signal_filter:  # consume lots of memory
@@ -147,15 +149,15 @@ if do_plot:
     
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
-#np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/FOV4_50um_H_new.npy', H_new)
+#np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
 #H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = False
+use_GPU = True
 use_batch = False
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
     template = bin_median(mov_in, exclude_nans=False)
-    center_dims = (128,128)#(template.shape[0], template.shape[1])
+    center_dims =(template.shape[0], template.shape[1])
     if not use_batch:
         b = mov[0].reshape(-1, order='F')
         x0 = nnls(Ab,b)[0][:,None]
@@ -168,8 +170,8 @@ if use_GPU:
         from pipeline_gpu import Pipeline, get_model
         model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
-        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:100000])
-        traces_viola = spike_extractor.get_spikes(20000)
+        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:20000])
+        traces_viola = spike_extractor.get_traces(20000)
 
     else:
     #FOR BATCHES:
@@ -217,7 +219,7 @@ else:
 #%% Viola spike extraction
 if n_neurons == 'many':
     trace = trace_all[:].copy()
-    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=15, detrend=True, flip=True)
+    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=20, detrend=True, flip=True, frate=frate, thresh_range=[3.3, 5], mfp=0.2)
     saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
     for n in range(10000, trace.shape[1]):
         saoz.fit_next(trace[:, n: n+1], n)
@@ -231,21 +233,25 @@ if n_neurons == 'many':
     print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)[np.argsort(seq)]}')
    
     #%% Load VolPy result
-    name_estimates = ['demo_voltage_imaging_estimates.npy', 'FOV4_50um_estimates.npz']
-    name_estimates = [os.path.join(movie_folder, name) for name in name_estimates]
-    estimates = np.load(name_estimates[0], allow_pickle=True).item()
+    name_estimates = ['demo_voltage_imaging_estimates.npy', 'FOV4_50um_estimates.npz', 
+                      '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons/volpy_06152017Fish1-2.npy',
+                      '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons/volpy_IVQ32_S2_FOV1.npy', 
+                      '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons/volpy_FOV4_35um.npy' ]
+    #name_estimates = [os.path.join(movie_folder, name) for name in name_estimates]
+    estimates = np.load(name_estimates[4], allow_pickle=True).item()
     
     #%% Check neurons
-    idx = 3
+    idx = 5
     idx_volpy = seq[idx]
-    #idx = np.where(seq==idx_volpy)[0][0]
+    idx = np.where(seq==idx_volpy)[0][0]
     spikes_online = list(set(saoz.index[idx]) - set([0]))
     #plt.figure();plt.imshow(H_new[:,idx].reshape(mov.shape[1:], order='F'));plt.colorbar()
+    plt.figure();plt.imshow(H_new[:,idx].reshape(mov.shape[1:], order='F'))
     plt.figure()
     plt.plot(saoz.t0[idx], color='blue', label=f'online_{len(spikes_online)}')
-    #plt.plot(normalize(saoz.t[idx]), color='red', label=f'online_t_s')
+    plt.plot(normalize(saoz.t[idx]), color='red', label=f'online_t_s')
     plt.plot(normalize(estimates['t'][idx_volpy]), color='orange', label=f'volpy_{estimates["spikes"][idx_volpy].shape[0]}')
-    #plt.plot(normalize(saoz.t_rec[idx]), color='red', label=f'online_t_rec')
+    plt.plot(normalize(saoz.t_rec[idx]), color='red', label=f'online_t_rec')
     plt.plot(saoz.t_sub[idx], color='red', label=f'online_t_sub')
     plt.vlines(spikes_online, -1.6, -1.2, color='blue', label='online_spikes')
     plt.vlines(estimates['spikes'][idx_volpy], -1.8, -1.4, color='orange', label='volpy_spikes')
@@ -253,9 +259,10 @@ if n_neurons == 'many':
     plt.legend()   
 
     #%% Traces
-    #idx_list = np.where((saoz.index_track>30))[0]
-    idx_volpy = np.where(np.array([len(estimates['spikes'][k]) for k in range(len(estimates['spikes']))])>150)[0]
-    idx_list = np.array([np.where(seq==idx_volpy[k])[0][0] for k in range(idx_volpy.size)])
+    idx_list = np.where((saoz.index_track> 50))[0]
+    idx_volpy  = seq[idx_list]
+    #idx_volpy = np.where(np.array([len(estimates['spikes'][k]) for k in range(len(estimates['spikes']))])>30)[0]
+    #idx_list = np.array([np.where(seq==idx_volpy[k])[0][0] for k in range(idx_volpy.size)])
     length = idx_list.size
     fig, ax = plt.subplots(idx_list.size,1)
     colorsets = plt.cm.tab10(np.linspace(0,1,10))
@@ -264,8 +271,8 @@ if n_neurons == 'many':
     
     for n, idx in enumerate(idx_list):
         idx_volpy = seq[idx]
-        ax[n].plot(np.arange(20000), normalize(estimates['t'][idx_volpy]), 'c', linewidth=0.5, color='orange', label='volpy')
-        ax[n].plot(np.arange(20000), normalize(saoz.t_s[idx, :20000]), 'c', linewidth=0.5, color='blue', label='viola')
+        ax[n].plot(np.arange(scope[1]), normalize(estimates['t'][idx_volpy]), 'c', linewidth=0.5, color='orange', label='volpy')
+        ax[n].plot(np.arange(scope[1]), normalize(saoz.t_s[idx, :scope[1]]), 'c', linewidth=0.5, color='blue', label='viola')
         #ax[n].plot(np.arange(20000), normalize(saoz.t_s[idx, :20000]), 'c', linewidth=0.5, color='red', label='viola')
         #ax[n].plot(normalize(saoz.t_s[idx]), color='blue', label=f'viola_t_s')
     
@@ -309,7 +316,11 @@ if n_neurons == 'many':
         contours = measure.find_contours(mask[seq[idx]], 0.5)[0]
         plt.plot(contours[:, 1], contours[:, 0], linewidth=1, color=colorsets[np.mod(n,9)])
         #plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/whole_FOV/spatial_masks.pdf')
-      
+    
+    #%%
+    saoz.seq = seq
+    saoz.H = H_new
+    np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons/viola_FOV4_35um', saoz)
 #%% Extract spikes and compute F1 score
 if n_neurons in ['1', '2']:
     for idx, k in enumerate(list(file_set)):

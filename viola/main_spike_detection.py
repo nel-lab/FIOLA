@@ -150,7 +150,7 @@ for thres_STD in [thres_STD]:#range(23,24,1):
             
             trace_all = img[np.newaxis, :]
             saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False, 
-                                         do_scale=True, detrend=False, flip=False, 
+                                         do_scale=True, detrend=False, flip=False, mfp=0.2,
                                          thresh_range=[2.8, 5.0])
             saoz.fit(trace_all[:,:20000], len(img))
             for n in range(20000, trace_all.shape[1]):
