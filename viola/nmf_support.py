@@ -89,13 +89,15 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
         Cf_processed = Cf.copy()
 
         if not update_bg:
-            Cf_processed[-1] = np.zeros(Cf_processed[-1].shape)
+            Cf_processed[-nb:] = np.zeros(Cf_processed[-nb:].shape)
 
         if use_spikes:
             for i in range(Cf.shape[0]):
-                if i != Cf.shape[0] - 1 : 
-                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(Cf[i], window_length=3, 
-                                      threshold=3.5, threshold_method='simple')
+                if i < Cf.shape[0] - nb: 
+                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(Cf[i], window_length=3, clip=0, 
+                                      threshold=3.5, threshold_method='simple', do_plot=False)
+                    shrinkage = np.max(Cf[i]) / np.max(Cf_processed[i])
+                    Cf_processed[i] = Cf_processed[i] * shrinkage
         Cf = Cf_processed
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         # for i in range(Ab.shape[1]):
@@ -143,7 +145,7 @@ def nmf_sequential(y_seq, mask, seq, small_mask=True):
             y_temp_small = y_temp[:, context_region>0]
             W = model.fit_transform(np.maximum(y_temp_small,0))
             H_small = model.components_
-            #plt.imshow(H_small.reshape([x1-x0+1, y1-y0+1], order='F')); plt.colorbar()
+            #plt.figure(); plt.imshow(H_small.reshape([x1-x0+1, y1-y0+1], order='F')); plt.colorbar(); plt.show()
             H = np.zeros((1, y_temp.shape[1]))
             H[:, context_region>0] = H_small
         else:

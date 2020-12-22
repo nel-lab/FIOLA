@@ -19,9 +19,9 @@ from running_statistics import OnlineFilter
 #%%
 class SignalAnalysisOnlineZ(object):
     def __init__(self, window = 10000, step = 5000, detrend=True, flip=True, 
-                 do_scale=False, robust_std=False, frate=400, freq=15, 
+                 do_scale=False, robust_std=False, adaptive_threshold=True, frate=400, freq=15, 
                  thresh_range=[3.5, 5], mfp=0.2, online_filter_method = 'median_filter',
-                 filt_window = 9, do_plot=False):
+                 filt_window = 15, do_plot=False):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -42,6 +42,8 @@ class SignalAnalysisOnlineZ(object):
                 movie frame rate
             freq: float
                 frequency for removing subthreshold activity
+            adaptive_threshold: bool
+                whether to use adaptive threshold method for deciding threshold level
             thresh_range: list
                 Range of threshold factor. Real threshold is threshold factor 
                 multiply by the estimated noise level. The default is [3.5,5.0].
@@ -67,6 +69,7 @@ class SignalAnalysisOnlineZ(object):
         self.robust_std = robust_std
         self.freq = freq
         self.frate = frate
+        self.adaptive_threshold = adaptive_threshold
         self.thresh_range = thresh_range
         self.mfp = mfp
         self.online_filter_method = online_filter_method
@@ -122,9 +125,10 @@ class SignalAnalysisOnlineZ(object):
         else:
             self.t_d = self.trace.copy()
         
-        for idx, tr in enumerate(self.t_d[:, :tm]):   
+        for idx, tr in enumerate(self.t_d[:, :tm]):  
+            print(idx)
             output_list = find_spikes_tm(tr, self.freq, self.frate, self.do_scale, 
-                                         self.robust_std, self.thresh_range, 
+                                         self.robust_std, self.adaptive_threshold, self.thresh_range, 
                                          self.mfp, self.do_plot)
             self.index_track[idx] = output_list[0].shape[0]
             self.index[idx, :self.index_track[idx]] = output_list[0]
@@ -264,7 +268,7 @@ class SignalAnalysisOnlineZ(object):
             spikes = np.array(list(set(self.index[idx])-set([0])))
             if spikes.size > 0:
                 self.t_rec[idx, spikes] = 1
-                self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]) * self.scale[idx,0], 'same')   
+                self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]   
         return self
                 
     def reconstruct_movie(self, A, shape, scope):

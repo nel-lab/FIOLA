@@ -343,3 +343,25 @@ from caiman.base.rois import nf_match_neurons_in_binary_masks
 tp_gt, tp_comp, fn_gt, fp_comp, performance_cons_off = nf_match_neurons_in_binary_masks(
         mask0, mask1, thresh_cost=1, min_dist=10, print_assignment=True,
         plot_results=True, Cn=mov[0], labels=['viola', 'cm'])    
+
+
+
+#%%
+caiman_estimates.idx
+plt.figure();plt.plot(signal_filter(caiman_estimates.C, freq=15, fr=400)[idx])
+plt.figure();plt.imshow(caiman_estimates.A[:,idx].toarray().reshape((512, 128), order='F'))
+    
+#%%
+#mask0 = mask[seq[idx_list]]
+mask0 = vpy['weights'][idx_list].copy()
+mask0[mask0<0] = 0
+#mask0[mask0>0] = 1
+mask1 = caiman_estimates.A.toarray().copy()[:, :].reshape((512, 128, -1), order='F').transpose([2, 0, 1])
+mask1[mask1>0.02] = 1
+plt.figure();plt.imshow(mask0.sum(0));plt.colorbar();plt.show()
+plt.figure();plt.imshow(mask1.sum(0));plt.colorbar();plt.show()
+        
+from caiman.base.rois import nf_match_neurons_in_binary_masks
+tp_gt, tp_comp, fn_gt, fp_comp, performance_cons_off = nf_match_neurons_in_binary_masks(
+        mask0, mask1, thresh_cost=1, min_dist=10, print_assignment=True,
+        plot_results=True, Cn=caiman_estimates.Cn, labels=['volpy', 'caiman'])    

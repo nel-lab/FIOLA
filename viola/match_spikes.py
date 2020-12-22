@@ -151,6 +151,7 @@ def compute_F1(s1, s2, idx1, idx2):
     
 #%% small test
 # Note here we assume s1 as our ground truth spikes !!
+"""
 random.seed(2020)
 s1 =  np.array(sorted(random.sample(range(5000), 400)))
 s2 =  np.array(sorted(random.sample(range(5000), 1200)))
@@ -173,7 +174,7 @@ print(f'Same number of pairs? {len(idx1_linear) == len(idx1_greedy)}')
 # Compute measures
 F1, precision, recall = compute_F1(s1, s2, idx1_greedy, idx2_greedy)
 print(f'F1:{round(F1, 3)}, precision:{round(precision,3)}, recall:{round(recall, 3)}')
-
+"""
 
 
 

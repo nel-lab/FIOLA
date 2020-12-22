@@ -10,10 +10,12 @@ import logging
 import numpy as np
 
 class violaparams(object):
-
-    def __init__(self, fnames=None, fr=None, ROIs=None,  border_to_0=0, freq_detrend = 1/3, do_plot_init=True, update_bg=False, num_frames_total=100000, window = 10000, step = 5000, 
-                 detrend=True, flip=True, do_scale=False, robust_std=False, freq=15, 
-                 thresh_range=[3.5, 5], mfp=0.2, do_plot=False, params_dict={}):
+    def __init__(self, fnames=None, fr=None, ROIs=None,  
+                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 update_bg=False, use_spikes=False, initialize_with_gpu=False, 
+                 num_frames_total=100000, window = 10000, step = 5000, 
+                 detrend=True, flip=True, do_scale=False, robust_std=False, freq=15, adaptive_threshold=True, 
+                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, params_dict={}):
         """Class for setting parameters for voltage imaging. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -29,7 +31,10 @@ class violaparams(object):
             'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
             'freq_detrend': freq_detrend, # high-pass frequency for removing baseline, used for init of spatial footprint
             'do_plot_init': do_plot_init, # plot the spatial mask result for init of spaital footprint
-            'update_bg': update_bg # update background components for spatial footprints
+            'erosion': erosion, # number of pixels to erode the input masks before performing rank-1 NMF
+            'update_bg': update_bg, # update background components for spatial footprints
+            'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
+            'initialize_with_gpu': initialize_with_gpu # whether to use gpu for performing nnls during initialization 
         }
 
         self.spike = {
@@ -41,8 +46,10 @@ class violaparams(object):
             'do_scale': do_scale, # whether to scale the input trace or not
             'robust_std':robust_std, # whether to use robust way to estimate noise
             'freq': freq, # frequency for removing subthreshold activity
-            'thresh_range':thresh_range, # Range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
+            'adaptive_threshold': adaptive_threshold, #whether to use adaptive threshold method for deciding threshold level
+            'thresh_range':thresh_range, # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
             'mfp': mfp, #  Maximum estimated false positive. An upper bound for estimated false positive rate based on noise
+            'filt_window': filt_window, # window size for removing the subthreshold activities 
             'do_plot': do_plot # Whether to plot or not
         }
 
