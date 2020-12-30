@@ -106,7 +106,6 @@ def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False,
 
     # Select best threshold based on estimated false positive rate
     if adaptive_threshold:
-        from spikepursuit import adaptive_thresh
         pks2 = t_s[signal.find_peaks(t_s, height=None)[0]]
         try:
             thresh2, falsePosRate, detectionRate, low_spikes = adaptive_thresh(pks2, clip=0, pnorm=0.25, min_spikes=10)  # clip=0 means no clipping
