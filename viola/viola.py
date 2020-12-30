@@ -12,11 +12,11 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import nnls    
-from signal_analysis_online import SignalAnalysisOnlineZ
+from .signal_analysis_online import SignalAnalysisOnlineZ
 
-from caiman_functions import signal_filter, to_3D, to_2D, bin_median
-from nmf_support import hals, normalize, nmf_sequential
-from pipeline_gpu import get_model, Pipeline_overall, Pipeline
+from .caiman_functions import signal_filter, to_3D, to_2D, bin_median
+from .nmf_support import hals, normalize, nmf_sequential
+from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
 
 class VIOLA(object):
     def __init__(self, fnames=None, fr=None, ROIs=None,  

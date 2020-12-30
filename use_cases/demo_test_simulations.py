@@ -22,28 +22,33 @@ try:
         get_ipython().magic('autoreload 2')
 except NameError:
     pass
-
-from nmf_support import normalize
-from violaparams import violaparams
-from viola import VIOLA
+sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/VIOLA'))
+#%%
+from viola.nmf_support import normalize
+from viola.violaparams import violaparams
+from viola.viola import VIOLA
 import scipy.io
-from match_spikes import match_spikes_greedy, compute_F1
-sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
-from test_simulation_run_viola import run_viola
+from viola.match_spikes import match_spikes_greedy, compute_F1
+# sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
+
+from test_simulation_run_viola import run_viola # must be in use_cases folder
 
 #%%
 mode = ['overlapping', 'non_overlapping', 'positron'][2]
+dropbox_folder = '/home/nel/NEL-LAB Dropbox/'
+dropbox_folder = '/Users/agiovann/Dropbox/'
+
 if mode == 'overlapping':
-    ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping'
-    SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping'
+    ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/overlapping'
+    SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/overlapping'
     names = [f'viola_sim3_{i}' for i in range(1, 7)]
 elif mode == 'non_overlapping':
-    ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping'
-    SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping'
+    ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/non_overlapping'
+    SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/non_overlapping'
     names = [f'viola_sim2_{i}' for i in range(1, 8)]
 elif mode == 'positron':
-    ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test/sim4_positron'
-    SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/test/sim4_positron'
+    ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/test/sim4_positron'
+    SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/test/sim4_positron'
     names = [f'viola_sim4_{i}' for i in range(1, 13)]
     
 #%%

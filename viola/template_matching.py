@@ -5,13 +5,13 @@ Created on Tue Jun  2 21:01:15 2020
 Online template matching
 @author: caichangjia
 """
-from caiman_functions import get_thresh
-from caiman_functions import signal_filter
+from .caiman_functions import get_thresh
+from .caiman_functions import signal_filter
+from .running_statistics import estimate_running_std
+from .running_statistics import OnlineFilter
 from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
-from running_statistics import estimate_running_std
-from running_statistics import OnlineFilter
 
 def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False, 
                    adaptive_threshold=True, thresh_range=[3.5,5.0], mfp=0.2, do_plot=False):

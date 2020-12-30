@@ -11,10 +11,10 @@ peak height distribution, the other based on subthreshold height.
 #%%
 import numpy as np
 from time import time
-from spike_extraction_routines import find_spikes_rh
-from running_statistics import compute_std, compute_thresh
-from template_matching import find_spikes_tm
-from running_statistics import OnlineFilter
+from .spike_extraction_routines import find_spikes_rh
+from .running_statistics import compute_std, compute_thresh
+from .template_matching import find_spikes_tm
+from .running_statistics import OnlineFilter
 
 #%%
 class SignalAnalysisOnlineZ(object):

@@ -13,12 +13,12 @@ import os
 from time import time, sleep
 from threading import Thread
 
-from nmf_support import normalize
-from violaparams import violaparams
-from viola import VIOLA
+from viola.nmf_support import normalize
+from viola.violaparams import violaparams
+from viola.viola import VIOLA
 import scipy.io
 from skimage.io import imread
-from match_spikes import match_spikes_greedy, compute_F1
+from viola.match_spikes import match_spikes_greedy, compute_F1
 
 #%%
 def run_viola(fnames, path_ROIs, fr=400, options=None):
