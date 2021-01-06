@@ -157,7 +157,7 @@ def nmf_sequential(y_seq, mask, seq, small_mask=True):
     H = np.vstack(H_tot)
     W = np.hstack(W_tot)
         
-    return W, H, y_seq
+    return W, H
     
 
 def select_masks(Y, shape, mask=None):

@@ -163,7 +163,7 @@ mask_2D = to_2D(mask)
 std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
 seq = np.argsort(std)[::-1]
 print(f'sequence of rank1-nmf: {seq}')
-W, H, y_seq = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
 
 #%% Use hals to optimize masks
 #from nmf_support import hals_init_spikes
