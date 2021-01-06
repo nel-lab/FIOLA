@@ -13,15 +13,12 @@ import scipy
 import numpy as np
 #from scipy.signal import argrelextrema
 from time import time
-from running_statistics import estimate_running_std
 import peakutils
 from scipy import signal
-from running_statistics import compute_thresh
-from running_statistics import compute_std
-from running_statistics import rolling_window
 from sklearn.covariance import EllipticEnvelope
 from scipy.stats import multivariate_normal
- 
+from .running_statistics import estimate_running_std, compute_thresh, compute_std,\
+                         rolling_window
 #%%
 def extract_exceptional_events(z_signal, input_erf=False, thres_STD=5, N=2, min_dist=1, bidirectional=False):
     """

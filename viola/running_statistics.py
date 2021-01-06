@@ -5,6 +5,7 @@ Created on Sat May 23 08:07:20 2020
 
 @author: agiovann
 """
+from .caiman_functions import signal_filter
 import cv2
 from functools import partial
 import matplotlib.pyplot as plt
@@ -13,7 +14,7 @@ import numpy as np
 #from scipy.interpolate import interp1d
 from scipy import stats
 from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi
-from caiman_functions import signal_filter
+
 
 
 class OnlineFilter(object):

@@ -13,8 +13,8 @@ import pylab as plt
 import scipy.ndimage as nd
 import scipy.sparse as spr
 from sklearn.decomposition import NMF
-from caiman_functions import to_3D, to_2D
-from spikepursuit import denoise_spikes
+from .caiman_functions import to_3D, to_2D
+from .spikepursuit import denoise_spikes
 
 def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
     """ Hierarchical alternating least square method for solving NMF problem
