@@ -12,6 +12,7 @@ import cv2
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.linalg import norm
 import os
 from scipy.optimize import nnls    
 from signal_analysis_online import SignalAnalysisOnlineZ
@@ -23,23 +24,33 @@ from metrics import metric
 from nmf_support import hals, select_masks, normalize, nmf_sequential
 from skimage.io import imread
 from running_statistics import OnlineFilter
+
+
+try:
+    if __IPYTHON__:
+        # this is used for debugging purposes only. allows to reload classes
+        # when changed
+        get_ipython().magic('load_ext autoreload')
+        get_ipython().magic('autoreload 2')
+except NameError:
+    pass
 #%% files for processing
-n_neurons = ['1', '2', 'many'][2]
+n_neurons = ['1', '2', 'many', 'test'][3]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
                    '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
     
-    movie_lists = ['454597_Cell_0_40x_patch1_mc.tif', '456462_Cell_3_40x_1xtube_10A2_mc.tif',
-                 '456462_Cell_3_40x_1xtube_10A3_mc.tif', '456462_Cell_5_40x_1xtube_10A5_mc.tif',
-                 '456462_Cell_5_40x_1xtube_10A6_mc.tif', '456462_Cell_5_40x_1xtube_10A7_mc.tif', 
-                 '462149_Cell_1_40x_1xtube_10A1_mc.tif', '462149_Cell_1_40x_1xtube_10A2_mc.tif',
-                 '456462_Cell_4_40x_1xtube_10A4_mc.tif', '456462_Cell_6_40x_1xtube_10A10_mc.tif',
-                 '456462_Cell_5_40x_1xtube_10A8_mc.tif', '456462_Cell_5_40x_1xtube_10A9_mc.tif', 
-                 '462149_Cell_3_40x_1xtube_10A3_mc.tif', '466769_Cell_2_40x_1xtube_10A_6_mc.tif',
-                 '466769_Cell_2_40x_1xtube_10A_4_mc.tif', '466769_Cell_3_40x_1xtube_10A_8_mc.tif', 
-                 '09282017Fish1-1_mc.tif', '10052017Fish2-2_mc.tif', 'Mouse_Session_1_mc.tif']
+    movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
+                 '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
+                 '456462_Cell_5_40x_1xtube_10A6', '456462_Cell_5_40x_1xtube_10A7', 
+                 '462149_Cell_1_40x_1xtube_10A1', '462149_Cell_1_40x_1xtube_10A2',
+                 '456462_Cell_4_40x_1xtube_10A4', '456462_Cell_6_40x_1xtube_10A10',
+                 '456462_Cell_5_40x_1xtube_10A8', '456462_Cell_5_40x_1xtube_10A9', 
+                 '462149_Cell_3_40x_1xtube_10A3', '466769_Cell_2_40x_1xtube_10A_6',
+                 '466769_Cell_2_40x_1xtube_10A_4', '466769_Cell_3_40x_1xtube_10A_8', 
+                 '09282017Fish1-1', '10052017Fish2-2', 'Mouse_Session_1']
     
     frate_all = np.array([400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 995.02, 400.8 ,
        400.8 , 400.8 , 400.8 , 400.8 , 995.02, 995.02, 995.02, 995.02,
@@ -56,23 +67,31 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
     movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons'][1]
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons', 
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][2]
    
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5',
                    '06152017Fish1-2_portion.hdf5', 
-                   'FOV4_50um.hdf5']
+                   'FOV4_50um.hdf5', 
+                   'viola_sim1_1.hdf5']
+    
+elif n_neurons == 'test':
+    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][0]
+    movie_lists = ['viola_sim3_18.hdf5',   # overlapping 8 neurons
+                   'viola_sim2_7.hdf5']    # non-overlapping 50 neurons
     
 #%% Choosing datasets
 if n_neurons == '1':
-    file_set = [1]
+    file_set = [-2]
     name = movie_lists[file_set[0]]
     belong_Marton = True
     if ('Fish' in name) or ('Mouse' in name):
         belong_Marton = False
     frate = frate_all[file_set[0]]
-    mov = imread(os.path.join(movie_folder, name))
-    with h5py.File(os.path.join(movie_folder, name[:-7]+'_ROI.hdf5'),'r') as h5:
+    mov = imread(os.path.join(movie_folder, name, name+'_mc.tif'))
+    with h5py.File(os.path.join(movie_folder, name, name+'_ROI.hdf5'),'r') as h5:
         mask = np.array(h5['mov'])
     if mask.shape[0] != 1:
         mask = mask[np.newaxis,:]
@@ -86,12 +105,21 @@ elif n_neurons == '2':
        mask = np.array(h5['mov'])
 
 elif n_neurons == 'many':
-    name = movie_lists[3]
+    name = movie_lists[4]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
     with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
+       
+elif n_neurons == 'test':
+    name = movie_lists[0]
+    frate = 400
+    with h5py.File(os.path.join(movie_folder, name),'r') as h5:
+       mov = np.array(h5['mov'])
+    with h5py.File(os.path.join(movie_folder, 'viola', 'ROIs_gt.hdf5'),'r') as h5:
+       mask = np.array(h5['mov'])
+    
 
 #%% Preliminary processing
 # Remove border pixel of the motion corrected movie
@@ -102,7 +130,11 @@ mov[:, :, :border_pixel] = mov[:, :, border_pixel:border_pixel + 1]
 mov[:, :, -border_pixel:] = mov[:, :, -border_pixel-1:-border_pixel]
       
 # original movie !!!!
-y = to_2D(-mov).copy()
+flip = True
+if flip == True:
+    y = to_2D(-mov).copy()
+else:
+    y = to_2D(mov).copy()
 use_signal_filter = True   
 if use_signal_filter:  # consume lots of memory
     y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
@@ -117,7 +149,7 @@ if do_plot:
     plt.figure()
     plt.imshow(mov[0])
     plt.figure()
-    if n_neurons == 'many':
+    if n_neurons == 'many' or 'test':
         plt.imshow(mask.sum(0))    
     else:            
         for i in range(mask.shape[0]):
@@ -131,27 +163,36 @@ mask_2D = to_2D(mask)
 std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
 seq = np.argsort(std)[::-1]
 print(f'sequence of rank1-nmf: {seq}')
-W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+W, H, y_seq = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
 
 #%% Use hals to optimize masks
-update_bg = False
+#from nmf_support import hals_init_spikes
+update_bg = True
+use_spikes = True
 y_input = np.maximum(y_filt[:num_frames_init], 0)
 y_input = to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
 
 H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                             update_bg=update_bg, use_spikes=True)
-plt.close('all')
+                             update_bg=update_bg, use_spikes=use_spikes)
+#plt.close('all')
 if do_plot:
-    for i in range(mask.shape[0]):
-        plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
+    #for i in range(mask.shape[0]):
+    #    plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'));plt.colorbar()
+    plt.figure();plt.imshow(b.reshape(mov.shape[1:], order='F'));plt.colorbar()
+
+if update_bg:
+     H_new = np.hstack((H_new, b))
+
+# normalization will enable gpu-nnls extracting bg signal 
+H_new = H_new / norm(H_new, axis=0)
     
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
 #H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = True
+use_GPU = False
 use_batch = False
 if use_GPU:
     mov_in = mov 
@@ -210,16 +251,16 @@ else:
     from running_statistics import OnlineFilter       
     from time import time
     fe = slice(0,None)
-    if update_bg:
-        trace_nnls = np.array([nnls(np.hstack((H_new, b)),yy)[0] for yy in (-y)[fe]])
-    else:
-        trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
+    trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
-    
-#%% Viola spike extraction
-if n_neurons == 'many':
+
+#%% Viola spike extraction, result is in the estimates object
+if True:
     trace = trace_all[:].copy()
-    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=20, detrend=True, flip=True, frate=frate, thresh_range=[3.3, 5], mfp=0.2)
+    saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                  detrend=True, flip=True, 
+                                  frate=frate, thresh_range=[2.8, 5.0], 
+                                  filt_window=15, mfp=0.1)
     saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
     for n in range(10000, trace.shape[1]):
         saoz.fit_next(trace[:, n: n+1], n)
@@ -228,10 +269,288 @@ if n_neurons == 'many':
     print(f'thresh:{saoz.thresh}')
     print(f'SNR: {saoz.SNR}')
     print(f'Mean_SNR: {np.array(saoz.SNR).mean()}')
-    #print(f'sequence of rank1-nmf: {seq}')
-    #print(f'Spikes:{(saoz.index>0).sum(1)}')
     print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)[np.argsort(seq)]}')
-   
+    estimates = saoz
+    estimates.spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz.index])
+    weights = H_new.reshape((mov.shape[1], mov.shape[2], H_new.shape[1]), order='F')
+    weights = weights.transpose([2, 0, 1])
+    estimates.weights = weights
+    
+#%% Visualization
+    idx = -1
+    plt.imshow(estimates.weights[idx])   # weight
+    plt.plot(trace[idx])                # original trace
+    plt.plot(estimates.t_s[idx])        # after template matching
+
+    
+#%%
+    #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/test_data/ephys_voltage/10052017Fish2-2'
+    #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
+    #np.save(save_path, estimates)    
+    
+#%% Load simulation groundtruth
+    import scipy.io
+    vi_result_all = []
+    gt_files = [file for file in os.listdir(movie_folder) if 'SimResults' in file]
+    gt_file = gt_files[0]
+    gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
+    gt = gt['simOutput'][0][0]['gt']
+    spikes = gt['ST'][0][0][0]
+    
+#%% Compute F1 score for spike extraction
+    n_cells = spikes.shape[0]
+    from match_spikes import match_spikes_greedy, compute_F1
+    rr = {'F1':[], 'precision':[], 'recall':[]}
+    for idx in range(n_cells):
+        s1 = spikes[idx].flatten()
+        s2 = estimates.spikes[np.argsort(seq)][idx]
+        idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
+        F1, precision, recall = compute_F1(s1, s2, idx1_greedy, idx2_greedy)   
+        rr['F1'].append(F1)
+        rr['precision'].append(precision)
+        rr['recall'].append(recall)  
+        
+    plt.boxplot(rr['F1']); plt.title('viola')
+    
+    
+##############################################################################################################
+    
+    #%%
+    vpy = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test/volpy_viola_sim1_1_adaptive_threshold.npy', allow_pickle=True).item()        
+    idx = 0
+    plt.plot(normalize(vpy['t'][idx]))
+    plt.plot(normalize(saoz_5000.t0[np.argsort(seq)][idx]))
+    
+    #%%
+    trace = trace_all[:].copy()
+    saoz_5000 = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                      detrend=True, flip=True, 
+                                      frate=frate, thresh_range=[2.8, 5.0], 
+                                      filt_window=15, mfp=0.1)
+    saoz_5000.fit(trace[:, :5000], num_frames=trace.shape[1])
+    for n in range(5000, trace.shape[1]):
+        saoz_5000.fit_next(trace[:, n: n+1], n)
+    saoz_5000.compute_SNR()
+    saoz_5000.reconstruct_signal()
+#%%
+    trace = trace_all[:].copy()
+    saoz_20000 = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                      detrend=True, flip=True, 
+                                      frate=frate, thresh_range=[2.8, 5.0], 
+                                      mfp=0.2)
+    saoz_20000.fit(trace[:, :20000], num_frames=trace.shape[1])
+    saoz_20000.compute_SNR()
+    saoz_20000.reconstruct_signal()
+    
+    
+    #%% I want to see distribution of thresh 
+    x = saoz_5000.thresh_factor.flatten()[:50]
+    y = saoz_20000.thresh_factor.flatten()[:50]
+    #plt.scatter(x+np.random.rand(50)/50 , y+np.random.rand(55)/50) 
+    from sklearn.linear_model import LinearRegression
+    lr = LinearRegression()
+    lr.fit(x[:, np.newaxis], y)
+    x_pred = np.arange(2.5, 4, 0.1)[:, np.newaxis]    
+    y_pred = lr.predict(x_pred)
+    plt.scatter(x+np.random.rand(50)/50 , y+np.random.rand(50)/50) 
+    plt.plot(x_pred, y_pred)    
+    
+    plt.figure(); plt.hist(x); plt.hist(y, color='r'); plt.legend(['5000', '20000']);plt.title('distribution of threshold')
+    # Conclusion: running offline with 20000 frames yield more consistent thresh distribution result
+    
+    #%% I want to see trace produced by 5000 and 20000
+    idx = 1
+    x1 = saoz_5000.t_s[idx]
+    plt.plot(x1)
+    x2 = saoz_20000.t_s[idx]
+    plt.plot(x2)
+    # trace does not look bad to me
+    
+    #%%
+    for idx in range(1,4):
+        plt.figure(); plt.plot(saoz_5000.t[idx]); plt.plot(saoz_5000.t_sub[idx]); #plt.plot(saoz_5000.t_d[idx])  
+    #%%
+    s1 = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz_5000.index])
+    s2 = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz_20000.index])
+
+    n_cells = 50
+    from match_spikes import match_spikes_greedy, compute_F1
+    rr = {'F1':[], 'precision':[], 'recall':[], 'TP':[], 'FP':[], 'FN':[]}
+    for idx in range(n_cells):
+        ss1 = spikes[seq][idx].flatten()
+        ss2 = s1[idx]
+        idx1_greedy, idx2_greedy = match_spikes_greedy(ss1, ss2, max_dist=4)
+        F1, precision, recall, TP, FP, FN = compute_F1(ss1, ss2, idx1_greedy, idx2_greedy)   
+        for keys, values in rr.items():
+            rr[keys].append(eval(keys))
+    
+    fig, ax = plt.subplots(1, 3)
+    plt.suptitle('viola initialized 5000 frames')
+    ax[0].boxplot(rr['F1']); ax[0].set_title('F1')
+    ax[1].boxplot(rr['precision']); ax[1].set_title('precision')
+    ax[2].boxplot(rr['recall']); ax[2].set_title('recall')
+    plt.tight_layout()
+    
+    print(f'Mean: {np.array(rr["F1"]).mean()}, Median: {np.median(np.array(rr["F1"]))}')
+    
+    rr1 = rr.copy()
+    
+    #%%
+    n_cells = 50
+    from match_spikes import match_spikes_greedy, compute_F1
+    rr = {'F1':[], 'precision':[], 'recall':[], 'TP':[], 'FP':[], 'FN':[]}
+    for idx in range(n_cells):
+        ss1 = spikes[seq][idx].flatten()
+        ss2 = s2[idx]
+        idx1_greedy, idx2_greedy = match_spikes_greedy(ss1, ss2, max_dist=4)
+        F1, precision, recall, TP, FP, FN = compute_F1(ss1, ss2, idx1_greedy, idx2_greedy)   
+        for keys, values in rr.items():
+            rr[keys].append(eval(keys))
+    
+    fig, ax = plt.subplots(1, 3)
+    plt.suptitle('viola initialized 5000 frames')
+    ax[0].boxplot(rr['F1']); ax[0].set_title('F1')
+    ax[1].boxplot(rr['precision']); ax[1].set_title('precision')
+    ax[2].boxplot(rr['recall']); ax[2].set_title('recall')
+    plt.tight_layout()
+    
+    print(f'Mean: {np.array(rr["F1"]).mean()}, Median: {np.median(np.array(rr["F1"]))}')
+    
+    rr2 = rr.copy()
+    
+    #%% see spikes
+    idx = 1
+    x1 = saoz_5000.t0[idx]
+    x1_sub = saoz_5000.t_sub[idx]
+    plt.plot(x1)
+    plt.plot(x1_sub)
+    x2 = saoz_20000.t0[idx]
+    x2_sub = saoz_20000.t_sub[idx]
+    plt.plot(x2)
+    plt.plot(x2_sub)
+    plt.legend(['5000', '5000_sub', '20000', '20000_sub'])
+    h = np.max([np.max(x1), np.max(x2)])
+    plt.scatter(s1[idx], np.ones((len(s1[idx])))*h, color='blue')
+    plt.scatter(s2[idx], np.ones((len(s2[idx])))*h+0.5, color='green')
+    plt.vlines(spikes[seq][idx], 0, h+0.5)
+    
+    print(f'{[{keys:rr1[keys][idx]} for keys in rr1]}')    
+    print(f'{[{keys:rr2[keys][idx]} for keys in rr2]}')    
+    
+    
+    
+    
+    #%%
+    # threshold is not that important
+    # online filter suspicious to me
+    # online filter is not good, it produces more FP
+    
+    #%%
+    from match_spikes import match_spikes_greedy, compute_F1
+    s2 = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz_20000.index])
+        
+    filt_windows = np.arange(9, 25, 2)
+    mfps = np.arange(0.005,0.05, 0.005)
+    rr_all = {}
+    for filt_window in filt_windows:
+        for mfp in mfps:
+            trace = trace_all[:].copy()
+            saoz_5000 = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                              detrend=True, flip=True, 
+                                              frate=frate, thresh_range=[2.8, 5.0], 
+                                              filt_window=filt_window, mfp=mfp)
+            saoz_5000.fit(trace[:, :5000], num_frames=trace.shape[1])
+            for n in range(5000, trace.shape[1]):
+                saoz_5000.fit_next(trace[:, n: n+1], n)
+            #saoz_5000.compute_SNR()
+            #saoz_5000.reconstruct_signal()
+            s1 = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz_5000.index])
+            n_cells = 50
+            rr = {'F1':[], 'precision':[], 'recall':[], 'TP':[], 'FP':[], 'FN':[]}
+            for idx in range(n_cells):
+                ss1 = spikes[seq][idx].flatten()
+                ss2 = s1[idx]
+                idx1_greedy, idx2_greedy = match_spikes_greedy(ss1, ss2, max_dist=4)
+                F1, precision, recall, TP, FP, FN = compute_F1(ss1, ss2, idx1_greedy, idx2_greedy)   
+                for keys, values in rr.items():
+                    rr[keys].append(eval(keys))
+            
+            """
+            fig, ax = plt.subplots(1, 3)
+            plt.suptitle('viola initialized 5000 frames')
+            ax[0].boxplot(rr['F1']); ax[0].set_title('F1')
+            ax[1].boxplot(rr['precision']); ax[1].set_title('precision')
+            ax[2].boxplot(rr['recall']); ax[2].set_title('recall')
+            plt.tight_layout()
+            """
+            rr_all[(filt_window, mfp)]= rr.copy()
+    
+    #%%
+    F1_mean = [np.median(np.array(rr['F1'])) for rr in rr_all.values()]
+    plt.plot(filt_windows, F1_mean)    
+    
+    #%%
+    mat = np.zeros((len(filt_windows), len(mfps)))
+    for idx_x, filt_window in enumerate(filt_windows):
+        for idx_y, mfp in enumerate(mfps):
+            rr = rr_all[(filt_window, mfp)]
+            mat[idx_x, idx_y] = np.median(np.array(rr['F1']))
+    
+    plt.title('Heatmap for F1 score'); plt.imshow(mat); plt.colorbar(); plt.yticks(list(range(len(filt_windows))), filt_windows)
+    plt.xticks(list(range(len(mfps))), mfps); plt.xlabel('mfps'); plt.ylabel('filt_windows')
+    
+
+
+    #%% use adaptive threshold  
+    from match_spikes import match_spikes_greedy, compute_F1
+    s2 = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz_20000.index])
+        
+    filt_windows = np.array([15])
+    rr_all = {}
+    for filt_window in filt_windows:
+        trace = trace_all[:].copy()
+        saoz_5000 = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                          detrend=True, flip=True, 
+                                          frate=frate, thresh_range=[2.8, 5.0], 
+                                          filt_window=filt_window, mfp=0.2, do_plot=False)
+        saoz_5000.fit(trace[:, :5000], num_frames=trace.shape[1])
+        for n in range(5000, trace.shape[1]):
+            saoz_5000.fit_next(trace[:, n: n+1], n)
+        #saoz_5000.compute_SNR()
+        #saoz_5000.reconstruct_signal()
+        s1 = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz_5000.index])
+        n_cells = 50
+        rr = {'F1':[], 'precision':[], 'recall':[], 'TP':[], 'FP':[], 'FN':[]}
+        for idx in range(n_cells):
+            ss1 = spikes[seq][idx].flatten()
+            ss2 = s1[idx]
+            idx1_greedy, idx2_greedy = match_spikes_greedy(ss1, ss2, max_dist=4)
+            F1, precision, recall, TP, FP, FN = compute_F1(ss1, ss2, idx1_greedy, idx2_greedy)   
+            for keys, values in rr.items():
+                rr[keys].append(eval(keys))
+        
+        fig, ax = plt.subplots(1, 3)
+        plt.suptitle('viola adaptive threshold initialized 5000 frames')
+        ax[0].boxplot(rr['F1']); ax[0].set_title('F1')
+        ax[1].boxplot(rr['precision']); ax[1].set_title('precision')
+        ax[2].boxplot(rr['recall']); ax[2].set_title('recall')
+        plt.tight_layout()
+        
+        rr_all[(filt_window, mfp)]= rr.copy()      
+
+#%%
+    mat = np.zeros((len(filt_windows), len([1])))
+    for idx_x, filt_window in enumerate(filt_windows):
+        rr = rr_all[(filt_window, mfp)]
+        mat[idx_x, 0] = np.median(np.array(rr['F1']))
+    
+    plt.title('Heatmap for F1 score adaptive threshold'); plt.imshow(mat); plt.colorbar(); plt.yticks(list(range(len(filt_windows))), filt_windows)
+    plt.xticks(list(range(len(mfps))), mfps); plt.xlabel('mfps'); plt.ylabel('filt_windows')
+        
+    # two problems, online filtering problem and spike extraction problem
+    # filtering problem: small filt_window (9 frames as default, that means 4 frames lag) works much worse than (15 frames)
+    # threshold problem: adaptive threshold works well; mfp the smaller the better (0.01 best, 0.2 default), not suitable in this case
+    # after changing filt_window size to 15, changing to adaptive threshold method, F1 score 0.935 
     #%% Load VolPy result
     name_estimates = ['demo_voltage_imaging_estimates.npy', 'FOV4_50um_estimates.npz', 
                       '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons/volpy_06152017Fish1-2.npy',
