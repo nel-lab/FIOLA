@@ -45,8 +45,10 @@ class MotionCorrect(keras.layers.Layer):
         
         self.template_0 = template
         self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
-        if self.template.shape[0] < 40 or self.template.shape[1] < 40:
-            raise ValueError("The vertical or horizontal shift you entered is too large for the given video dimensions. Enter a smaller shift.")
+        if self.template.shape[0] < 10 or self.template.shape[1] < 10:
+            print(self.template.shape)
+            raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.")
+
 
         self.ms_h = ms_h
         self.ms_w = ms_w
