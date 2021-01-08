@@ -15,9 +15,9 @@ from skimage.io import imread
 from time import time, sleep
 from threading import Thread
 
-from nmf_support import normalize
-from violaparams import violaparams
-from viola import VIOLA
+from viola.nmf_support import normalize
+from viola.violaparams import violaparams
+from viola.viola import VIOLA
 
 #%% load movie and masks
 movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',

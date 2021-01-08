@@ -84,7 +84,7 @@ class VIOLA(object):
             plt.colorbar();plt.title('Spatial masks after rank1 nmf')
         
         y_input = np.maximum(y_filt, 0)
-        y_input = to_3D(y_input, shape=mov.shape, order='F').transpose([1,2,0])        
+        y_input = to_3D(y_input, shape=mov.shape, order='F').transpose([1,2,0])   
         H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                                      np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, 
                                      update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'])
