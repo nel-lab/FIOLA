@@ -1,0 +1,12 @@
+channels:
+- conda-forge
+dependencies:
+- future
+- ipython
+- tensorflow
+- opencv
+- spyder==4.2.1
+- scikit-image
+- scikit-learn
+- matplotlib
+- peakutils
