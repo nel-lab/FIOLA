@@ -15,17 +15,19 @@ import numpy as np
 from numpy.linalg import norm
 import os
 from scipy.optimize import nnls    
-from signal_analysis_online import SignalAnalysisOnlineZ
+from viola.signal_analysis_online import SignalAnalysisOnlineZ
 from skimage import measure
 from sklearn.decomposition import NMF
 
-from caiman_functions import signal_filter, to_3D, to_2D, bin_median, play
-from metrics import metric
-from nmf_support import hals, select_masks, normalize, nmf_sequential
+from viola.caiman_functions import signal_filter, to_3D, to_2D, bin_median, play
+from viola.metrics import metric
+from viola.nmf_support import hals, select_masks, normalize, nmf_sequential
 from skimage.io import imread
-from running_statistics import OnlineFilter
+from viola.running_statistics import OnlineFilter
+from viola.match_spikes import match_spikes_greedy, compute_F1
 
-
+from time import time
+# from viola.pipeline_gpu import Pipeline, get_model
 try:
     if __IPYTHON__:
         # this is used for debugging purposes only. allows to reload classes
@@ -77,8 +79,8 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][0]
+    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
+                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][0]
     movie_lists = ['viola_sim3_18.hdf5',   # overlapping 8 neurons
                    'viola_sim2_7.hdf5']    # non-overlapping 50 neurons
     
@@ -172,7 +174,7 @@ use_spikes = True
 y_input = np.maximum(y_filt[:num_frames_init], 0)
 y_input = to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
 
-H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+H_new,W_new,b,f = hals(-y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
                              update_bg=update_bg, use_spikes=use_spikes)
 #plt.close('all')
@@ -187,6 +189,16 @@ if update_bg:
 
 # normalization will enable gpu-nnls extracting bg signal 
 H_new = H_new / norm(H_new, axis=0)
+#%% Load simulation groundtruth
+import scipy.io
+vi_result_all = []
+gt_files = [file for file in os.listdir(movie_folder) if 'SimResults' in file]
+gt_file = gt_files[0]
+gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
+gt = gt['simOutput'][0][0]['gt']
+spikes = gt['ST'][0][0][0]
+#%%    
+[(plt.figure(),plt.plot(spikes[i],50,'.'), plt.plot(W_new[np.argsort(seq)][i]), plt.xlim([0,5000])) for i in range(8)]    
     
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
@@ -208,7 +220,7 @@ if use_GPU:
         theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
         mc0 = mov_in[0:1,:,:, None]
 
-        from pipeline_gpu import Pipeline, get_model
+        
         model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
         spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:20000])
@@ -231,7 +243,7 @@ if use_GPU:
         n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
         theta_2 = (Atb/n_AtA).astype(np.float32)
 
-        from batch_gpu import Pipeline, get_model
+        from viola.batch_gpu import Pipeline, get_model
         model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
@@ -248,11 +260,12 @@ if use_GPU:
 
 else:
     #Use nnls to extract signal for neurons or not and filter
-    from running_statistics import OnlineFilter       
-    from time import time
+    
     fe = slice(0,None)
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
+#%%
+[(plt.figure(),plt.plot(spikes[i],np.min(trace_all[np.argsort(seq)][i]),'.'), plt.plot(trace_all[np.argsort(seq)][i])) for i in range(8)]    
 
 #%% Viola spike extraction, result is in the estimates object
 if True:
@@ -288,18 +301,10 @@ if True:
     #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
     #np.save(save_path, estimates)    
     
-#%% Load simulation groundtruth
-    import scipy.io
-    vi_result_all = []
-    gt_files = [file for file in os.listdir(movie_folder) if 'SimResults' in file]
-    gt_file = gt_files[0]
-    gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
-    gt = gt['simOutput'][0][0]['gt']
-    spikes = gt['ST'][0][0][0]
+
     
 #%% Compute F1 score for spike extraction
     n_cells = spikes.shape[0]
-    from match_spikes import match_spikes_greedy, compute_F1
     rr = {'F1':[], 'precision':[], 'recall':[]}
     for idx in range(n_cells):
         s1 = spikes[idx].flatten()

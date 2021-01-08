@@ -16,6 +16,57 @@ from sklearn.decomposition import NMF
 from .caiman_functions import to_3D, to_2D
 from .spikepursuit import denoise_spikes
 
+#%%
+def mode_robust_fast(inputData, axis=None):
+    """
+    Robust estimator of the mode of a data set using the half-sample mode.
+
+    .. versionadded: 1.0.3
+    """
+
+    if axis is not None:
+
+        def fnc(x):
+            return mode_robust_fast(x)
+
+        dataMode = np.apply_along_axis(fnc, axis, inputData)
+    else:
+        # Create the function that we can use for the half-sample mode
+        data = inputData.ravel()
+        # The data need to be sorted for this to work
+        data = np.sort(data)
+        # Find the mode
+        dataMode = _hsm(data)
+
+    return dataMode
+
+def _hsm(data):
+    if data.size == 1:
+        return data[0]
+    elif data.size == 2:
+        return data.mean()
+    elif data.size == 3:
+        i1 = data[1] - data[0]
+        i2 = data[2] - data[1]
+        if i1 < i2:
+            return data[:2].mean()
+        elif i2 > i1:
+            return data[1:].mean()
+        else:
+            return data[1]
+    else:
+
+        wMin = np.inf
+        N = data.size//2 + data.size % 2
+
+        for i in range(0, N):
+            w = data[i + N - 1] - data[i]
+            if w < wMin:
+                wMin = w
+                j = i
+
+        return _hsm(data[j:j + N])
+#%%
 def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
     """ Hierarchical alternating least square method for solving NMF problem
     Y = A*C + b*f
@@ -94,10 +145,15 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False):
         if use_spikes:
             for i in range(Cf.shape[0]):
                 if i < Cf.shape[0] - nb: 
-                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(Cf[i], window_length=3, clip=0, 
+                    tr = Cf[i].copy()
+                    bl = mode_robust_fast(tr)
+                    tr -= bl
+                    tr = -tr
+                    shrinkage = 1#np.max(Cf[i]) / np.max(Cf_processed[i])
+                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(tr, window_length=3, clip=0, 
                                       threshold=3.5, threshold_method='simple', do_plot=False)
-                    shrinkage = np.max(Cf[i]) / np.max(Cf_processed[i])
                     Cf_processed[i] = Cf_processed[i] * shrinkage
+                    Cf_processed[i] = -Cf_processed[i] + bl            
         Cf = Cf_processed
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         # for i in range(Ab.shape[1]):

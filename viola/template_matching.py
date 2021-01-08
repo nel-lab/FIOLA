@@ -9,6 +9,8 @@ from .caiman_functions import get_thresh
 from .caiman_functions import signal_filter
 from .running_statistics import estimate_running_std
 from .running_statistics import OnlineFilter
+from .spikepursuit import adaptive_thresh
+
 from scipy import signal
 import numpy as np
 import matplotlib.pyplot as plt
