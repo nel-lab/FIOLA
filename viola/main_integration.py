@@ -37,12 +37,12 @@ try:
 except NameError:
     pass
 #%% files for processing
-n_neurons = ['1', '2', 'many', 'test'][3]
+n_neurons = ['1', '2', 'many', 'test'][0]
 
 if n_neurons in ['1', '2']:
-    movie_folder = ['/Users/agiovann/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/',
+    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
-                   '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
+                   '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][0]
     
     movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
                  '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
@@ -164,17 +164,42 @@ if do_plot:
     else:            
         for i in range(mask.shape[0]):
             plt.imshow(mask[i], alpha=0.5)
-
+#%%
+# import scipy
+# tr_or = y_filt@mask_2D
+# tr_or = -tr_or
+# tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 10000
-y_seq = y_filt[:num_frames_init,:].copy()
+# y_seq = y_filt[:num_frames_init,:].copy()
 
 mask_2D = to_2D(mask)
-std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-seq = np.argsort(std)[::-1]
-print(f'sequence of rank1-nmf: {seq}')
-W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
-
+# std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+# seq = np.argsort(std)[::-1]
+# print(f'sequence of rank1-nmf: {seq}')
+# W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+# nA = np.linalg.norm(H)
+# H = H/nA
+# W = W*nA
+#%%
+import scipy
+nA = np.linalg.norm(mask_2D)
+H = mask_2D/nA
+tr_or = (y[:num_frames_init]@H.T).T
+tr_or_2 = (y_filt[:num_frames_init]@H.T).T
+tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
+plt.plot(tr_or_2.T);plt.plot(tr_or.T);
+#%%
+update_bg = True
+use_spikes = True
+W = (y_filt[:num_frames_init]@H.T)
+# tr_bg = (-y[:num_frames_init]@(1-mask_2D.T)).T
+H_new,W_new,b,f = hals(y_filt[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                             np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
+                             update_bg=update_bg, use_spikes=use_spikes, frate=frate)
+plt.plot(W)
+plt.plot(W_new.T)
+#plt.close('all')
 #%% Use hals to optimize masks
 #from nmf_support import hals_init_spikes
 update_bg = True
