@@ -79,9 +79,17 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][0]
+    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_16',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_4',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_2',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][4]
     movie_lists = ['viola_sim3_18.hdf5',   # overlapping 8 neurons
+                   'viola_sim3_16.hdf5',
+                   'viola_sim3_4.hdf5',
+                   'viola_sim3_2.hdf5',
+                   'viola_sim3_5.hdf5',
                    'viola_sim2_7.hdf5']    # non-overlapping 50 neurons
     
 #%% Choosing datasets
@@ -107,7 +115,7 @@ elif n_neurons == '2':
        mask = np.array(h5['mov'])
 
 elif n_neurons == 'many':
-    name = movie_lists[4]
+    name = movie_lists[0]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
@@ -115,7 +123,7 @@ elif n_neurons == 'many':
        mask = np.array(h5['mov'])
        
 elif n_neurons == 'test':
-    name = movie_lists[0]
+    name = movie_lists[4]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
@@ -170,13 +178,21 @@ W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
 #%% Use hals to optimize masks
 #from nmf_support import hals_init_spikes
 update_bg = True
-use_spikes = True
+use_spikes = False
+on_detrend = True
 y_input = np.maximum(y_filt[:num_frames_init], 0)
 y_input = to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
 
-H_new,W_new,b,f = hals(-y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+if on_detrend == True:
+    H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                                 np.random.rand(1,num_frames_init), bSiz=None, maxIter=3,
+                                 update_bg=update_bg, use_spikes=use_spikes)
+else:
+    H_new,W_new,b,f = hals(-y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
                              update_bg=update_bg, use_spikes=use_spikes)
+
+
 #plt.close('all')
 if do_plot:
     #for i in range(mask.shape[0]):
@@ -264,6 +280,7 @@ else:
     fe = slice(0,None)
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
+    
 #%%
 [(plt.figure(),plt.plot(spikes[i],np.min(trace_all[np.argsort(seq)][i]),'.'), plt.plot(trace_all[np.argsort(seq)][i])) for i in range(8)]    
 
@@ -290,7 +307,7 @@ if True:
     estimates.weights = weights
     
 #%% Visualization
-    idx = -1
+    idx = 0
     plt.imshow(estimates.weights[idx])   # weight
     plt.plot(trace[idx])                # original trace
     plt.plot(estimates.t_s[idx])        # after template matching
@@ -317,7 +334,7 @@ if True:
         
     plt.boxplot(rr['F1']); plt.title('viola')
     
-    
+#%%    
 ##############################################################################################################
     
     #%%
