@@ -149,24 +149,27 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
                     orig_movie = True
                     if orig_movie:
                         bl = scipy.ndimage.percentile_filter(-Cf[i], 50, size=50)
-                        tr = -Cf[i] - bl                       
-                        # bl = mode_robust_fast(tr)
-                        # tr -= bl
-
+                        tr = -Cf[i] - bl   
+                        tr = tr-np.median(tr)
+                        bl = bl+np.median(tr)
+                        
                     else:
                         bl = scipy.ndimage.percentile_filter(Cf[i], 50, size=50)
-                        tr = Cf[i] - bl
-                    import pdb
-                    # pdb.set_trace()
+                        tr = Cf[i] - bl                    
                     
                     shrinkage = 1#np.max(Cf[i]) / np.max`(Cf_processed[i])
                     aaa, bbb, Cf_processed[i], ddd, eee, fff = denoise_spikes(tr, window_length=3, clip=0, 
-                                      threshold=thr_, threshold_method='simple', do_plot=False)
+                                      threshold=thr_, threshold_method='simple', do_plot=False, do_filter=False)
                     Cf_processed[i] = Cf_processed[i] * shrinkage
-                    if i == 0:
-                        plt.plot(tr)
-                        #plt.plot( -Cf_processed[i] - bl)
-                    print(1)
+                    # if i == 0:
+                    #     # import pdb
+                    #     # pdb.set_trace()
+                    #     plt.figure()
+                    #     # plt.plot(tr)
+                    #     plt.plot( -Cf_processed[i] - bl)
+                    #     plt.plot(Cf[i])
+                    #     plt.ylim([3500,5000])
+                    # print(1)
                     if orig_movie:
                         Cf_processed[i] = -Cf_processed[i] - bl    
                     else:

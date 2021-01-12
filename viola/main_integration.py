@@ -37,7 +37,7 @@ try:
 except NameError:
     pass
 #%% files for processing
-n_neurons = ['1', '2', 'many', 'test'][0]
+n_neurons = ['1', '2', 'many', 'test'][-1]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
@@ -84,7 +84,7 @@ elif n_neurons == 'test':
                     '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_3',
                     '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
                     '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][2]
+                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][1]
     movie_lists = ['viola_sim3_1.hdf5',
                    'viola_sim3_2.hdf5',
                    'viola_sim3_3.hdf5',
@@ -124,7 +124,7 @@ elif n_neurons == 'many':
        mask = np.array(h5['mov'])
        
 elif n_neurons == 'test':
-    name = movie_lists[2]
+    name = movie_lists[0]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
@@ -174,6 +174,9 @@ if do_plot:
 # tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 10000
+import cv2
+# kernel=np.ones(5)
+# mask = np.stack([cv2.dilate(m, kernel) for m in mask], axis=0)
 mask_2D = to_2D(mask)
 #%%
 if False:
@@ -192,6 +195,7 @@ H = mask_2D/nA
 tr_or = (y[:num_frames_init]@H.T).T
 tr_or_2 = (y_filt[:num_frames_init]@H.T).T
 tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
+tr_or -= np.median(tr_or)
 plt.plot(tr_or_2.T);plt.plot(tr_or.T);
 #%%
 update_bg = True
@@ -201,6 +205,7 @@ W = (y[:num_frames_init]@H.T)
 H_new,W_new,b,f = hals(-y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
                              update_bg=update_bg, use_spikes=use_spikes, frate=frate)
+#%%
 plt.plot(W-W.min())
 plt.plot(-W_new.T+W_new.min())
 #plt.close('all')
