@@ -68,7 +68,7 @@ def _hsm(data):
 
         return _hsm(data[j:j + N])
 #%%
-def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, frate=0):
+def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_spikes=False, hals_orig=False, fr=400):
     """ Hierarchical alternating least square method for solving NMF problem
     Y = A*C + b*f
     Args:
@@ -86,11 +86,19 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
        forced to be 0.
        maxIter: int,
            maximum iteration of iterating HALS.
+       semi_nmf: bool,
+           use semi-nmf (without nonnegative constraint on temporal traces) if True, 
+           otherwise use nmf        
        update_bg: bool, 
            update background if True, otherwise background will be set zero
        use_spikes: bool, 
            if True the algorithm will detect spikes using VolPy offline 
            to optimize the spatial components A
+       hals_orig: bool,
+           if True the input matrix Y is from the original movie, otherwise the input matrix Y
+           is thresholded at 0    
+       fr: 
+           frame rate of the movie           
            
     Returns:
         the updated A, C, b, f
@@ -112,12 +120,16 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
     else:
         ind_A = A>1e-10
     ind_A = spr.csc_matrix(ind_A)  # indicator of nonnero pixels
-    def HALS4activity(Yr, A, C, iters=2):
+    def HALS4activity(Yr, A, C, iters=2, semi_nmf=False):
         U = A.T.dot(Yr)
         V = A.T.dot(A) + np.finfo(A.dtype).eps
         for _ in range(iters):
             for m in range(len(U)):  # neurons and background
-                C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
+                if semi_nmf:
+                    C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
+                               V[m, m], -np.inf, np.inf)
+                else:
+                    C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
                                V[m, m], 0, np.inf)
         return C
     def HALS4shape(Yr, A, C, iters=2):
@@ -135,9 +147,9 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
         return A
     Ab = np.c_[A, b]
     Cf = np.r_[C, f.reshape(nb, -1)]
-    # Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
+
     for thr_ in np.linspace(3.5,2.5,maxIter):    
-        Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
+        Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf, semi_nmf=semi_nmf)
         Cf_processed = Cf.copy()
 
         if not update_bg:
@@ -146,31 +158,19 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
         if use_spikes:
             for i in range(Cf.shape[0]):
                 if i < Cf.shape[0] - nb: 
-                    orig_movie = True
-                    if orig_movie:
+                    if hals_orig:
                         bl = scipy.ndimage.percentile_filter(-Cf[i], 50, size=50)
                         tr = -Cf[i] - bl   
                         tr = tr-np.median(tr)
                         bl = bl+np.median(tr)
-                        
                     else:
                         bl = scipy.ndimage.percentile_filter(Cf[i], 50, size=50)
                         tr = Cf[i] - bl                    
                     
-                    shrinkage = 1#np.max(Cf[i]) / np.max`(Cf_processed[i])
-                    aaa, bbb, Cf_processed[i], ddd, eee, fff = denoise_spikes(tr, window_length=3, clip=0, 
+                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(tr, window_length=3, clip=0, fr=fr,
                                       threshold=thr_, threshold_method='simple', do_plot=False, do_filter=False)
-                    Cf_processed[i] = Cf_processed[i] * shrinkage
-                    # if i == 0:
-                    #     # import pdb
-                    #     # pdb.set_trace()
-                    #     plt.figure()
-                    #     # plt.plot(tr)
-                    #     plt.plot( -Cf_processed[i] - bl)
-                    #     plt.plot(Cf[i])
-                    #     plt.ylim([3500,5000])
-                    # print(1)
-                    if orig_movie:
+                    
+                    if hals_orig:
                         Cf_processed[i] = -Cf_processed[i] - bl    
                     else:
                         Cf_processed[i] = Cf_processed[i] + bl  

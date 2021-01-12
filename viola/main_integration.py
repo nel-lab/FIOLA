@@ -37,12 +37,12 @@ try:
 except NameError:
     pass
 #%% files for processing
-n_neurons = ['1', '2', 'many', 'test'][-1]
+n_neurons = ['1', '2', 'many', 'test'][0]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
-                   '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][0]
+                   '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
     
     movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
                  '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
@@ -79,12 +79,12 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_1',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_2',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_3',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
-                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][1]
+    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_1',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_2',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_3',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][2]
     movie_lists = ['viola_sim3_1.hdf5',
                    'viola_sim3_2.hdf5',
                    'viola_sim3_3.hdf5',
@@ -124,7 +124,7 @@ elif n_neurons == 'many':
        mask = np.array(h5['mov'])
        
 elif n_neurons == 'test':
-    name = movie_lists[4]
+    name = movie_lists[2]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
@@ -170,40 +170,15 @@ if do_plot:
 
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 10000
+use_rank_one_nmf = False
+hals_orig = True
 
-y_seq = y_filt[:num_frames_init,:].copy()
-
-mask_2D = to_2D(mask)
-std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-seq = np.argsort(std)[::-1]
-print(f'sequence of rank1-nmf: {seq}')
-W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
-nA = np.linalg.norm(H)
-H = H/nA
-W = W*nA
-
-#%%
-update_bg = True
-use_spikes = True
-hals_positive = False
-
-if hals_positive:
-    y_input = np.maximum(y_filt[:num_frames_init], 0)
-    H_new,W_new,b,f = hals(y_input[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                                 np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                                 update_bg=update_bg, use_spikes=use_spikes, frate=frate)
-
+if hals_orig:
+    y_input = -y[:num_frames_init].T
 else:
-    H_new,W_new,b,f = hals(y_filt[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                                 np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                                 update_bg=update_bg, use_spikes=use_spikes, frate=frate)
+    y_input = np.maximum(y_filt[:num_frames_init], 0).T
 
-import cv2
-# kernel=np.ones(5)
-# mask = np.stack([cv2.dilate(m, kernel) for m in mask], axis=0)
-mask_2D = to_2D(mask)
-#%%
-if False:
+if use_rank_one_nmf:
     y_seq = y_filt[:num_frames_init,:].copy()
     std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
     seq = np.argsort(std)[::-1]
@@ -212,38 +187,21 @@ if False:
     nA = np.linalg.norm(H)
     H = H/nA
     W = W*nA
-#%%
-import scipy
-nA = np.linalg.norm(mask_2D)
-H = mask_2D/nA
-tr_or = (y[:num_frames_init]@H.T).T
-tr_or_2 = (y_filt[:num_frames_init]@H.T).T
-tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
-tr_or -= np.median(tr_or)
-plt.plot(tr_or_2.T);plt.plot(tr_or.T);
-#%%
-update_bg = True
-use_spikes = True
-W = (y[:num_frames_init]@H.T)
-# tr_bg = (-y[:num_frames_init]@(1-mask_2D.T)).T
-H_new,W_new,b,f = hals(-y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                             np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                             update_bg=update_bg, use_spikes=use_spikes, frate=frate)
-#%%
-plt.plot(W-W.min())
-plt.plot(-W_new.T+W_new.min())
-#plt.close('all')
+else:
+    mask_2D = to_2D(mask)
+    nA = np.linalg.norm(mask_2D)
+    H = mask_2D/nA
+    W = (y_input.T@H.T)
+
 #%% Use hals to optimize masks
 #from nmf_support import hals_init_spikes
 update_bg = True
 use_spikes = True
-y_input = np.maximum(y_filt[:num_frames_init], 0)
-y_input = to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
+semi_nmf = True
 
-H_new,W_new,b,f = hals(y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                             np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                             update_bg=update_bg, use_spikes=use_spikes)
-#plt.close('all')
+H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                         np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, semi_nmf=semi_nmf,
+                         update_bg=update_bg, use_spikes=use_spikes, hals_orig=hals_orig, fr=frate)
 
 if do_plot:
     plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'));plt.colorbar()
@@ -255,26 +213,6 @@ if update_bg:
 # normalization will enable gpu-nnls extracting bg signal 
 H_new = H_new / norm(H_new, axis=0)
 
-#%% Load simulation groundtruth
-import scipy.io
-vi_result_all = []
-gt_files = [file for file in os.listdir(movie_folder) if 'SimResults' in file]
-gt_file = gt_files[0]
-gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
-gt = gt['simOutput'][0][0]['gt']
-spikes = gt['ST'][0][0][0]
-#%%    
-[(plt.figure(),plt.plot(spikes[i],np.min(W_new[i]),'.'), plt.plot(W_new[i]), plt.xlim([0,5000])) for i in range(8)]    
-#%%
-for i in range(8):
-    plt.cla()
-    plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'))
-    plt.pause(1)
-#%%    
-for i in range(8):
-    plt.cla()
-    plt.imshow(mask[i])
-    plt.pause(1)    
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
@@ -294,7 +232,6 @@ if use_GPU:
         n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
         theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
         mc0 = mov_in[0:1,:,:, None]
-
         
         model = get_model(template, center_dims, Ab, 30)
         model.compile(optimizer='rmsprop', loss='mse')
@@ -335,13 +272,9 @@ if use_GPU:
 
 else:
     #Use nnls to extract signal for neurons or not and filter
-    
     fe = slice(0,None)
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
-
-#%%
-[(plt.figure(),plt.plot(spikes[i],np.min(trace_all[i]),'.'), plt.plot(trace_all[i])) for i in range(8)]    
 
 #%% Viola spike extraction, result is in the estimates object
 if True:
@@ -364,26 +297,7 @@ if True:
     weights = H_new.reshape((mov.shape[1], mov.shape[2], H_new.shape[1]), order='F')
     weights = weights.transpose([2, 0, 1])
     estimates.weights = weights
-    
-#%% Visualization
-    idx = -1
-    for idx in range(8):
-        plt.cla()        
-        plt.imshow(estimates.weights[idx])   # weight  
-        plt.imshow(mask[idx],alpha=0.7)
-        plt.pause(1)
-#%% 
 
-    for idx in range(8):
-        plt.cla()        
-        plt.plot(trace[idx])   # weight  
-        plt.plot(spikes[idx],1) 
-        plt.pause(1)       
-                   # original trace
-    plt.plot(estimates.t_s[idx])        # after template matching
-
-    
-#%%
     #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/test_data/ephys_voltage/10052017Fish2-2'
     #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
     #np.save(save_path, estimates)    
@@ -396,7 +310,6 @@ if True:
     gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
     gt = gt['simOutput'][0][0]['gt']
     spikes = gt['ST'][0][0][0]
-
 
     
 #%% Compute F1 score for spike extraction
@@ -412,7 +325,9 @@ if True:
         rr['recall'].append(recall)  
         
     plt.boxplot(rr['F1']); plt.title('viola')
-    
+   
+#%%
+    plt.plot(estimates.trace[-2])
 #%%    
 ##############################################################################################################
     
