@@ -114,15 +114,18 @@ class Pipeline(object):
             (y, x) = out
             yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
 
-    def get_spikes(self, bound):
+    def get_traces(self, bound):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
-        output = [0]*bound
+        length = bound//self.batch_size
+        output = [0]*length
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
 #            st = timeit.default_timer()
 
             out = self.output_q.get()
-            output[idx-1] = out["nnls_1"]
+            # import pdb; pdb.set_trace()
+            i = (idx-1)//self.batch_size
+            output[i] = out["nnls_1"]
             self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
 #            output.append(timeit.default_timer()-st)
