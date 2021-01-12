@@ -37,7 +37,7 @@ try:
 except NameError:
     pass
 #%% files for processing
-n_neurons = ['1', '2', 'many', 'test'][0]
+n_neurons = ['1', '2', 'many', 'test'][-1]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
@@ -79,11 +79,16 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
+    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_1',
+                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
+                    '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
                     '/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][0]
-    movie_lists = ['viola_sim3_18.hdf5',   # overlapping 8 neurons
+    movie_lists = ['viola_sim3_1.hdf5',
+                   'viola_sim3_5.hdf5',
+                   'viola_sim3_18.hdf5',   # overlapping 8 neurons
                    'viola_sim2_7.hdf5']    # non-overlapping 50 neurons
     
+   
 #%% Choosing datasets
 if n_neurons == '1':
     file_set = [-2]
@@ -163,16 +168,17 @@ if do_plot:
 # tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 10000
-# y_seq = y_filt[:num_frames_init,:].copy()
 
 mask_2D = to_2D(mask)
-# std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-# seq = np.argsort(std)[::-1]
-# print(f'sequence of rank1-nmf: {seq}')
-# W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
-# nA = np.linalg.norm(H)
-# H = H/nA
-# W = W*nA
+#%%
+y_seq = y_filt[:num_frames_init,:].copy()
+std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+seq = np.argsort(std)[::-1]
+print(f'sequence of rank1-nmf: {seq}')
+W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+nA = np.linalg.norm(H)
+H = H/nA
+W = W*nA
 #%%
 import scipy
 nA = np.linalg.norm(mask_2D)
@@ -184,9 +190,9 @@ plt.plot(tr_or_2.T);plt.plot(tr_or.T);
 #%%
 update_bg = True
 use_spikes = True
-W = (y_filt[:num_frames_init]@H.T)
+W = (y[:num_frames_init]@H.T)
 # tr_bg = (-y[:num_frames_init]@(1-mask_2D.T)).T
-H_new,W_new,b,f = hals(y_filt[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+H_new,W_new,b,f = hals(y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                              np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
                              update_bg=update_bg, use_spikes=use_spikes, frate=frate)
 plt.plot(W)
@@ -223,7 +229,7 @@ gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
 gt = gt['simOutput'][0][0]['gt']
 spikes = gt['ST'][0][0][0]
 #%%    
-[(plt.figure(),plt.plot(spikes[i],50,'.'), plt.plot(W_new[np.argsort(seq)][i]), plt.xlim([0,5000])) for i in range(8)]    
+[(plt.figure(),plt.plot(spikes[i],50,'.'), plt.plot(W_new[i]), plt.xlim([0,5000])) for i in range(8)]    
     
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
@@ -290,7 +296,7 @@ else:
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
 #%%
-[(plt.figure(),plt.plot(spikes[i],np.min(trace_all[np.argsort(seq)][i]),'.'), plt.plot(trace_all[np.argsort(seq)][i])) for i in range(8)]    
+[(plt.figure(),plt.plot(spikes[i],np.min(trace_all[i]),'.'), plt.plot(trace_all[i])) for i in range(8)]    
 
 #%% Viola spike extraction, result is in the estimates object
 if True:
@@ -307,7 +313,7 @@ if True:
     print(f'thresh:{saoz.thresh}')
     print(f'SNR: {saoz.SNR}')
     print(f'Mean_SNR: {np.array(saoz.SNR).mean()}')
-    print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)[np.argsort(seq)]}')
+    print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)}')
     estimates = saoz
     estimates.spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz.index])
     weights = H_new.reshape((mov.shape[1], mov.shape[2], H_new.shape[1]), order='F')
@@ -316,8 +322,19 @@ if True:
     
 #%% Visualization
     idx = -1
-    plt.imshow(estimates.weights[idx])   # weight
-    plt.plot(trace[idx])                # original trace
+    for idx in range(8):
+        plt.cla()        
+        plt.imshow(estimates.weights[idx])   # weight  
+        plt.imshow(mask[idx],alpha=0.7)
+        plt.pause(1)
+#%% 
+
+    for idx in range(8):
+        plt.cla()        
+        plt.plot(trace[idx])   # weight  
+        plt.plot(spikes[idx],1) 
+        plt.pause(1)       
+                   # original trace
     plt.plot(estimates.t_s[idx])        # after template matching
 
     
@@ -333,7 +350,7 @@ if True:
     rr = {'F1':[], 'precision':[], 'recall':[]}
     for idx in range(n_cells):
         s1 = spikes[idx].flatten()
-        s2 = estimates.spikes[np.argsort(seq)][idx]
+        s2 = estimates.spikes[idx]
         idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
         F1, precision, recall = compute_F1(s1, s2, idx1_greedy, idx2_greedy)   
         rr['F1'].append(F1)

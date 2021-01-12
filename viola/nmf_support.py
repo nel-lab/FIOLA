@@ -160,7 +160,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
                     # pdb.set_trace()
                     shrinkage = 1#np.max(Cf[i]) / np.max`(Cf_processed[i])
                     _, _, Cf_processed[i], _, _, _ = denoise_spikes(tr, window_length=3, clip=0, 
-                                      threshold=2.0, threshold_method='simple', do_plot=False)
+                                      threshold=3.5, threshold_method='simple', do_plot=False)
                     Cf_processed[i] = Cf_processed[i] * shrinkage
                     if orig_movie:
                         Cf_processed[i] = -Cf_processed[i] - bl    
