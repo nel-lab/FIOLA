@@ -79,7 +79,7 @@ def denoise_spikes(data, window_length, fr=400,  hp_freq=1,  clip=100, threshold
     """
     # high-pass filter the signal for spike detection
     data = signal_filter(data, hp_freq, fr, order=5)
-    data = data - np.median(data)
+    data = data - np.median(data)    
     pks = data[signal.find_peaks(data, height=None)[0]]
 
     # first round of spike detection    
@@ -347,5 +347,5 @@ def signal_filter(sg, freq, fr, order=3, mode='high'):
     """
     normFreq = freq / (fr / 2)
     b, a = signal.butter(order, normFreq, mode)
-    sg = np.single(signal.filtfilt(b, a, sg, padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    sg = np.single(signal.filtfilt(b, a, sg, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
     return sg
