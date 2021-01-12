@@ -11,11 +11,11 @@ import numpy as np
 
 class violaparams(object):
     def __init__(self, fnames=None, fr=None, ROIs=None,  
-                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, hals_positive=False, 
                  update_bg=False, use_spikes=False, initialize_with_gpu=False, 
                  num_frames_total=100000, window = 10000, step = 5000, 
                  detrend=True, flip=True, do_scale=False, robust_std=False, freq=15, adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, params_dict={}):
+                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, online_with_gpu=True, params_dict={}):
         """Class for setting parameters for voltage imaging. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -32,9 +32,11 @@ class violaparams(object):
             'freq_detrend': freq_detrend, # high-pass frequency for removing baseline, used for init of spatial footprint
             'do_plot_init': do_plot_init, # plot the spatial mask result for init of spaital footprint
             'erosion': erosion, # number of pixels to erode the input masks before performing rank-1 NMF
+            'hals_positive': hals_positive, # whether to apply hals on the movie with all elements greater or equal to zero
             'update_bg': update_bg, # update background components for spatial footprints
             'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
-            'initialize_with_gpu': initialize_with_gpu # whether to use gpu for performing nnls during initialization 
+            'initialize_with_gpu': initialize_with_gpu, # whether to use gpu for performing nnls during initialization 
+            'online_with_gpu': online_with_gpu # whether to use gpu for processing online. Use nnls from scipy if False
         }
 
         self.spike = {

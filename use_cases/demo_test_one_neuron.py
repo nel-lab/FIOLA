@@ -21,14 +21,15 @@ try:
         get_ipython().magic('autoreload 2')
 except NameError:
     pass
-
-from nmf_support import normalize
-from violaparams import violaparams
-from viola import VIOLA
+#%%
+from viola.nmf_support import normalize
+from viola.violaparams import violaparams
+from viola.viola import VIOLA
 import scipy.io
-from match_spikes import match_spikes_greedy, compute_F1
-sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
-from test_simulation_run_viola import run_viola
+from viola.match_spikes import match_spikes_greedy, compute_F1
+#sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
+#sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/VIOLA'))
+from use_cases.test_run_viola import run_viola # must be in use_cases folder
         
 #%%
 ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron'
@@ -47,23 +48,43 @@ frate_all = np.array([400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 995.02, 40
        300.  , 300.  , 400.  ])
 
 #%%
+for name in names:
+    try:
+        os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
+        print('make folder')
+    except:
+        print('already exist')
+ 
+#%%
 t_range = [10000, 20000]
 border_to_0 = 2
 flip = True
 num_frames_init = 10000
 num_frames_total=20000
 thresh_range= [3, 4]
+erosion=0 
+hals_positive=False
 update_bg = True
-
+use_spikes= True
+initialize_with_gpu=False
+adaptive_threshold=True
+filt_window=15
+    
 options = {
     'border_to_0': border_to_0,
     'flip': flip,
     'num_frames_total': num_frames_total, 
     'thresh_range': thresh_range,
-    'update_bg': update_bg}
+    'erosion':erosion, 
+    'hals_positive': hals_positive,
+    'update_bg': update_bg,
+    'use_spikes':use_spikes, 
+    'initialize_with_gpu':initialize_with_gpu,
+    'adaptive_threshold': adaptive_threshold,
+    'filt_window': filt_window}
 
 #%%
-select = np.array([-1])
+select = np.array([0])
 for idx, name in enumerate(np.array(names)[select]):
     fr = np.array(frate_all)[select][idx]
     fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')

@@ -22,26 +22,25 @@ try:
         get_ipython().magic('autoreload 2')
 except NameError:
     pass
-sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/VIOLA'))
 #%%
 from viola.nmf_support import normalize
 from viola.violaparams import violaparams
 from viola.viola import VIOLA
 import scipy.io
 from viola.match_spikes import match_spikes_greedy, compute_F1
-# sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
-
-from test_simulation_run_viola import run_viola # must be in use_cases folder
+#sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
+#sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/VIOLA'))
+from use_cases.test_run_viola import run_viola # must be in use_cases folder
 
 #%%
-mode = ['overlapping', 'non_overlapping', 'positron'][2]
+mode = ['overlapping', 'non_overlapping', 'positron'][0]
 dropbox_folder = '/home/nel/NEL-LAB Dropbox/'
-dropbox_folder = '/Users/agiovann/Dropbox/'
+#dropbox_folder = '/Users/agiovann/Dropbox/'
 
 if mode == 'overlapping':
     ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/overlapping'
     SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/overlapping'
-    names = [f'viola_sim3_{i}' for i in range(1, 7)]
+    names = [f'viola_sim3_{i}' for i in range(17, 19)]
 elif mode == 'non_overlapping':
     ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/non_overlapping'
     SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/non_overlapping'
@@ -52,7 +51,6 @@ elif mode == 'positron':
     names = [f'viola_sim4_{i}' for i in range(1, 13)]
     
 #%%
-distance = [f'dist_{i}' for i in [1, 3]]#, 5, 7, 10, 15]]
 t_range = [10000, 20000]
 border_to_0 = 2
 flip = True
@@ -60,8 +58,9 @@ num_frames_init = 10000
 num_frames_total=20000
 thresh_range= [3, 4]
 erosion=0 
+hals_positive=False
 update_bg = True
-use_spikes=True 
+use_spikes=False
 initialize_with_gpu=False
 adaptive_threshold=True
 filt_window=15
@@ -72,6 +71,7 @@ options = {
     'num_frames_total': num_frames_total, 
     'thresh_range': thresh_range,
     'erosion':erosion, 
+    'hals_positive': hals_positive,
     'update_bg': update_bg,
     'use_spikes':use_spikes, 
     'initialize_with_gpu':initialize_with_gpu,
@@ -81,12 +81,13 @@ options = {
 #%%
 for name in names:
     fnames = os.path.join(ROOT_FOLDER, name, name+'.hdf5')
+    print(f'NOW PROCESSING: {fnames}')
     path_ROIs = os.path.join(ROOT_FOLDER, name, 'viola', 'ROIs_gt.hdf5')
     run_viola(fnames, path_ROIs, fr=400, options=options)
     
 #%%
-for idx, dist in enumerate(distance[0]):
-    for ff in range(3):
+for idx, dist in enumerate(distance):
+#    for ff in range(3):
         vi_result_all = []
         folder = os.path.join(ROOT_FOLDER, name)
         gt_files = [file for file in os.listdir(folder) if 'SimResults' in file]
@@ -96,7 +97,8 @@ for idx, dist in enumerate(distance[0]):
         spikes = gt['ST'][0][0][0]
         
         vi_folder = os.path.join(folder, 'viola')
-        vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'use_spikes_False' in file])
+        vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'use_spikes_True' in file])
+        ff = 0
         vi_file = vi_files[ff]
         vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
         
@@ -121,6 +123,8 @@ for idx, dist in enumerate(distance[0]):
         print(np.array(vi_result_all[0]['F1']).mean())
 
 #%%  
+distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+names = [f'viola_sim3_{i}' for i in range(1, 19)]
 for idx, dist in enumerate(distance):
     vi_result_all = []
     if mode == 'overlapping':
@@ -136,7 +140,7 @@ for idx, dist in enumerate(distance):
         spikes = gt['ST'][0][0][0]
         
         vi_folder = os.path.join(folder, 'viola')
-        vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'use_spikes_False_small_mask' in file])
+        vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'use_spikes_True' in file])
         vi_file = vi_files[0]
         vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
         
@@ -158,7 +162,7 @@ for idx, dist in enumerate(distance):
             rr['precision'].append(precision)
             rr['recall'].append(recall)
         vi_result_all.append(rr)
-    np.save(os.path.join(SAVE_FOLDER, 'mask_erosion', f'viola_result_10000_20000_{dist}'), vi_result_all)
+    np.save(os.path.join(SAVE_FOLDER, 'new_hals_use_spikes_False', f'viola_result_10000_20000_{dist}'), vi_result_all)
     #np.save(os.path.join(ROOT_FOLDER, 'result_overlap', f'{dist}', f'volpy_{dist}_thresh_adaptive'), vi_save_result)
 
 #%%
@@ -271,6 +275,7 @@ area = np.append(area, 0)
 mode = ['viola', 'volpy'][0]
 result_all = {}
 distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/new_hals_use_spikes_False'
 x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
 for dist in distance:   
     files = np.array(sorted(os.listdir(SAVE_FOLDER)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]

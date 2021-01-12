@@ -11,6 +11,7 @@ import cv2
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.linalg import norm
 from scipy.optimize import nnls    
 from .signal_analysis_online import SignalAnalysisOnlineZ
 
@@ -20,11 +21,11 @@ from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
 
 class VIOLA(object):
     def __init__(self, fnames=None, fr=None, ROIs=None,  
-                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, hals_positive=False, 
                  update_bg=False, use_spikes=False, initialize_with_gpu=False, 
                  num_frames_total=100000, window = 10000, step = 5000, 
                  detrend=True, flip=True, do_scale=False, robust_std=False, freq=15, adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, params={}):
+                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, online_with_gpu=True, params={}):
         if params is None:
             logging.warning("Parameters are not set from violaparams")
             raise Exception('Parameters are not set')
@@ -79,24 +80,33 @@ class VIOLA(object):
              
         print(f'sequence of rank1-nmf: {seq}')        
         W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+        nA = np.linalg.norm(H)
+        H = H/nA
+        W = W*nA
         if self.params.mc_nnls['do_plot_init']:
             plt.figure();plt.imshow(H.sum(axis=0).reshape(mov.shape[1:], order='F'));
             plt.colorbar();plt.title('Spatial masks after rank1 nmf')
         
-        y_input = np.maximum(y_filt, 0)
-        y_input = to_3D(y_input, shape=mov.shape, order='F').transpose([1,2,0])   
-        H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                                     np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, 
-                                     update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'])
-        
+        if self.params.mc_nnls['hals_positive']:
+            y_input = np.maximum(y_filt, 0)
+            y_input = to_3D(y_input, shape=mov.shape, order='F').transpose([1,2,0])   
+            H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                                         np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, 
+                                         update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'])
+        else:
+            H_new,W_new,b,f = hals(y_filt.T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                                         np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, 
+                                         update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'])
+       
         if self.params.mc_nnls['do_plot_init']:
             plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'), 
                                     vmax=np.percentile(H_new.sum(axis=1), 99));
             plt.colorbar();plt.title('Spatial masks after hals');plt.show()
-            plt.figure(); plt.imshow(b.reshape((100,100), order='F')); plt.show()
+            plt.figure(); plt.imshow(b.reshape((self.mov.shape[1],self.mov.shape[2]), order='F')); plt.show()
         
         if self.params.mc_nnls['update_bg']:
             H_new = np.hstack((H_new, b))
+        H_new = H_new / norm(H_new, axis=0)
         self.H = H_new
  
         print('Now extract signal and spikes')            
@@ -135,10 +145,16 @@ class VIOLA(object):
                                      flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
                                      filt_window=self.params.spike['filt_window'])
         saoz.fit(trace, num_frames=self.params.spike['num_frames_total'])              
-        self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
+
+        if self.params.mc_nnls['online_with_gpu']:        
+            self.saoz = saoz
+        else:
+            self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
     
     def fit_online(self):
         self.pipeline.get_spikes()
+        
+       
         
     def compute_estimates(self):
         self.estimates = self.pipeline.saoz

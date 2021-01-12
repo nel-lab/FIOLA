@@ -143,47 +143,16 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
         if not update_bg:
             Cf_processed[-nb:] = np.zeros(Cf_processed[-nb:].shape)
 
-        
         if use_spikes:
             for i in range(Cf.shape[0]):
                 if i < Cf.shape[0] - nb: 
-                    orig_movie = False
-                    if orig_movie:
-                        bl = scipy.ndimage.percentile_filter(-Cf[i], 20, size=50)
-                        tr = -Cf[i] - bl
-                        # bl = mode_robust_fast(tr)
-                        # tr -= bl
-
-                    else:
-                        bl = scipy.ndimage.percentile_filter(Cf[i], 20, size=50)
-                        tr = Cf[i] - bl
-                    import pdb
-                    # pdb.set_trace()
-                    shrinkage = 1#np.max(Cf[i]) / np.max`(Cf_processed[i])
+                    bl = scipy.ndimage.percentile_filter(Cf[i], 20, size=50)
+                    tr = Cf[i] - bl
                     _, _, Cf_processed[i], _, _, _ = denoise_spikes(tr, window_length=3, clip=0, 
-                                      threshold=2.0, threshold_method='simple', do_plot=False)
-                    Cf_processed[i] = Cf_processed[i] * shrinkage
-                    if orig_movie:
-                        Cf_processed[i] = -Cf_processed[i] - bl    
-                    else:
-                        Cf_processed[i] = Cf_processed[i] + bl  
+                                      threshold=3.0, threshold_method='simple', do_plot=False)
+                    Cf_processed[i] = Cf_processed[i] + bl  
         Cf = Cf_processed
-                
-        """
-        if use_spikes:
-            for i in range(Cf.shape[0]):
-                if i < Cf.shape[0] - nb:
-                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(Cf[i], window_length=3, clip=0,
-                                      threshold=3.5, threshold_method='simple', do_plot=False)
-                    shrinkage = np.max(Cf[i]) / np.max(Cf_processed[i])
-                    Cf_processed[i] = Cf_processed[i] * shrinkage
-        Cf = Cf_processed
-        """
-        
-        
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
-        # for i in range(Ab.shape[1]):
-        #     plt.figure();plt.imshow(Ab[:, i].reshape((30,30), order='F'));plt.colorbar()
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
 

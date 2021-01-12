@@ -164,64 +164,36 @@ if do_plot:
     else:            
         for i in range(mask.shape[0]):
             plt.imshow(mask[i], alpha=0.5)
-#%%
-# import scipy
-# tr_or = y_filt@mask_2D
-# tr_or = -tr_or
-# tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
+
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 10000
-# y_seq = y_filt[:num_frames_init,:].copy()
+y_seq = y_filt[:num_frames_init,:].copy()
 
 mask_2D = to_2D(mask)
-# std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-# seq = np.argsort(std)[::-1]
-# print(f'sequence of rank1-nmf: {seq}')
-# W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
-# nA = np.linalg.norm(H)
-# H = H/nA
-# W = W*nA
-#%%
-import scipy
-nA = np.linalg.norm(mask_2D)
-H = mask_2D/nA
-tr_or = (y[:num_frames_init]@H.T).T
-tr_or_2 = (y_filt[:num_frames_init]@H.T).T
-tr_or -= scipy.ndimage.percentile_filter(tr_or, 20, size=50)
-plt.plot(tr_or_2.T);plt.plot(tr_or.T);
+std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+seq = np.argsort(std)[::-1]
+print(f'sequence of rank1-nmf: {seq}')
+W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+nA = np.linalg.norm(H)
+H = H/nA
+W = W*nA
+
 #%%
 update_bg = True
 use_spikes = True
-W = (y_filt[:num_frames_init]@H.T)
-# tr_bg = (-y[:num_frames_init]@(1-mask_2D.T)).T
-H_new,W_new,b,f = hals(y_filt[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                             np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                             update_bg=update_bg, use_spikes=use_spikes, frate=frate)
-plt.plot(W)
-plt.plot(W_new.T)
-#plt.close('all')
-#%% Use hals to optimize masks
-#from nmf_support import hals_init_spikes
-update_bg = True
-use_spikes = False
-on_detrend = True
-y_input = np.maximum(y_filt[:num_frames_init], 0)
-y_input = to_3D(y_input, shape=(num_frames_init,mov.shape[1],mov.shape[2]), order='F').transpose([1,2,0])
+hals_positive = False
 
-if on_detrend == True:
-    H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                                 np.random.rand(1,num_frames_init), bSiz=None, maxIter=3,
-                                 update_bg=update_bg, use_spikes=use_spikes)
+if hals_positive:
+    y_input = np.maximum(y_filt[:num_frames_init], 0)
+    H_new,W_new,b,f = hals(y_input[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                                 np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
+                                 update_bg=update_bg, use_spikes=use_spikes, frate=frate)
+
 else:
-    H_new,W_new,b,f = hals(-y[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                             np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
-                             update_bg=update_bg, use_spikes=use_spikes)
-
-
-#plt.close('all')
+    H_new,W_new,b,f = hals(y_filt[:num_frames_init].T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+                                 np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, 
+                                 update_bg=update_bg, use_spikes=use_spikes, frate=frate)
 if do_plot:
-    #for i in range(mask.shape[0]):
-    #    plt.figure();plt.imshow(H_new[:,i].reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure();plt.imshow(b.reshape(mov.shape[1:], order='F'));plt.colorbar()
 
@@ -230,16 +202,6 @@ if update_bg:
 
 # normalization will enable gpu-nnls extracting bg signal 
 H_new = H_new / norm(H_new, axis=0)
-#%% Load simulation groundtruth
-import scipy.io
-vi_result_all = []
-gt_files = [file for file in os.listdir(movie_folder) if 'SimResults' in file]
-gt_file = gt_files[0]
-gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
-gt = gt['simOutput'][0][0]['gt']
-spikes = gt['ST'][0][0][0]
-#%%    
-[(plt.figure(),plt.plot(spikes[i],50,'.'), plt.plot(W_new[np.argsort(seq)][i]), plt.xlim([0,5000])) for i in range(8)]    
     
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
@@ -306,8 +268,6 @@ else:
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
     
-#%%
-[(plt.figure(),plt.plot(spikes[i],np.min(trace_all[np.argsort(seq)][i]),'.'), plt.plot(trace_all[np.argsort(seq)][i])) for i in range(8)]    
 
 #%% Viola spike extraction, result is in the estimates object
 if True:
@@ -343,6 +303,15 @@ if True:
     #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
     #np.save(save_path, estimates)    
     
+#%% Load simulation groundtruth
+    import scipy.io
+    vi_result_all = []
+    gt_files = [file for file in os.listdir(movie_folder) if 'SimResults' in file]
+    gt_file = gt_files[0]
+    gt = scipy.io.loadmat(os.path.join(movie_folder, gt_file))
+    gt = gt['simOutput'][0][0]['gt']
+    spikes = gt['ST'][0][0][0]
+
 
     
 #%% Compute F1 score for spike extraction
