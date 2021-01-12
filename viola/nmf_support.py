@@ -118,7 +118,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
         for _ in range(iters):
             for m in range(len(U)):  # neurons and background
                 C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
-                               V[m, m], -np.inf, np.inf)
+                               V[m, m], 0, np.inf)
         return C
     def HALS4shape(Yr, A, C, iters=2):
         U = C.dot(Yr.T)
@@ -136,7 +136,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
     Ab = np.c_[A, b]
     Cf = np.r_[C, f.reshape(nb, -1)]
     # Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
-    for _ in range(maxIter):    
+    for thr_ in np.linspace(3.5,2.5,maxIter):    
         Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         Cf_processed = Cf.copy()
 
@@ -146,26 +146,36 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, update_bg=True, use_spikes=False, fra
         if use_spikes:
             for i in range(Cf.shape[0]):
                 if i < Cf.shape[0] - nb: 
-                    orig_movie = False
+                    orig_movie = True
                     if orig_movie:
-                        bl = scipy.ndimage.percentile_filter(-Cf[i], 20, size=50)
-                        tr = -Cf[i] - bl
-                        # bl = mode_robust_fast(tr)
-                        # tr -= bl
-
+                        bl = scipy.ndimage.percentile_filter(-Cf[i], 50, size=50)
+                        tr = -Cf[i] - bl   
+                        tr = tr-np.median(tr)
+                        bl = bl+np.median(tr)
+                        
                     else:
-                        bl = scipy.ndimage.percentile_filter(Cf[i], 20, size=50)
-                        tr = Cf[i] - bl
-                    import pdb
-                    # pdb.set_trace()
+                        bl = scipy.ndimage.percentile_filter(Cf[i], 50, size=50)
+                        tr = Cf[i] - bl                    
+                    
                     shrinkage = 1#np.max(Cf[i]) / np.max`(Cf_processed[i])
-                    _, _, Cf_processed[i], _, _, _ = denoise_spikes(tr, window_length=3, clip=0, 
-                                      threshold=2.0, threshold_method='simple', do_plot=False)
+                    aaa, bbb, Cf_processed[i], ddd, eee, fff = denoise_spikes(tr, window_length=3, clip=0, 
+                                      threshold=thr_, threshold_method='simple', do_plot=False, do_filter=False)
                     Cf_processed[i] = Cf_processed[i] * shrinkage
+                    # if i == 0:
+                    #     # import pdb
+                    #     # pdb.set_trace()
+                    #     plt.figure()
+                    #     # plt.plot(tr)
+                    #     plt.plot( -Cf_processed[i] - bl)
+                    #     plt.plot(Cf[i])
+                    #     plt.ylim([3500,5000])
+                    # print(1)
                     if orig_movie:
                         Cf_processed[i] = -Cf_processed[i] - bl    
                     else:
                         Cf_processed[i] = Cf_processed[i] + bl  
+                    
+                    
         Cf = Cf_processed
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         # for i in range(Ab.shape[1]):

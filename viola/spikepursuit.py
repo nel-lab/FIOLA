@@ -18,7 +18,7 @@ from skimage.morphology import disk
 import cv2
 
 def denoise_spikes(data, window_length, fr=400,  hp_freq=1,  clip=100, threshold_method='adaptive_threshold', 
-                   min_spikes=10, pnorm=0.5, threshold=3,  do_plot=True):
+                   min_spikes=10, pnorm=0.5, threshold=3,  do_plot=True, do_filter=True):
     """ Function for finding spikes and the temporal filter given one dimensional signals.
         Use function whitened_matched_filter to denoise spikes. Two thresholding methods can be 
         chosen, simple or 'adaptive thresholding'.
@@ -78,8 +78,9 @@ def denoise_spikes(data, window_length, fr=400,  hp_freq=1,  clip=100, threshold
             real threshold in second round of spike detection 
     """
     # high-pass filter the signal for spike detection
-    data = signal_filter(data, hp_freq, fr, order=5)
-    data = data - np.median(data)
+    if do_filter:
+        data = signal_filter(data, hp_freq, fr, order=5)
+        data = data - np.median(data)    
     pks = data[signal.find_peaks(data, height=None)[0]]
 
     # first round of spike detection    
@@ -347,5 +348,5 @@ def signal_filter(sg, freq, fr, order=3, mode='high'):
     """
     normFreq = freq / (fr / 2)
     b, a = signal.butter(order, normFreq, mode)
-    sg = np.single(signal.filtfilt(b, a, sg, padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    sg = np.single(signal.filtfilt(b, a, sg, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
     return sg
