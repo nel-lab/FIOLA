@@ -40,7 +40,7 @@ dropbox_folder = '/home/nel/NEL-LAB Dropbox/'
 if mode == 'overlapping':
     ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/overlapping'
     SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/overlapping'
-    names = [f'viola_sim3_{i}' for i in range(17, 19)]
+    names = [f'viola_sim3_{i}' for i in range(18, 19)]
 elif mode == 'non_overlapping':
     ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/test_data/simulation/non_overlapping'
     SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/non_overlapping'
@@ -52,26 +52,31 @@ elif mode == 'positron':
     
 #%%
 t_range = [10000, 20000]
+
 border_to_0 = 2
 flip = True
 num_frames_init = 10000
 num_frames_total=20000
 thresh_range= [3, 4]
 erosion=0 
-hals_positive=False
+hals_movie='hp_thresh'
+use_rank_one_nmf=False
+semi_nmf=False
 update_bg = True
-use_spikes=False
+use_spikes=False 
 initialize_with_gpu=False
 adaptive_threshold=True
 filt_window=15
-    
+
 options = {
     'border_to_0': border_to_0,
     'flip': flip,
     'num_frames_total': num_frames_total, 
     'thresh_range': thresh_range,
     'erosion':erosion, 
-    'hals_positive': hals_positive,
+    'hals_movie': hals_movie,
+    'use_rank_one_nmf': use_rank_one_nmf,
+    'semi_nmf': semi_nmf,
     'update_bg': update_bg,
     'use_spikes':use_spikes, 
     'initialize_with_gpu':initialize_with_gpu,

@@ -46,26 +46,21 @@ names = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
 frate_all = np.array([400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 995.02, 400.8 ,
        400.8 , 400.8 , 400.8 , 400.8 , 995.02, 995.02, 995.02, 995.02,
        300.  , 300.  , 400.  ])
-
-#%%
-for name in names:
-    try:
-        os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
-        print('make folder')
-    except:
-        print('already exist')
  
 #%%
 t_range = [10000, 20000]
+num_frames_init = 10000
+num_frames_total = 80000
 border_to_0 = 2
 flip = True
-num_frames_init = 10000
-num_frames_total=20000
 thresh_range= [3, 4]
 erosion=0 
 hals_positive=False
 update_bg = True
-use_spikes= True
+use_spikes= False
+use_batch=True
+batch_size=100
+center_dims=None
 initialize_with_gpu=False
 adaptive_threshold=True
 filt_window=15
@@ -73,12 +68,16 @@ filt_window=15
 options = {
     'border_to_0': border_to_0,
     'flip': flip,
+    'num_frames_init': num_frames_init, 
     'num_frames_total': num_frames_total, 
     'thresh_range': thresh_range,
     'erosion':erosion, 
     'hals_positive': hals_positive,
     'update_bg': update_bg,
     'use_spikes':use_spikes, 
+    'use_spikes': use_spikes,
+    'use_batch':use_batch,
+    'batch_size':batch_size,
     'initialize_with_gpu':initialize_with_gpu,
     'adaptive_threshold': adaptive_threshold,
     'filt_window': filt_window}
@@ -505,7 +504,13 @@ for f in ff:
         
         
         
-        
+        #%%
+for name in names:
+    try:
+        os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
+        print('make folder')
+    except:
+        print('already exist')
         
         
         

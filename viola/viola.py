@@ -17,15 +17,16 @@ from .signal_analysis_online import SignalAnalysisOnlineZ
 
 from .caiman_functions import signal_filter, to_3D, to_2D, bin_median
 from .nmf_support import hals, normalize, nmf_sequential
-from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
 
 class VIOLA(object):
-    def __init__(self, fnames=None, fr=None, ROIs=None,  
-                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, hals_positive=False, 
-                 update_bg=False, use_spikes=False, initialize_with_gpu=False, 
-                 num_frames_total=100000, window = 10000, step = 5000, 
-                 detrend=True, flip=True, do_scale=False, robust_std=False, freq=15, adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, online_with_gpu=True, params={}):
+    def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
+                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
+                 update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
+                 center_dims=None, initialize_with_gpu=False, 
+                 window = 10000, step = 5000, detrend=True, flip=True, do_scale=False, robust_std=False, 
+                 freq=15, adaptive_threshold=True, thresh_range=[3.5, 5], mfp=0.2, 
+                 filt_window=15, do_plot=False, params={}):
         if params is None:
             logging.warning("Parameters are not set from violaparams")
             raise Exception('Parameters are not set')
@@ -36,7 +37,6 @@ class VIOLA(object):
         print('Now start initialization of spatial footprint')
         border = self.params.mc_nnls['border_to_0']
         mask = self.params.data['ROIs']
-        self.num_frames_init = len(mov)
         if border > 0:
             mov[:, :border, :] = mov[:, border:border + 1, :]
             mov[:, -border:, :] = mov[:, -border-1:-border, :]
@@ -60,7 +60,6 @@ class VIOLA(object):
             plt.figure()
             plt.imshow(mask.sum(0))
             
-        y_seq = y_filt.copy()
         
         if self.params.mc_nnls['erosion'] > 0:
             try:
@@ -73,30 +72,44 @@ class VIOLA(object):
             except:
                 print('can not erode the mask')
         
+        hals_movie = self.params.mc_nnls['hals_movie']
+        hals_orig = False
+        if hals_movie=='hp_thresh':
+            y_input = np.maximum(y_filt, 0).T
+        elif hals_movie=='hp':
+            y_input = y_filt.T
+        elif hals_movie=='orig':
+            y_input = -y.T
+            hals_orig = True
+        
         mask_2D = to_2D(mask)
-        std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-        seq = np.argsort(std)[::-1]
-        self.seq = seq  
-             
-        print(f'sequence of rank1-nmf: {seq}')        
-        W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
-        nA = np.linalg.norm(H)
-        H = H/nA
-        W = W*nA
+        if self.params.mc_nnls['use_rank_one_nmf']:
+            y_seq = y_filt.copy()
+            std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+            seq = np.argsort(std)[::-1]
+            self.seq = seq  
+                 
+            print(f'sequence of rank1-nmf: {seq}')        
+            W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+            nA = np.linalg.norm(H)
+            H = H/nA
+            W = W*nA
+        else:
+            mask_2D = to_2D(mask)
+            nA = np.linalg.norm(mask_2D)
+            H = mask_2D/nA
+            W = (y_input.T@H.T)
+            self.seq = np.array(range(mask_2D.shape[0]))
+
         if self.params.mc_nnls['do_plot_init']:
             plt.figure();plt.imshow(H.sum(axis=0).reshape(mov.shape[1:], order='F'));
             plt.colorbar();plt.title('Spatial masks after rank1 nmf')
         
-        if self.params.mc_nnls['hals_positive']:
-            y_input = np.maximum(y_filt, 0)
-            y_input = to_3D(y_input, shape=mov.shape, order='F').transpose([1,2,0])   
-            H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                                         np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, 
-                                         update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'])
-        else:
-            H_new,W_new,b,f = hals(y_filt.T, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
-                                         np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, 
-                                         update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'])
+        print(f'HALS')
+        H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1))/y_filt.shape[1],
+                         np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, semi_nmf=self.params.mc_nnls['semi_nmf'],
+                         update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'],
+                         hals_orig=hals_orig, fr=self.params.data['fr'])
        
         if self.params.mc_nnls['do_plot_init']:
             plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'), 
@@ -109,27 +122,59 @@ class VIOLA(object):
         H_new = H_new / norm(H_new, axis=0)
         self.H = H_new
  
-        print('Now extract signal and spikes')            
+        print('Now extract signal and spikes')     
+        batch_size = self.params.mc_nnls['batch_size']
         Ab = H_new.astype(np.float32)
+        num_components = Ab.shape[-1]
         template = bin_median(mov, exclude_nans=False)
-        center_dims = (template.shape[0], template.shape[1])
+        if self.params.mc_nnls['center_dims'] is None:
+            center_dims = (mov.shape[1], mov.shape[2])
+        else:
+            center_dims = self.params.mc_nnls['center_dims'].copy()
 
-        b = mov[0].reshape(-1, order='F')
-        x0 = nnls(Ab,b)[0][:,None]
-        AtA = Ab.T@Ab
-        Atb = Ab.T@b
-        n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-        theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-        mc0 = mov[0:1,:,:, None]
-        model = get_model(template, center_dims, Ab, 30)
-        model.compile(optimizer='rmsprop', loss='mse')
-        
+        if not self.params.mc_nnls['use_batch']:
+            from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
+            b = mov[0].reshape(-1, order='F')
+            x0 = nnls(Ab,b)[0][:,None]
+            AtA = Ab.T@Ab
+            Atb = Ab.T@b
+            n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+            theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+            mc0 = mov[0:1,:,:, None]
+            model = get_model(template, center_dims, Ab, 30)
+            model.compile(optimizer='rmsprop', loss='mse')
+        else:
+            from .batch_gpu import Pipeline, get_model, Pipeline_overall_batch
+            b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
+            x0=[]
+            for i in range(batch_size):
+                x0.append(nnls(Ab,b[:,i])[0])
+            x0 = np.array(x0).T
+            AtA = Ab.T@Ab
+            Atb = Ab.T@b
+            n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+            theta_2 = (Atb/n_AtA).astype(np.float32)
+            model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
+            model_batch.compile(optimizer = 'rmsprop',loss='mse')
+            mc0 = mov[0:batch_size, :, :, None][None, :]
+            x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])  
+            
         print('Extract traces for initialization')
         if self.params.mc_nnls['initialize_with_gpu']:
-            spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov)
-            traces_viola = spike_extractor.get_traces(mov.shape[0])
-            traces_viola = np.array(traces_viola).squeeze().T
-            trace = traces_viola.copy()
+            if not self.params.mc_nnls['use_batch']:
+                spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov)
+                traces_viola = spike_extractor.get_traces(mov.shape[0])
+                traces_viola = np.array(traces_viola).squeeze().T
+                trace = traces_viola.copy()
+            else:
+                spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov, num_components, batch_size)
+                spikes_gpu = spike_extractor.get_traces(len(mov))
+                traces_viola = []
+                for spike in spikes_gpu:
+                    for i in range(batch_size):
+                        traces_viola.append([spike[:,:,i]])
+                traces_viola = np.array(traces_viola).squeeze().T
+                trace = traces_viola.copy()
         else:
             fe = slice(0,None)
             if self.params.spike['flip'] == True:
@@ -144,17 +189,15 @@ class VIOLA(object):
                                      freq=self.params.spike['freq'], detrend=self.params.spike['detrend'], 
                                      flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
                                      filt_window=self.params.spike['filt_window'])
-        saoz.fit(trace, num_frames=self.params.spike['num_frames_total'])              
-
-        if self.params.mc_nnls['online_with_gpu']:        
-            self.saoz = saoz
-        else:
+        saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
+        
+        if not self.params.mc_nnls['use_batch']:
             self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
+        else:
+            self.pipeline = Pipeline_overall_batch(model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
     
     def fit_online(self):
         self.pipeline.get_spikes()
-        
-       
         
     def compute_estimates(self):
         self.estimates = self.pipeline.saoz

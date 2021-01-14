@@ -54,10 +54,8 @@ def get_model(template, center_dims, Ab, num_components, batch_size):
     mod = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
     return mod
 
-#%%
-    
-class Pipeline(object):
-    
+#%%    
+class Pipeline(object):    
     def __init__(self, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size):
         """
         Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
@@ -132,6 +130,115 @@ class Pipeline(object):
         output[-1] = self.output_q.get()["nnls_1"]
         print(timeit.default_timer()-start)
         return output
+
+#%%    
+class Pipeline_overall_batch(object):    
+    def __init__(self, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size, saoz, n):
+        """
+        Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
+        To run, after initializing, run self.get_spikes()
+        """
+        self.model, self.mc0, self.y0, self.x0, self.tht2, self.saoz, self.num_frames_init = model, mc_0, y_0, x_0, tht2, saoz, n
+        self.n = self.num_frames_init
+        self.batch_size = batch_size
+        self.num_components = num_components
+        self.tot = tot
+        self.dim_x, self.dim_y = self.mc0.shape[2], self.mc0.shape[3]
+        self.zero_tensor = [[0.0]]
+        
+        self.frame_input_q = Queue()
+        self.spike_input_q = Queue()
+        self.signal_q = Queue()
+        self.sao_input_q = Queue()
+        
+        #load estimator from the keras model
+        self.estimator = self.load_estimator()
+        
+        #seed the queues
+        self.frame_input_q.put(mc_0)
+        self.spike_input_q.put((y_0, x_0))
+
+        #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
+            #pull from the generator.
+        self.extraction_thread = Thread(target=self.extract, daemon=True)
+        self.extraction_thread.start()
+        self.detection_thread = Thread(target=self.detect, daemon=True)
+        self.detection_thread.start()
+        
+    def load_frame(self, mov_online):
+        if len(mov_online) % self.batch_size > 0:
+            print('Batch size is not a factor of number of frames')
+            print(f'Take the first {len(mov_online)-len(mov_online) % self.batch_size} frames instead')
+        for i in range(int(len(mov_online) / self.batch_size)):
+            self.frame_input_q.put(mov_online[i * self.batch_size : (i + 1) * self.batch_size, :, :, None][None,:])
+            
+    def detect(self):
+        self.flag=0 # note the first batch is for initialization, it should not be passed to spike extraction
+        while True:
+            traces_input = self.sao_input_q.get()
+            if self.batch_size == 1:
+                traces_input = traces_input[None, :]
+            if self.flag > 0:
+                for i in range(len(traces_input)):
+                    self.saoz.fit_next(traces_input[i][:, None], self.n)
+                    if self.n % 1000 == 0:
+                        print(f'{self.n} frames processed ####DETECT##### ')
+                    self.n += 1
+            self.flag = self.flag + 1
+        
+    def extract(self):
+        for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
+#            print(i.keys())
+            self.signal_q.put(i)
+    
+    def load_estimator(self):
+        return tf.keras.estimator.model_to_estimator(keras_model = self.model)
+
+    def get_dataset(self):
+        dataset = tf.data.Dataset.from_generator(self.generator, 
+                                                 output_types={"m": tf.float32,
+                                                               "y": tf.float32,
+                                                               "x": tf.float32,
+                                                               "k": tf.float32}, 
+                                                 output_shapes={"m":(1, self.batch_size, self.dim_x, self.dim_y, 1),
+                                                                "y":(1, self.num_components, self.batch_size),
+                                                                "x":(1, self.num_components, self.batch_size),
+                                                                "k":(1, 1)})
+        return dataset
+    
+    def generator(self):
+        #generator waits until data has been enqueued, then yields the data to the dataset
+        while True:
+            fr = self.frame_input_q.get()
+            out = self.spike_input_q.get()
+            (y, x) = out
+            yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
+
+    def get_spikes(self):
+        #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
+        """
+        length = bound//self.batch_size
+        output = [0]*length
+        start = timeit.default_timer()
+        for idx in range(self.batch_size, bound, self.batch_size):
+#            st = timeit.default_timer()
+
+            out = self.signal_q.get()
+            # import pdb; pdb.set_trace()
+            i = (idx-1)//self.batch_size
+            output[i] = out["nnls_1"]
+            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
+            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+#            output.append(timeit.default_timer()-st)
+        output[-1] = self.signal_q.get()["nnls_1"]
+        print(timeit.default_timer()-start)
+        """
+        while self.frame_input_q.qsize() > 0:
+            out = self.signal_q.get().copy()       
+            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            traces_input = np.array(out["nnls_1"]).squeeze().T
+            self.sao_input_q.put(traces_input)
+
 #%%
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, center_dims, batch_size, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):

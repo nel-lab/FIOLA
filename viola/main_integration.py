@@ -27,7 +27,7 @@ from viola.running_statistics import OnlineFilter
 from viola.match_spikes import match_spikes_greedy, compute_F1
 
 from time import time
-# from viola.pipeline_gpu import Pipeline, get_model
+
 try:
     if __IPYTHON__:
         # this is used for debugging purposes only. allows to reload classes
@@ -70,7 +70,7 @@ if n_neurons in ['1', '2']:
 elif n_neurons == 'many':
     movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
                     '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons', 
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][2]
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][1]
    
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5',
@@ -95,7 +95,7 @@ elif n_neurons == 'test':
    
 #%% Choosing datasets
 if n_neurons == '1':
-    file_set = [-2]
+    file_set = [0]
     name = movie_lists[file_set[0]]
     belong_Marton = True
     if ('Fish' in name) or ('Mouse' in name):
@@ -116,12 +116,13 @@ elif n_neurons == '2':
        mask = np.array(h5['mov'])
 
 elif n_neurons == 'many':
-    name = movie_lists[0]
+    name = movie_lists[1]
     frate = 400
-    with h5py.File(os.path.join(movie_folder, name),'r') as h5:
+    with h5py.File(os.path.join(movie_folder, name[:-8], name),'r') as h5:
        mov = np.array(h5['mov'])
-    with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
+    with h5py.File(os.path.join(movie_folder, name[:-8], name[:-8]+'_ROIs.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
+    mask = mask.transpose([0, 2, 1])
        
 elif n_neurons == 'test':
     name = movie_lists[2]
@@ -149,13 +150,8 @@ if flip == True:
 else:
     y = to_2D(mov).copy()
 use_signal_filter = True   
-if use_signal_filter:  # consume lots of memory
+if use_signal_filter:  
     y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
-else:   # maybe not a good idea
-    y_filt = np.zeros(y.shape)        
-    for tp in range(y.shape[1]):
-        if tp > 0:
-            y_filt[:, tp] = y[:, tp] - y[:, tp - 1] + 0.995 * y_filt[:, tp - 1]
  
 do_plot = True
 if do_plot:
@@ -171,12 +167,15 @@ if do_plot:
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 10000
 use_rank_one_nmf = False
-hals_orig = True
-
-if hals_orig:
-    y_input = -y[:num_frames_init].T
-else:
+hals_movie = ['hp_thresh', 'hp', 'orig'][2]
+hals_orig = False
+if hals_movie=='hp_thresh':
     y_input = np.maximum(y_filt[:num_frames_init], 0).T
+elif hals_movie=='hp':
+    y_input = y_filt[:num_frames_init].T
+else:
+    y_input = -y[:num_frames_init].T
+    hals_orig = True
 
 if use_rank_one_nmf:
     y_seq = y_filt[:num_frames_init,:].copy()
@@ -195,9 +194,10 @@ else:
 
 #%% Use hals to optimize masks
 #from nmf_support import hals_init_spikes
+# to make fish work one needs semi-nmf, input is high-passed movie
 update_bg = True
-use_spikes = True
-semi_nmf = True
+use_spikes = False
+semi_nmf = False
 
 H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
                          np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, semi_nmf=semi_nmf,
@@ -206,6 +206,7 @@ H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.
 if do_plot:
     plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure();plt.imshow(b.reshape(mov.shape[1:], order='F'));plt.colorbar()
+    
 
 if update_bg:
      H_new = np.hstack((H_new, b))
@@ -217,14 +218,16 @@ H_new = H_new / norm(H_new, axis=0)
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
 #H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = False
-use_batch = False
+use_GPU = True
+use_batch = True
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
     template = bin_median(mov_in, exclude_nans=False)
     center_dims =(template.shape[0], template.shape[1])
+    #center_dims =(128, 128)
     if not use_batch:
+        from viola.pipeline_gpu import Pipeline, get_model
         b = mov[0].reshape(-1, order='F')
         x0 = nnls(Ab,b)[0][:,None]
         AtA = Ab.T@Ab
@@ -240,10 +243,8 @@ if use_GPU:
 
     else:
     #FOR BATCHES:
-        batch_size = 20
-        num_frames = 20000
+        batch_size = 100
         num_components = Ab.shape[-1]
-
         template = bin_median(mov_in, exclude_nans=False)
         b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
         x0=[]
@@ -261,7 +262,7 @@ if use_GPU:
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_spikes(1000)
+        spikes_gpu = spike_extractor.get_traces(80000)
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):
@@ -326,8 +327,6 @@ if True:
         
     plt.boxplot(rr['F1']); plt.title('viola')
    
-#%%
-    plt.plot(estimates.trace[-2])
 #%%    
 ##############################################################################################################
     

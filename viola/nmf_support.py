@@ -126,6 +126,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         for _ in range(iters):
             for m in range(len(U)):  # neurons and background
                 if semi_nmf:
+                    print('use semi-nmf')
                     C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
                                V[m, m], -np.inf, np.inf)
                 else:

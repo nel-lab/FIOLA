@@ -10,12 +10,14 @@ import logging
 import numpy as np
 
 class violaparams(object):
-    def __init__(self, fnames=None, fr=None, ROIs=None,  
-                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, hals_positive=False, 
-                 update_bg=False, use_spikes=False, initialize_with_gpu=False, 
-                 num_frames_total=100000, window = 10000, step = 5000, 
-                 detrend=True, flip=True, do_scale=False, robust_std=False, freq=15, adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], mfp=0.2, filt_window=15, do_plot=False, online_with_gpu=True, params_dict={}):
+    def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
+                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
+                 update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
+                 center_dims=None, initialize_with_gpu=False, 
+                 window = 10000, step = 5000, detrend=True, flip=True, do_scale=False, robust_std=False, 
+                 freq=15, adaptive_threshold=True, thresh_range=[3.5, 5], mfp=0.2, 
+                 filt_window=15, do_plot=False, params_dict={}):
         """Class for setting parameters for voltage imaging. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -24,7 +26,9 @@ class violaparams(object):
         self.data = {
             'fnames': fnames, # name of the movie, only memory map file for spike detection
             'fr': fr, # sample rate of the movie
-            'ROIs': ROIs # a 3-d matrix contains all region of interests
+            'ROIs': ROIs, # a 3-d matrix contains all region of interests
+            'num_frames_init': num_frames_init, # number of frames used for initialization
+            'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
         }
 
         self.mc_nnls = {
@@ -32,15 +36,18 @@ class violaparams(object):
             'freq_detrend': freq_detrend, # high-pass frequency for removing baseline, used for init of spatial footprint
             'do_plot_init': do_plot_init, # plot the spatial mask result for init of spaital footprint
             'erosion': erosion, # number of pixels to erode the input masks before performing rank-1 NMF
-            'hals_positive': hals_positive, # whether to apply hals on the movie with all elements greater or equal to zero
+            'hals_movie': hals_movie, # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); original movie (orig)
+            'use_rank_one_nmf': use_rank_one_nmf, # whether to use rank-1 nmf, if False the algorithm will use initial masks and average signals as initialization for the HALS
+            'semi_nmf': semi_nmf, # whether use semi-nmf (with no constraint in temporal components) instead of normal NMF
             'update_bg': update_bg, # update background components for spatial footprints
             'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
-            'initialize_with_gpu': initialize_with_gpu, # whether to use gpu for performing nnls during initialization 
-            'online_with_gpu': online_with_gpu # whether to use gpu for processing online. Use nnls from scipy if False
+            'use_batch':use_batch, # whether to process a batch of frames (greater or equal to 1) at the same time. Process one frame a time if False 
+            'batch_size':batch_size, # number of frames processing at the same time using gpu 
+            'center_dims':center_dims, # template dimensions for motion correction. If None, the input will the the shape of the FOV
+            'initialize_with_gpu': initialize_with_gpu # whether to use gpu for performing nnls during initialization 
         }
 
         self.spike = {
-            'num_frames_total':num_frames_total, # estimated total number of frames for processing, this is used for generating matrix to store data
             'window': window, # window for updating statistics
             'step': step, # step for updating statistics
             'flip': flip, # whether to flip signal to find spikes    
