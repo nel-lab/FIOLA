@@ -10,8 +10,6 @@ import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
 import numpy as np
-import matplotlib.pyplot as plt
-import timeit
 #%%
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, center_dims, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
@@ -44,11 +42,25 @@ class MotionCorrect(keras.layers.Layer):
     
         
         self.template_0 = template
-        self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
-        if self.template.shape[0] < 10 or self.template.shape[1] < 10:
-            print(self.template.shape)
-            raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.")
+        self.xmin, self.ymin = self.shp_x-2*ms_w, self.shp_y-2*ms_h
 
+        if ms_h==0 or ms_w==0:
+            self.template = self.template_0[:,:,None,None]
+        else:
+            self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]    
+            
+        if self.xmin < 10 or self.ymin < 10:  #for small movies, change default min shift
+            if ms_h==0 or ms_w==0:
+                raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.") 
+            else:    
+                ms_h = 5
+                ms_w = 5
+                self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
+                
+            if self.template.shape[0] < 5 or self.template.shape[1] < 5:
+                raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.") 
+                
+                
 
         self.ms_h = ms_h
         self.ms_w = ms_w
@@ -93,6 +105,7 @@ class MotionCorrect(keras.layers.Layer):
         # tf.print(timeit.default_timer()-st, "translate")
         # return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :], [xs, ys])
         return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :])
+        # return (X_corrected, [xs,ys])
 
 
     def get_config(self):
@@ -204,14 +217,25 @@ class MotionCorrectTest(keras.layers.Layer):
         self.shp_x, self.shp_y = template.shape[0], template.shape[1]
         self.center_dims = center_dims
         self.c_shp_x, self.c_shp_y = (self.shp_x - center_dims[0])//2, (self.shp_y - center_dims[1])//2
-        print(self.c_shp_x)
     
         
         self.template_0 = template
-        self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
-        if self.template.shape[0] < 40 or self.template.shape[1] < 40:
-            raise ValueError("The vertical or horizontal shift you entered is too large for the given video dimensions. Enter a smaller shift.")
-
+        self.xmin, self.ymin = self.shp_x-2*ms_w, self.shp_y-2*ms_h
+        # self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
+        if self.xmin < 40 or self.ymin < 40:
+            if self.xmin < 10 or self.ymin < 10:
+                raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.")
+            elif ms_h==0 or ms_w==0:
+                print("0")
+                self.template = self.template_0[:,:,None,None]
+            else:
+                print("5")
+                ms_h = 5
+                ms_w = 5
+                self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
+        else:
+            self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
+                
         self.ms_h = ms_h
         self.ms_w = ms_w
         self.strides = strides
@@ -250,7 +274,7 @@ class MotionCorrectTest(keras.layers.Layer):
 
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
-        return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :], [xs, ys])
+        return (tf.squeeze(X_corrected), [xs, ys])
         # return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :])
 
 
