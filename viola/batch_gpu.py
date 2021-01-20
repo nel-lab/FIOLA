@@ -15,8 +15,6 @@ import tensorflow_addons as tfa
 import numpy as np
 from queue import Queue
 import timeit
-from .motion_correction_gpu import MotionCorrect
-from .nnls_gpu import NNLS, compute_theta2
 
 #%%
 def get_model(template, center_dims, Ab, num_components, batch_size, ms_h=10, ms_w=10):
@@ -182,7 +180,8 @@ class Pipeline_overall_batch(object):
                 traces_input = traces_input[None, :]
             if self.flag > 0:
                 for i in range(len(traces_input)):
-                    self.saoz.fit_next(traces_input[i][:, None], self.n)
+                    self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
+                            
                     if self.n % 1000 == 0:
                         print(f'{self.n} frames processed ####DETECT##### ')
                     self.n += 1

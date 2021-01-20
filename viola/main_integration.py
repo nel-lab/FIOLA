@@ -38,10 +38,10 @@ try:
 except NameError:
     pass
 
+#%% files for processing
 string = os.getcwd().split('/')
 BASE_FOLDER = os.path.join('/'+string[1], string[2], 'NEL-LAB Dropbox/NEL/Papers/')
 
-#%% files for processing
 n_neurons = ['1', '2', 'many', 'test'][0]
 
 if n_neurons in ['1', '2']:
@@ -95,10 +95,6 @@ elif n_neurons == 'test':
                    'viola_sim3_18.hdf5',   # overlapping 8 neurons
                    'viola_sim2_7.hdf5']   # non-overlapping 50 neurons
 
-print(movie_folder)
-print(name)
-  
-   
 #%% Choosing datasets
 if n_neurons == '1':
     file_set = [5]
@@ -263,12 +259,12 @@ if use_GPU:
         theta_2 = (Atb/n_AtA).astype(np.float32)
 
         from viola.batch_gpu import Pipeline, get_model
-        model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
+        model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_traces(5000)
+        spikes_gpu = spike_extractor.get_traces(50000)
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):
@@ -285,7 +281,7 @@ else:
 
 #%%
     plt.figure(); plt.plot(trace_nnls[:,0]); plt.figure(); plt.plot(traces_viola)
-    plt.figure(); plt.plot(trace_nnls[:,0]); plt.plot(traces_viola[1])
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.plot(traces_viola[0])
 
 #%% Viola spike extraction, result is in the estimates object
 if True:    

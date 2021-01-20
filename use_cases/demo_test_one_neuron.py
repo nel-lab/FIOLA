@@ -59,7 +59,7 @@ use_rank_one_nmf=False
 hals_movie='hp_thresh'
 semi_nmf=False
 update_bg = False
-use_spikes= True
+use_spikes= False
 use_batch=True
 batch_size=100
 center_dims=None
@@ -94,7 +94,7 @@ for idx, name in enumerate(np.array(names)[select]):
     fr = np.array(frate_all)[select][idx]
     fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')
     path_ROIs = os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5')
-    run_viola(fnames, path_ROIs, fr=fr, online_gpu=False, options=options)
+    run_viola(fnames, path_ROIs, fr=fr, online_gpu=True, options=options)
 
 #%%
 f1_scores = []                
@@ -107,7 +107,7 @@ for name in np.array(names)[select]:
     length = dict1['v_sg'].shape[0]    
     
     vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
-    vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'bg_False' and 'use_spikes_True' in file])
+    vi_files = sorted([file for file in os.listdir(vi_folder) if 'online_gpu_True' in file and 'bg_False' in file and 'use_spikes_False' in file])
     print(f'files number: {len(vi_files)}')
     vi_file = vi_files[0]
     vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()

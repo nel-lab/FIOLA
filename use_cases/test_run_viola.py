@@ -105,12 +105,12 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
 
     #%%
     vio.compute_estimates()
-    plt.plot(normalize(vio.saoz.t_s[0]))
-    plt.hlines(vio.saoz.thresh[0, 0], 0, 30000)
-    print(vio.saoz.thresh_factor)
+    plt.plot(normalize(vio.estimates.t_s[0]))
+    #plt.hlines(vio.saoz.thresh[0, 0], 0, 30000)
+    #print(vio.saoz.thresh_factor)
     
     #%% save
-    save_name = f'viola_result_init_{opts.data["num_frames_init"]}' \
+    save_name = f'viola_result_online_gpu_{online_gpu}_init_{opts.data["num_frames_init"]}' \
         f'_bg_{opts.mc_nnls["update_bg"]}_use_spikes_{opts.mc_nnls["use_spikes"]}' \
         f'_hals_movie_{opts.mc_nnls["hals_movie"]}' \
         f'_adaptive_threshold_{opts.spike["adaptive_threshold"]}' \
