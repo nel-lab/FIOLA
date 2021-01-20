@@ -22,6 +22,7 @@ try:
 except NameError:
     pass
 #%%
+from viola.metrics import metric
 from viola.nmf_support import normalize
 from viola.violaparams import violaparams
 from viola.viola import VIOLA
@@ -49,19 +50,21 @@ frate_all = np.array([400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 995.02, 40
  
 #%%
 t_range = [10000, 20000]
-num_frames_init = 10000
-num_frames_total = 80000
+num_frames_init = 20000
 border_to_0 = 2
 flip = True
 thresh_range= [3, 4]
 erosion=0 
-hals_positive=False
+use_rank_one_nmf=False
+hals_movie='hp_thresh'
+semi_nmf=False
 update_bg = True
 use_spikes= False
 use_batch=True
 batch_size=100
 center_dims=None
 initialize_with_gpu=False
+do_scale = True
 adaptive_threshold=True
 filt_window=15
     
@@ -69,27 +72,112 @@ options = {
     'border_to_0': border_to_0,
     'flip': flip,
     'num_frames_init': num_frames_init, 
-    'num_frames_total': num_frames_total, 
     'thresh_range': thresh_range,
     'erosion':erosion, 
-    'hals_positive': hals_positive,
+    'use_rank_one_nmf': use_rank_one_nmf,
+    'hals_movie': hals_movie,
+    'semi_nmf':semi_nmf,  
     'update_bg': update_bg,
     'use_spikes':use_spikes, 
-    'use_spikes': use_spikes,
     'use_batch':use_batch,
     'batch_size':batch_size,
     'initialize_with_gpu':initialize_with_gpu,
+    'do_scale': do_scale,
     'adaptive_threshold': adaptive_threshold,
     'filt_window': filt_window}
 
 #%%
 select = np.array([0])
+select = np.array(range(len(names)))[:16]
+
 for idx, name in enumerate(np.array(names)[select]):
     fr = np.array(frate_all)[select][idx]
     fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')
     path_ROIs = os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5')
     run_viola(fnames, path_ROIs, fr=fr, options=options)
 
+#%%
+#for name in np.array(names)[select]:
+gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+dict1 = np.load(gt_path, allow_pickle=True)
+length = dict1['v_sg'].shape[0]    
+
+vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
+vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'use_spikes_False' in file])
+vi_file = vi_files[0]
+vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
+
+vi_spatial = vi.H.copy()
+vi_temporal = vi.t_s.copy()
+vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
+
+n_cells = 1
+vi_result = {'F1':[], 'precision':[], 'recall':[]}        
+rr = {'F1':[], 'precision':[], 'recall':[]}
+
+vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])
+
+vi_spikes = estimates.spikes[0]
+
+
+dict1_v_sp_ = dict1['v_t'][vi_spikes]
+#v_sg.append(dict1['v_sg'])
+ 
+belong_Marton=True
+if belong_Marton:
+    for i in range(len(dict1['sweep_time']) - 1):
+        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+    dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+
+precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
+                    = metric(dict1['sweep_time'], dict1['e_sg'], 
+                          dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
+                          dict1['v_sg'], dict1_v_sp_ , 
+                          dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=belong_Marton)
+    
+p = len(e_match)/len(v_spike_aligned)
+r = len(e_match)/len(e_spike_aligned)
+f = (2 / (1 / p + 1 / r))
+    
+#%%
+    
+    from viola.nmf_support import normalize
+    #plt.plot(normalize(dict1['v_sg']))
+    #plt.plot(normalize(vi.t_d[0]))
+    plt.figure()
+    plt.plot(normalize(vi_temporal[0]))
+
+
+print(np.array(F1).round(2).mean())
+all_f1_scores.append(np.array(F1).round(2))
+all_prec.append(np.array(precision).round(2))
+all_rec.append(np.array(recall).round(2))
+all_thresh.append(thresh)
+all_snr.append(snr)
+compound_f1_scores.append(f)                
+compound_prec.append(p)
+compound_rec.append(r)
+print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
+#print(f'average_sub:{np.nanmean(all_corr_subthr,axis=0)}')
+print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
+print(f'prec:{np.array([np.nanmean(fsc) for fsc in all_prec]).round(2)}'); 
+print(f'rec:{np.array([np.nanmean(fsc) for fsc in all_rec]).round(2)}')
+print(f'average_compound_f1:{np.mean(np.array(compound_f1_scores)).round(3)}')
+print(f'compound_f1:{np.array(compound_f1_scores).round(2)}')
+print(f'compound_prec:{np.array(compound_prec).round(2)}')
+print(f'compound_rec:{np.array(compound_rec).round(2)}')
+print(f'snr:{np.array(all_snr).round(2)}')
+dict2 = {}
+dict2['trace'] = saoz.trace
+dict2['indexes'] = sorted(indexes)
+dict2['t_s'] = saoz.t_s
+dict2['snr'] = saoz.SNR
+dict2['sub'] = saoz.sub
+dict2['template'] = saoz.PTA
+dict2['thresh'] = saoz.thresh
+dict2['thresh_factor'] = saoz.thresh_factor
+save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result'
+np.save(os.path.join(save_folder, 'spike_detection_saoz_'+ name[:-7]  +'_output'), dict2)
 #%%  
 for idx, dist in enumerate(distance):
     vi_result_all = []
@@ -504,7 +592,7 @@ for f in ff:
         
         
         
-        #%%
+#%%
 for name in names:
     try:
         os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
@@ -512,7 +600,25 @@ for name in names:
     except:
         print('already exist')
         
+#%%
+import shutil
+GT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron_result'
+folders = os.listdir(ROOT_FOLDER)
+folders = [folder for folder in folders if os.path.isdir(os.path.join(ROOT_FOLDER, folder))]
+GT_FILES = os.listdir(GT_FOLDER)
+
+for folder in folders:
+    for file in GT_FILES:
+        if folder in file:
+            shutil.move(os.path.join(GT_FOLDER, file), os.path.join(ROOT_FOLDER, folder, file))
+            print(f'{os.path.join(GT_FOLDER, file)}')
+            print(f'{os.path.join(ROOT_FOLDER, folder, file)}')
+            
         
+    
+    
+    
+    
         
         
         

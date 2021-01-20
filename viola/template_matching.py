@@ -76,6 +76,7 @@ def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False,
     t = t0 - sub
     
     # First time thresholding
+    
     data = t.copy()
     ff1 = -data * (data < 0)
     Ns = np.sum(ff1 > 0)
@@ -136,7 +137,7 @@ def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False,
             if thresh_factor == thresh_list[-1]:
                 thresh2 = thresh_temp
     index = signal.find_peaks(data, height=thresh2)[0]
-    print(f'final threshhold equals: {thresh2/std}')
+    print(f'###final threshhold equals: {thresh2/std}###')
     
     # plot signal, threshold, template and peak distribution
     if do_plot:

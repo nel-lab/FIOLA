@@ -95,7 +95,7 @@ elif n_neurons == 'test':
    
 #%% Choosing datasets
 if n_neurons == '1':
-    file_set = [0]
+    file_set = [5]
     name = movie_lists[file_set[0]]
     belong_Marton = True
     if ('Fish' in name) or ('Mouse' in name):
@@ -137,7 +137,7 @@ print(name)
 
 #%% Preliminary processing
 # Remove border pixel of the motion corrected movie
-border_pixel = 2
+border_pixel = 0
 mov[:, :border_pixel, :] = mov[:, border_pixel:border_pixel + 1, :]
 mov[:, -border_pixel:, :] = mov[:, -border_pixel-1:-border_pixel, :]
 mov[:, :, :border_pixel] = mov[:, :, border_pixel:border_pixel + 1]
@@ -165,9 +165,9 @@ if do_plot:
             plt.imshow(mask[i], alpha=0.5)
 
 #%% Use nmf sequentially to extract all neurons in the region
-num_frames_init = 10000
+num_frames_init = 20000
 use_rank_one_nmf = False
-hals_movie = ['hp_thresh', 'hp', 'orig'][2]
+hals_movie = ['hp_thresh', 'hp', 'orig'][0]
 hals_orig = False
 if hals_movie=='hp_thresh':
     y_input = np.maximum(y_filt[:num_frames_init], 0).T
@@ -213,6 +213,7 @@ if update_bg:
 
 # normalization will enable gpu-nnls extracting bg signal 
 H_new = H_new / norm(H_new, axis=0)
+
 
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
@@ -262,7 +263,7 @@ if use_GPU:
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_traces(80000)
+        spikes_gpu = spike_extractor.get_traces(20000)
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):
@@ -277,12 +278,19 @@ else:
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
 
+#%%
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.figure(); plt.plot(traces_viola)
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.plot(traces_viola[1])
+
 #%% Viola spike extraction, result is in the estimates object
-if True:
+if True:    
     trace = trace_all[:].copy()
-    saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+    if len(trace.shape) == 1:
+        trace = trace[None, :]
+    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=15, 
                                   detrend=True, flip=True, 
                                   frate=frate, thresh_range=[2.8, 5.0], 
+                                  adaptive_threshold=True,
                                   filt_window=15, mfp=0.1)
     saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
     for n in range(10000, trace.shape[1]):
@@ -302,6 +310,10 @@ if True:
     #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/test_data/ephys_voltage/10052017Fish2-2'
     #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
     #np.save(save_path, estimates)    
+#%%
+    plt.plot(normalize(saoz.t_d[0]))
+    plt.plot(normalize(saoz.t_s[0]))
+
     
 #%% Load simulation groundtruth
     import scipy.io
@@ -329,6 +341,63 @@ if True:
    
 #%%    
 ##############################################################################################################
+    
+#%% fix decay use df/f
+    y = trace_all[0].copy()
+    box_pts = 100
+    box = np.ones(box_pts)/box_pts
+    y_smooth = np.convolve(y, box, mode='same')
+    plt.plot(y_smooth)    
+    
+    yy = y/y_smooth
+    plt.plot(yy[100:79000])
+    
+#%%
+    tt = saoz.t_s[0].copy()
+    spikes = estimates.spikes[0]
+    
+    t_rec = np.zeros(trace.shape)
+    spk_avg = []
+    t_curve = np.zeros(tt.shape)
+    t_curve[spikes[0]] = tt[spikes[0]].mean()
+    for i in range(len(spikes)):
+        if i > 0:
+            #t_curve[spikes[i]] = np.percentile(tt[spikes[np.max((0, i-100)) : i]], 80)
+            t_curve[spikes[i]] = tt[spikes[i]]
+    plt.plot(tt)
+    #plt.plot(saoz.t_rec[0])
+    plt.plot(t_curve)
+    
+            
+    
+#%%
+        
+        
+    for idx in range(trace.shape[0]):
+        if spikes.size > 0:
+            t_rec[idx, spikes] = 1
+            t_rec[idx] = np.convolve(t_rec[idx], np.flip(PTA[idx]), 'same')   
+    
+    
+    
+    
+#%%
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+
+def func(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+xdata = np.linspace(0, 4, 50)
+y = func(xdata, 2.5, 1.3, 0.5)
+np.random.seed(1729)
+y_noise = 0.2 * np.random.normal(size=xdata.size)
+ydata = y + y_noise
+plt.plot(xdata, ydata, 'b-', label='data')
+popt, pcov = curve_fit(func, xdata, ydata)
+#array([ 2.55423706,  1.35190947,  0.47450618])
+plt.plot(xdata, func(xdata, *popt), 'r-',label='fit: a=%5.3f, b=%5.3f, c=%5.3f' % tuple(popt))
+    
     
     #%%
     vpy = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test/volpy_viola_sim1_1_adaptive_threshold.npy', allow_pickle=True).item()        
