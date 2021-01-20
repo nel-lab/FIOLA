@@ -27,6 +27,7 @@ from viola.running_statistics import OnlineFilter
 from viola.match_spikes import match_spikes_greedy, compute_F1
 
 from time import time
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 try:
     if __IPYTHON__:
@@ -41,7 +42,7 @@ n_neurons = ['1', '2', 'many', 'test'][0]
 
 if n_neurons in ['1', '2']:
     movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
-                   '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
+                   '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
                    '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
     
     movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
@@ -68,9 +69,9 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[4, -2]_y[4, -2].tif', 
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
-    movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
+    movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons',
                     '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons', 
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][1]
+                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][0]
    
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5',
@@ -118,9 +119,9 @@ elif n_neurons == '2':
 elif n_neurons == 'many':
     name = movie_lists[1]
     frate = 400
-    with h5py.File(os.path.join(movie_folder, name[:-8], name),'r') as h5:
+    with h5py.File(os.path.join(movie_folder,name[:-8], name),'r') as h5:
        mov = np.array(h5['mov'])
-    with h5py.File(os.path.join(movie_folder, name[:-8], name[:-8]+'_ROIs.hdf5'),'r') as h5:
+    with h5py.File(os.path.join(movie_folder, name[:-8],name[:-8]+'_ROIs.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
     mask = mask.transpose([0, 2, 1])
        
@@ -149,7 +150,7 @@ if flip == True:
     y = to_2D(-mov).copy()
 else:
     y = to_2D(mov).copy()
-use_signal_filter = True   
+use_signal_filter = False   
 if use_signal_filter:  
     y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
  
@@ -163,6 +164,7 @@ if do_plot:
     else:            
         for i in range(mask.shape[0]):
             plt.imshow(mask[i], alpha=0.5)
+# mask = mask.transpose([0,2,1])
 
 #%% Use nmf sequentially to extract all neurons in the region
 num_frames_init = 20000
@@ -199,7 +201,7 @@ update_bg = True
 use_spikes = False
 semi_nmf = False
 
-H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1)) / y_filt.shape[1],
+H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y.shape[1],1)) / y.shape[1],
                          np.random.rand(1,num_frames_init), bSiz=None, maxIter=3, semi_nmf=semi_nmf,
                          update_bg=update_bg, use_spikes=use_spikes, hals_orig=hals_orig, fr=frate)
 
@@ -218,9 +220,9 @@ H_new = H_new / norm(H_new, axis=0)
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
-#H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = True
-use_batch = True
+# H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
+use_GPU = False
+use_batch = False
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
@@ -234,17 +236,18 @@ if use_GPU:
         AtA = Ab.T@Ab
         Atb = Ab.T@b
         n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+        theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
         theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
         mc0 = mov_in[0:1,:,:, None]
         
-        model = get_model(template, center_dims, Ab, 30)
+        model = get_model(template, center_dims, Ab, 30, ms_h=0, ms_w=0)
         model.compile(optimizer='rmsprop', loss='mse')
-        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov_in[:,:,:20000])
-        traces_viola = spike_extractor.get_traces(20000)
+        spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_1, mov_in[:,:,:20000])
+        traces_viola = spike_extractor.get_traces(10000)
 
     else:
     #FOR BATCHES:
-        batch_size = 100
+        batch_size = 10
         num_components = Ab.shape[-1]
         template = bin_median(mov_in, exclude_nans=False)
         b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
@@ -263,7 +266,7 @@ if use_GPU:
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_traces(20000)
+        spikes_gpu = spike_extractor.get_traces(5000)
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):

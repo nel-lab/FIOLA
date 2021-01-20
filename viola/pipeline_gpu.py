@@ -17,7 +17,7 @@ from .nnls_gpu import NNLS, compute_theta2
 from queue import Queue
 import timeit
 #%%
-def get_model(template, center_dims, Ab, num_layers=5):
+def get_model(template, center_dims, Ab, num_layers=5, ms_h=10, ms_w=10):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
@@ -39,7 +39,7 @@ def get_model(template, center_dims, Ab, num_layers=5):
 #    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
     #Initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template, center_dims)   
+    mc_layer = MotionCorrect(template, center_dims, ms_h=ms_h, ms_w=ms_w)   
     mc = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)

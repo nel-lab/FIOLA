@@ -9,7 +9,6 @@ Created on Wed May 27 17:18:35 2020
 import tensorflow as tf
 import tensorflow.keras as keras
 import numpy as np
-import timeit
 #%%
 class NNLS(keras.layers.Layer):
     def __init__(self, theta_1, name="NNLS",**kwargs):
@@ -38,12 +37,11 @@ class NNLS(keras.layers.Layer):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
-        st = timeit.default_timer()
         (Y,X_old,k,weight) = X
         mm = tf.matmul(self.th1, Y)
         new_X = tf.nn.relu(mm + weight)
 
-        Y_new = new_X + (k - 1)/(k + 2)*(new_X - X_old)  
+        Y_new = new_X + tf.cast(tf.divide(k - 1, k + 2), tf.float32)*(new_X - X_old)  
         k += 1
         return (Y_new, new_X, k, weight)
     
