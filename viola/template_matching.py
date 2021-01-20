@@ -111,11 +111,15 @@ def find_spikes_tm(img, freq, frate, do_scale=False, robust_std=False,
     if adaptive_threshold:
         pks2 = t_s[signal.find_peaks(t_s, height=None)[0]]
         try:
-            thresh2, falsePosRate, detectionRate, low_spikes = adaptive_thresh(pks2, clip=0, pnorm=0.25, min_spikes=10)  # clip=0 means no clipping
+            thresh2, falsePosRate, detectionRate, low_spikes = adaptive_thresh(pks2, clip=0, pnorm=0.5, min_spikes=10)  # clip=0 means no clipping
             thresh_factor = thresh2 / std
+            if thresh_factor < 2.8:
+                print('Adaptive threshold factor is lower than 2.8, choose thresh factor to be 2.8')
+                thresh_factor = 2.8
+            thresh2 = thresh_factor * std
         except:
-            print('Adaptive threshold fails, automatically choose thresh factor to be 3.5')
-            thresh_factor = 3.5
+            print('Adaptive threshold fails, automatically choose thresh factor to be 3')
+            thresh_factor = 3
             thresh2 = thresh_factor * std
     else:
         for thresh_factor in thresh_list:

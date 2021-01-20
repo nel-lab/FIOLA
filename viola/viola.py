@@ -122,6 +122,7 @@ class VIOLA(object):
         H_new = H_new / norm(H_new, axis=0)
         self.H = H_new
  
+        """
         print('Now extract signal and spikes')     
         batch_size = self.params.mc_nnls['batch_size']
         Ab = H_new.astype(np.float32)
@@ -195,12 +196,53 @@ class VIOLA(object):
             self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
         else:
             self.pipeline = Pipeline_overall_batch(model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
-    
+        """
+        
     def fit_online(self):
         self.pipeline.get_spikes()
         
+    def fit_without_gpu(self, mov):
+        border = self.params.mc_nnls['border_to_0']
+        if border > 0:
+            mov[:, :border, :] = mov[:, border:border + 1, :]
+            mov[:, -border:, :] = mov[:, -border-1:-border, :]
+            mov[:, :, :border] = mov[:, :, border:border + 1]
+            mov[:, :, -border:] = mov[:, :, -border-1:-border]
+
+        y = to_2D(mov).copy()
+        fe = slice(0,None)
+        trace_nnls = np.array([nnls(self.H,yy)[0] for yy in (y)[fe]])
+        trace = trace_nnls.T.copy() 
+
+        if len(trace.shape) == 1:
+            trace = trace[None, :]
+        saoz = SignalAnalysisOnlineZ(thresh_range=self.params.spike['thresh_range'], 
+                                     do_scale=self.params.spike['do_scale'], 
+                                     freq=self.params.spike['freq'], detrend=self.params.spike['detrend'], 
+                                     flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
+                                     filt_window=self.params.spike['filt_window'])
+        saoz.fit(trace[:,:self.params.data['num_frames_init']], num_frames=self.params.data['num_frames_total'])   
+        for n in range(self.params.data['num_frames_init'], trace.shape[1]):
+            saoz.fit_next(trace[:, n: n+1], n)
+        #self.pipeline.saoz = saoz
+        self.saoz = saoz
+        """
+        saoz.compute_SNR()
+        saoz.reconstruct_signal()
+        print(f'thresh:{saoz.thresh}')
+        print(f'SNR: {saoz.SNR}')
+        print(f'Mean_SNR: {np.array(saoz.SNR).mean()}')
+        print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)}')
+        estimates = saoz
+        estimates.spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz.index])
+        weights = H_new.reshape((mov.shape[1], mov.shape[2], H_new.shape[1]), order='F')
+        weights = weights.transpose([2, 0, 1])
+        estimates.weights = weights
+        """
+        
     def compute_estimates(self):
-        self.estimates = self.pipeline.saoz
+        #self.estimates = self.pipeline.saoz
+        self.estimates = self.saoz
         self.estimates.seq = self.seq
         self.estimates.H = self.H
         self.estimates.params = self.params

@@ -58,8 +58,8 @@ erosion=0
 use_rank_one_nmf=False
 hals_movie='hp_thresh'
 semi_nmf=False
-update_bg = True
-use_spikes= False
+update_bg = False
+use_spikes= True
 use_batch=True
 batch_size=100
 center_dims=None
@@ -87,76 +87,83 @@ options = {
     'filt_window': filt_window}
 
 #%%
-select = np.array([0])
+#select = np.array([3])
 select = np.array(range(len(names)))[:16]
 
 for idx, name in enumerate(np.array(names)[select]):
     fr = np.array(frate_all)[select][idx]
     fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')
     path_ROIs = os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5')
-    run_viola(fnames, path_ROIs, fr=fr, options=options)
+    run_viola(fnames, path_ROIs, fr=fr, online_gpu=False, options=options)
 
 #%%
-#for name in np.array(names)[select]:
-gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
-dict1 = np.load(gt_path, allow_pickle=True)
-length = dict1['v_sg'].shape[0]    
-
-vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
-vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'use_spikes_False' in file])
-vi_file = vi_files[0]
-vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
-
-vi_spatial = vi.H.copy()
-vi_temporal = vi.t_s.copy()
-vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
-
-n_cells = 1
-vi_result = {'F1':[], 'precision':[], 'recall':[]}        
-rr = {'F1':[], 'precision':[], 'recall':[]}
-
-vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])
-
-vi_spikes = estimates.spikes[0]
-
-
-dict1_v_sp_ = dict1['v_t'][vi_spikes]
-#v_sg.append(dict1['v_sg'])
- 
-belong_Marton=True
-if belong_Marton:
-    for i in range(len(dict1['sweep_time']) - 1):
-        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
-    dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
-
-precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
-                    = metric(dict1['sweep_time'], dict1['e_sg'], 
-                          dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
-                          dict1['v_sg'], dict1_v_sp_ , 
-                          dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=belong_Marton)
+f1_scores = []                
+prec = []
+rec = []
+thr = []
+for name in np.array(names)[select]:
+    gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+    dict1 = np.load(gt_path, allow_pickle=True)
+    length = dict1['v_sg'].shape[0]    
     
-p = len(e_match)/len(v_spike_aligned)
-r = len(e_match)/len(e_spike_aligned)
-f = (2 / (1 / p + 1 / r))
+    vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
+    vi_files = sorted([file for file in os.listdir(vi_folder) if 'viola' in file and 'bg_False' and 'use_spikes_True' in file])
+    print(f'files number: {len(vi_files)}')
+    vi_file = vi_files[0]
+    vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
+    
+    vi_spatial = vi.H.copy()
+    vi_temporal = vi.t_s.copy()
+    vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
+    thr.append(vi.thresh_factor[0])
+    
+    n_cells = 1
+    vi_result = {'F1':[], 'precision':[], 'recall':[]}        
+    rr = {'F1':[], 'precision':[], 'recall':[]}
+    
+    vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])
+    
+    #vi_spikes = estimates.spikes[0]
+    
+    
+    dict1_v_sp_ = dict1['v_t'][vi_spikes]
+    #v_sg.append(dict1['v_sg'])
+     
+    belong_Marton=True
+    if belong_Marton:
+        for i in range(len(dict1['sweep_time']) - 1):
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+    
+    precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
+                        = metric(dict1['sweep_time'], dict1['e_sg'], 
+                              dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
+                              dict1['v_sg'], dict1_v_sp_ , 
+                              dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=belong_Marton)
+        
+    p = len(e_match)/len(v_spike_aligned)
+    r = len(e_match)/len(e_spike_aligned)
+    f = (2 / (1 / p + 1 / r))
+
+    f1_scores.append(f)                
+    prec.append(p)
+    rec.append(r)
     
 #%%
+plt.plot(f1_scores);plt.plot(prec);plt.plot(rec);plt.legend(['f1','prec', 'rec','threshold'])
+plt.plot(thr)
+print(np.array(f1_scores).mean())
+print(np.array(prec).mean())
+print(np.array(rec).mean())
+plt.bar(range(16), f1_scores)
+#%%
+from viola.nmf_support import normalize
+plt.figure()
+plt.plot(normalize(vi_temporal[0]))
+plt.hlines(vi.thresh[0, 0], 0, 30000)
     
-    from viola.nmf_support import normalize
-    #plt.plot(normalize(dict1['v_sg']))
-    #plt.plot(normalize(vi.t_d[0]))
-    plt.figure()
-    plt.plot(normalize(vi_temporal[0]))
-
-
-print(np.array(F1).round(2).mean())
-all_f1_scores.append(np.array(F1).round(2))
-all_prec.append(np.array(precision).round(2))
-all_rec.append(np.array(recall).round(2))
-all_thresh.append(thresh)
-all_snr.append(snr)
-compound_f1_scores.append(f)                
-compound_prec.append(p)
-compound_rec.append(r)
+    
+#%%
 print(f'average_F1:{np.mean([np.nanmean(fsc) for fsc in all_f1_scores])}')
 #print(f'average_sub:{np.nanmean(all_corr_subthr,axis=0)}')
 print(f'F1:{np.array([np.nanmean(fsc) for fsc in all_f1_scores]).round(2)}')
@@ -178,6 +185,7 @@ dict2['thresh'] = saoz.thresh
 dict2['thresh_factor'] = saoz.thresh_factor
 save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result'
 np.save(os.path.join(save_folder, 'spike_detection_saoz_'+ name[:-7]  +'_output'), dict2)
+
 #%%  
 for idx, dist in enumerate(distance):
     vi_result_all = []

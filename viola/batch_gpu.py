@@ -15,6 +15,8 @@ import tensorflow_addons as tfa
 import numpy as np
 from queue import Queue
 import timeit
+from .motion_correction_gpu import MotionCorrect
+from .nnls_gpu import NNLS, compute_theta2
 
 #%%
 def get_model(template, center_dims, Ab, num_components, batch_size):

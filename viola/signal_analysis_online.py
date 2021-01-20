@@ -171,6 +171,7 @@ class SignalAnalysisOnlineZ(object):
                 self.update_scale(idx)
             elif temp == 2:
                 self.update_thresh(idx)
+                print(f'change threshold: {n}')
 
         # Detrend, normalize and remove subthreshold
         if self.flip:

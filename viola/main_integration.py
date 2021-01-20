@@ -37,13 +37,16 @@ try:
         get_ipython().magic('autoreload 2')
 except NameError:
     pass
+
+string = os.getcwd().split('/')
+BASE_FOLDER = os.path.join('/'+string[1], string[2], 'NEL-LAB Dropbox/NEL/Papers/')
+
 #%% files for processing
 n_neurons = ['1', '2', 'many', 'test'][0]
 
 if n_neurons in ['1', '2']:
-    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
-                   '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
-                   '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/one_neuron/'),
+                   os.path.join(BASE_FOLDER, 'VolPy/Marton/video_small_region/')][0]
     
     movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
                  '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
@@ -61,7 +64,7 @@ if n_neurons in ['1', '2']:
     
     fnames = [os.path.join(movie_folder, file) for file in movie_lists]
     
-    combined_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons',
+    combined_folder = [os.path.join(BASE_FOLDER, 'VolPy/Marton/overlapping_neurons'),
                     '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][0]
     
     combined_lists = ['neuron0&1_x[1, -1]_y[1, -1].tif', 
@@ -69,9 +72,8 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[4, -2]_y[4, -2].tif', 
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
-    movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons', 
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][0]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/multiple_neurons'), 
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/test')][0]
    
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5',
@@ -80,19 +82,22 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_1',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_2',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_3',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][2]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_1'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_2'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_3'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_5'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_18'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7')][2]
     movie_lists = ['viola_sim3_1.hdf5',
                    'viola_sim3_2.hdf5',
                    'viola_sim3_3.hdf5',
                    'viola_sim3_5.hdf5',
                    'viola_sim3_18.hdf5',   # overlapping 8 neurons
                    'viola_sim2_7.hdf5']   # non-overlapping 50 neurons
-    
+
+print(movie_folder)
+print(name)
+  
    
 #%% Choosing datasets
 if n_neurons == '1':
@@ -132,13 +137,10 @@ elif n_neurons == 'test':
        mov = np.array(h5['mov'])
     with h5py.File(os.path.join(movie_folder, 'viola', 'ROIs_gt.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
-    
-print(movie_folder)
-print(name)
 
 #%% Preliminary processing
 # Remove border pixel of the motion corrected movie
-border_pixel = 0
+border_pixel = 2
 mov[:, :border_pixel, :] = mov[:, border_pixel:border_pixel + 1, :]
 mov[:, -border_pixel:, :] = mov[:, -border_pixel-1:-border_pixel, :]
 mov[:, :, :border_pixel] = mov[:, :, border_pixel:border_pixel + 1]
@@ -150,7 +152,7 @@ if flip == True:
     y = to_2D(-mov).copy()
 else:
     y = to_2D(mov).copy()
-use_signal_filter = False   
+use_signal_filter = True   
 if use_signal_filter:  
     y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
  
@@ -221,8 +223,8 @@ H_new = H_new / norm(H_new, axis=0)
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
 # H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = False
-use_batch = False
+use_GPU = True
+use_batch = True
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)

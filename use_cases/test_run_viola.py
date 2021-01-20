@@ -21,7 +21,7 @@ from skimage.io import imread
 from viola.match_spikes import match_spikes_greedy, compute_F1
 
 #%%
-def run_viola(fnames, path_ROIs, fr=400, options=None):
+def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
     # Load movie and ROIs
     file_dir = os.path.split(fnames)[0]
     if '.hdf5' in fnames:
@@ -90,19 +90,24 @@ def run_viola(fnames, path_ROIs, fr=400, options=None):
     vio.fit(mov[:opts.data['num_frames_init']])
     
     #%% process online
-    vio.pipeline.load_frame_thread = Thread(target=vio.pipeline.load_frame, 
-                                            daemon=True, 
-                                            args=(mov[opts.data['num_frames_init']:opts.data['num_frames_total'], :, :],))
-    vio.pipeline.load_frame_thread.start()
-    start = time()
-    vio.fit_online()
-    sleep(5) # wait finish
-    print(f'total time online: {time()-start}')
-    print(f'time per frame  online: {(time()-start)/(opts.data["num_frames_total"]-opts.data["num_frames_init"])}')
+    if online_gpu == True:
+        vio.pipeline.load_frame_thread = Thread(target=vio.pipeline.load_frame, 
+                                                daemon=True, 
+                                                args=(mov[opts.data['num_frames_init']:opts.data['num_frames_total'], :, :],))
+        vio.pipeline.load_frame_thread.start()
+        start = time()
+        vio.fit_online()
+        sleep(5) # wait finish
+        print(f'total time online: {time()-start}')
+        print(f'time per frame  online: {(time()-start)/(opts.data["num_frames_total"]-opts.data["num_frames_init"])}')
+    else:
+        vio.fit_without_gpu(mov)
 
     #%%
     vio.compute_estimates()
-    plt.plot(vio.pipeline.saoz.trace[0])
+    plt.plot(normalize(vio.saoz.t_s[0]))
+    plt.hlines(vio.saoz.thresh[0, 0], 0, 30000)
+    print(vio.saoz.thresh_factor)
     
     #%% save
     save_name = f'viola_result_init_{opts.data["num_frames_init"]}' \
