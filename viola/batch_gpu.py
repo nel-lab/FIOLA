@@ -19,7 +19,7 @@ from .motion_correction_gpu import MotionCorrect
 from .nnls_gpu import NNLS, compute_theta2
 
 #%%
-def get_model(template, center_dims, Ab, num_components, batch_size):
+def get_model(template, center_dims, Ab, num_components, batch_size, ms_h=10, ms_w=10):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
@@ -40,7 +40,7 @@ def get_model(template, center_dims, Ab, num_components, batch_size):
 #    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
     #Initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template, center_dims, batch_size)   
+    mc_layer = MotionCorrect(template, center_dims, batch_size, ms_h=ms_h, ms_w=ms_w)   
     mc = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
@@ -274,12 +274,26 @@ class MotionCorrect(keras.layers.Layer):
         self.c_shp_x, self.c_shp_y = (self.shp_x - center_dims[0])//2, (self.shp_y - center_dims[1])//2
 
         self.template_0 = template
-        self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
-        
-        if self.template.shape[0] < 10 or self.template.shape[1] < 10:
-            raise ValueError("The vertical or horizontal shift you entered is too large for the given video dimensions. Enter a smaller shift.")
-        self.batch_size = batch_size
 
+        self.xmin, self.ymin = self.shp_x-2*ms_w, self.shp_y-2*ms_h
+        
+        if ms_h==0 or ms_w==0:
+            self.template = self.template_0[:,:,None,None]
+        else:
+            self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]    
+            
+        if self.xmin < 10 or self.ymin < 10:  #for small movies, change default min shift
+            if ms_h==0 or ms_w==0:
+                raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.") 
+            else:    
+                ms_h = 5
+                ms_w = 5
+                self.template=self.template_0[(ms_w+self.c_shp_x):-(ms_w+self.c_shp_x),(ms_h+self.c_shp_y):-(ms_h+self.c_shp_y), None, None]
+                
+            if self.template.shape[0] < 5 or self.template.shape[1] < 5:
+                raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.")
+        
+        self.batch_size = batch_size
         self.ms_h = ms_h
         self.ms_w = ms_w
         self.strides = strides
