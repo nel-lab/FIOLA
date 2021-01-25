@@ -122,85 +122,127 @@ class VIOLA(object):
         H_new = H_new / norm(H_new, axis=0)
         self.H = H_new
  
-        print('Now extract signal and spikes')     
-        batch_size = self.params.mc_nnls['batch_size']
-        Ab = H_new.astype(np.float32)
-        num_components = Ab.shape[-1]
-        template = bin_median(mov, exclude_nans=False)
-        if self.params.mc_nnls['center_dims'] is None:
-            center_dims = (mov.shape[1], mov.shape[2])
-        else:
-            center_dims = self.params.mc_nnls['center_dims'].copy()
-
-        if not self.params.mc_nnls['use_batch']:
-            from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
-            b = mov[0].reshape(-1, order='F')
-            x0 = nnls(Ab,b)[0][:,None]
-            AtA = Ab.T@Ab
-            Atb = Ab.T@b
-            n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-            theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
-            mc0 = mov[0:1,:,:, None]
-            model = get_model(template, center_dims, Ab, 30)
-            model.compile(optimizer='rmsprop', loss='mse')
-        else:
-            from .batch_gpu import Pipeline, get_model, Pipeline_overall_batch
-            b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
-            x0=[]
-            for i in range(batch_size):
-                x0.append(nnls(Ab,b[:,i])[0])
-            x0 = np.array(x0).T
-            AtA = Ab.T@Ab
-            Atb = Ab.T@b
-            n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
-            theta_2 = (Atb/n_AtA).astype(np.float32)
-            model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
-            model_batch.compile(optimizer = 'rmsprop',loss='mse')
-            mc0 = mov[0:batch_size, :, :, None][None, :]
-            x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])  
-            
-        print('Extract traces for initialization')
-        if self.params.mc_nnls['initialize_with_gpu']:
+        if True:
+            print('Now extract signal and spikes')     
+            batch_size = self.params.mc_nnls['batch_size']
+            Ab = H_new.astype(np.float32)
+            num_components = Ab.shape[-1]
+            template = bin_median(mov, exclude_nans=False)
+            if self.params.mc_nnls['center_dims'] is None:
+                center_dims = (mov.shape[1], mov.shape[2])
+            else:
+                center_dims = self.params.mc_nnls['center_dims'].copy()
+    
             if not self.params.mc_nnls['use_batch']:
-                spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov)
-                traces_viola = spike_extractor.get_traces(mov.shape[0])
-                traces_viola = np.array(traces_viola).squeeze().T
-                trace = traces_viola.copy()
+                from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
+                b = mov[0].reshape(-1, order='F')
+                x0 = nnls(Ab,b)[0][:,None]
+                AtA = Ab.T@Ab
+                Atb = Ab.T@b
+                n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+                theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+                mc0 = mov[0:1,:,:, None]
+                model = get_model(template, center_dims, Ab, 30, ms_h=0, ms_w=0)
+                model.compile(optimizer='rmsprop', loss='mse')
             else:
-                spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov, num_components, batch_size)
-                spikes_gpu = spike_extractor.get_traces(len(mov))
-                traces_viola = []
-                for spike in spikes_gpu:
-                    for i in range(batch_size):
-                        traces_viola.append([spike[:,:,i]])
-                traces_viola = np.array(traces_viola).squeeze().T
-                trace = traces_viola.copy()
-        else:
-            fe = slice(0,None)
-            if self.params.spike['flip'] == True:
-                trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
+                from .batch_gpu import Pipeline, get_model, Pipeline_overall_batch
+                b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
+                x0=[]
+                for i in range(batch_size):
+                    x0.append(nnls(Ab,b[:,i])[0])
+                x0 = np.array(x0).T
+                AtA = Ab.T@Ab
+                Atb = Ab.T@b
+                n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+                theta_2 = (Atb/n_AtA).astype(np.float32)
+                model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)
+                model_batch.compile(optimizer = 'rmsprop',loss='mse')
+                mc0 = mov[0:batch_size, :, :, None][None, :]
+                x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])  
+                
+            print('Extract traces for initialization')
+            if self.params.mc_nnls['initialize_with_gpu']:
+                if not self.params.mc_nnls['use_batch']:
+                    spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov)
+                    traces_viola = spike_extractor.get_traces(mov.shape[0])
+                    traces_viola = np.array(traces_viola).squeeze().T
+                    trace = traces_viola.copy()
+                else:
+                    spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov, num_components, batch_size)
+                    spikes_gpu = spike_extractor.get_traces(len(mov))
+                    traces_viola = []
+                    for spike in spikes_gpu:
+                        for i in range(batch_size):
+                            traces_viola.append([spike[:,:,i]])
+                    traces_viola = np.array(traces_viola).squeeze().T
+                    trace = traces_viola.copy()
             else:
-                trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (y)[fe]])
-            trace = trace_nnls.T.copy() 
+                fe = slice(0,None)
+                if self.params.spike['flip'] == True:
+                    trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
+                else:
+                    trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (y)[fe]])
+                trace = trace_nnls.T.copy() 
+                
+            print('Extract spikes for initialization')
+            saoz = SignalAnalysisOnlineZ(thresh_range=self.params.spike['thresh_range'], 
+                                         do_scale=self.params.spike['do_scale'], 
+                                         freq=self.params.spike['freq'], detrend=self.params.spike['detrend'], 
+                                         flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
+                                         filt_window=self.params.spike['filt_window'])
+            saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
             
-        print('Extract spikes for initialization')
+            if not self.params.mc_nnls['use_batch']:
+                self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
+            else:
+                self.pipeline = Pipeline_overall_batch(model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
+            
+        
+    def fit_online(self):
+        self.pipeline.get_spikes()
+        
+    def fit_without_gpu(self, mov):
+        border = self.params.mc_nnls['border_to_0']
+        if border > 0:
+            mov[:, :border, :] = mov[:, border:border + 1, :]
+            mov[:, -border:, :] = mov[:, -border-1:-border, :]
+            mov[:, :, :border] = mov[:, :, border:border + 1]
+            mov[:, :, -border:] = mov[:, :, -border-1:-border]
+
+        y = to_2D(mov).copy()
+        fe = slice(0,None)
+        trace_nnls = np.array([nnls(self.H,yy)[0] for yy in (y)[fe]])
+        trace = trace_nnls.T.copy() 
+
+        if len(trace.shape) == 1:
+            trace = trace[None, :]
         saoz = SignalAnalysisOnlineZ(thresh_range=self.params.spike['thresh_range'], 
                                      do_scale=self.params.spike['do_scale'], 
                                      freq=self.params.spike['freq'], detrend=self.params.spike['detrend'], 
                                      flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
                                      filt_window=self.params.spike['filt_window'])
-        saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
-        
-        if not self.params.mc_nnls['use_batch']:
-            self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
-        else:
-            self.pipeline = Pipeline_overall_batch(model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
-    
-    def fit_online(self):
-        self.pipeline.get_spikes()
+        saoz.fit(trace[:,:self.params.data['num_frames_init']], num_frames=self.params.data['num_frames_total'])   
+        for n in range(self.params.data['num_frames_init'], trace.shape[1]):
+            saoz.fit_next(trace[:, n: n+1], n)
+        #self.pipeline.saoz = saoz
+        self.saoz = saoz
+        """
+        saoz.compute_SNR()
+        saoz.reconstruct_signal()
+        print(f'thresh:{saoz.thresh}')
+        print(f'SNR: {saoz.SNR}')
+        print(f'Mean_SNR: {np.array(saoz.SNR).mean()}')
+        print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)}')
+        estimates = saoz
+        estimates.spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz.index])
+        weights = H_new.reshape((mov.shape[1], mov.shape[2], H_new.shape[1]), order='F')
+        weights = weights.transpose([2, 0, 1])
+        estimates.weights = weights
+        """
         
     def compute_estimates(self):
         self.estimates = self.pipeline.saoz
+        #self.estimates = self.saoz
         self.estimates.seq = self.seq
         self.estimates.H = self.H
         self.estimates.params = self.params

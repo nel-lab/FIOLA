@@ -180,7 +180,8 @@ class Pipeline_overall_batch(object):
                 traces_input = traces_input[None, :]
             if self.flag > 0:
                 for i in range(len(traces_input)):
-                    self.saoz.fit_next(traces_input[i][:, None], self.n)
+                    self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
+                            
                     if self.n % 1000 == 0:
                         print(f'{self.n} frames processed ####DETECT##### ')
                     self.n += 1

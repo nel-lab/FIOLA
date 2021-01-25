@@ -37,13 +37,16 @@ try:
         get_ipython().magic('autoreload 2')
 except NameError:
     pass
+
 #%% files for processing
+string = os.getcwd().split('/')
+BASE_FOLDER = os.path.join('/'+string[1], string[2], 'NEL-LAB Dropbox/NEL/Papers/')
+
 n_neurons = ['1', '2', 'many', 'test'][0]
 
 if n_neurons in ['1', '2']:
-    movie_folder = ['/Users/agiovan/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/',
-                   '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron',
-                   '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/video_small_region/'][1]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/one_neuron/'),
+                   os.path.join(BASE_FOLDER, 'VolPy/Marton/video_small_region/')][0]
     
     movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
                  '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
@@ -61,7 +64,7 @@ if n_neurons in ['1', '2']:
     
     fnames = [os.path.join(movie_folder, file) for file in movie_lists]
     
-    combined_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons',
+    combined_folder = [os.path.join(BASE_FOLDER, 'VolPy/Marton/overlapping_neurons'),
                     '/home/andrea/NEL-LAB Dropbox/NEL/Papers/VolPy/Marton/overlapping_neurons'][0]
     
     combined_lists = ['neuron0&1_x[1, -1]_y[1, -1].tif', 
@@ -69,9 +72,8 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[4, -2]_y[4, -2].tif', 
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
-    movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons', 
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test'][0]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/multiple_neurons'), 
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/test')][0]
    
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5',
@@ -80,23 +82,22 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_1',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_2',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_3',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_5',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/overlapping/viola_sim3_18',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7'][2]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_1'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_2'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_3'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_5'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_18'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7')][2]
     movie_lists = ['viola_sim3_1.hdf5',
                    'viola_sim3_2.hdf5',
                    'viola_sim3_3.hdf5',
                    'viola_sim3_5.hdf5',
                    'viola_sim3_18.hdf5',   # overlapping 8 neurons
                    'viola_sim2_7.hdf5']   # non-overlapping 50 neurons
-    
-   
+
 #%% Choosing datasets
 if n_neurons == '1':
-    file_set = [14]
+    file_set = [5]
     name = movie_lists[file_set[0]]
     belong_Marton = True
     if ('Fish' in name) or ('Mouse' in name):
@@ -132,9 +133,6 @@ elif n_neurons == 'test':
        mov = np.array(h5['mov'])
     with h5py.File(os.path.join(movie_folder, 'viola', 'ROIs_gt.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
-    
-print(movie_folder)
-print(name)
 
 #%% Preliminary processing
 # Remove border pixel of the motion corrected movie
@@ -150,7 +148,7 @@ if flip == True:
     y = to_2D(-mov).copy()
 else:
     y = to_2D(mov).copy()
-use_signal_filter = False   
+use_signal_filter = True   
 if use_signal_filter:  
     y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
  
@@ -167,9 +165,9 @@ if do_plot:
 # mask = mask.transpose([0,2,1])
 
 #%% Use nmf sequentially to extract all neurons in the region
-num_frames_init = 10000
+num_frames_init = 20000
 use_rank_one_nmf = False
-hals_movie = ['hp_thresh', 'hp', 'orig'][2]
+hals_movie = ['hp_thresh', 'hp', 'orig'][0]
 hals_orig = False
 if hals_movie=='hp_thresh':
     y_input = np.maximum(y_filt[:num_frames_init], 0).T
@@ -216,12 +214,13 @@ if update_bg:
 # normalization will enable gpu-nnls extracting bg signal 
 H_new = H_new / norm(H_new, axis=0)
 
+
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
 # H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
-use_GPU = False
-use_batch = False
+use_GPU = True
+use_batch = True
 if use_GPU:
     mov_in = mov 
     Ab = H_new.astype(np.float32)
@@ -260,12 +259,12 @@ if use_GPU:
         theta_2 = (Atb/n_AtA).astype(np.float32)
 
         from viola.batch_gpu import Pipeline, get_model
-        model_batch = get_model(template, center_dims, Ab, num_components, batch_size)
+        model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_traces(5000)
+        spikes_gpu = spike_extractor.get_traces(50000)
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):
@@ -280,12 +279,19 @@ else:
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
 
+#%%
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.figure(); plt.plot(traces_viola)
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.plot(traces_viola[0])
+
 #%% Viola spike extraction, result is in the estimates object
-if True:
+if True:    
     trace = trace_all[:].copy()
-    saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+    if len(trace.shape) == 1:
+        trace = trace[None, :]
+    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=15, 
                                   detrend=True, flip=True, 
                                   frate=frate, thresh_range=[2.8, 5.0], 
+                                  adaptive_threshold=True,
                                   filt_window=15, mfp=0.1)
     saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
     for n in range(10000, trace.shape[1]):
@@ -305,6 +311,10 @@ if True:
     #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/test_data/ephys_voltage/10052017Fish2-2'
     #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
     #np.save(save_path, estimates)    
+#%%
+    plt.plot(normalize(saoz.t_d[0]))
+    plt.plot(normalize(saoz.t_s[0]))
+
     
 #%% Load simulation groundtruth
     import scipy.io
@@ -332,6 +342,63 @@ if True:
    
 #%%    
 ##############################################################################################################
+    
+#%% fix decay use df/f
+    y = trace_all[0].copy()
+    box_pts = 100
+    box = np.ones(box_pts)/box_pts
+    y_smooth = np.convolve(y, box, mode='same')
+    plt.plot(y_smooth)    
+    
+    yy = y/y_smooth
+    plt.plot(yy[100:79000])
+    
+#%%
+    tt = saoz.t_s[0].copy()
+    spikes = estimates.spikes[0]
+    
+    t_rec = np.zeros(trace.shape)
+    spk_avg = []
+    t_curve = np.zeros(tt.shape)
+    t_curve[spikes[0]] = tt[spikes[0]].mean()
+    for i in range(len(spikes)):
+        if i > 0:
+            #t_curve[spikes[i]] = np.percentile(tt[spikes[np.max((0, i-100)) : i]], 80)
+            t_curve[spikes[i]] = tt[spikes[i]]
+    plt.plot(tt)
+    #plt.plot(saoz.t_rec[0])
+    plt.plot(t_curve)
+    
+            
+    
+#%%
+        
+        
+    for idx in range(trace.shape[0]):
+        if spikes.size > 0:
+            t_rec[idx, spikes] = 1
+            t_rec[idx] = np.convolve(t_rec[idx], np.flip(PTA[idx]), 'same')   
+    
+    
+    
+    
+#%%
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+
+def func(x, a, b, c):
+    return a * np.exp(-b * x) + c
+
+xdata = np.linspace(0, 4, 50)
+y = func(xdata, 2.5, 1.3, 0.5)
+np.random.seed(1729)
+y_noise = 0.2 * np.random.normal(size=xdata.size)
+ydata = y + y_noise
+plt.plot(xdata, ydata, 'b-', label='data')
+popt, pcov = curve_fit(func, xdata, ydata)
+#array([ 2.55423706,  1.35190947,  0.47450618])
+plt.plot(xdata, func(xdata, *popt), 'r-',label='fit: a=%5.3f, b=%5.3f, c=%5.3f' % tuple(popt))
+    
     
     #%%
     vpy = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test/volpy_viola_sim1_1_adaptive_threshold.npy', allow_pickle=True).item()        
