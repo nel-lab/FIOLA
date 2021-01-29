@@ -37,13 +37,13 @@ class NNLS(keras.layers.Layer):
         """
         pass as inputs the new Y, and the old X. see  https://angms.science/doc/NMF/nnls_pgd.pdf
         """
-        (Y,X_old,k,weight) = X
+        (Y,X_old,k,weight,shifts) = X
         mm = tf.matmul(self.th1, Y)
         new_X = tf.nn.relu(mm + weight)
 
         Y_new = new_X + tf.cast(tf.divide(k - 1, k + 2), tf.float32)*(new_X - X_old)  
         k += 1
-        return (Y_new, new_X, k, weight)
+        return (Y_new, new_X, k, weight, shifts)
     
     def get_config(self):
         base_config = super().get_config().copy()
@@ -55,11 +55,12 @@ class compute_theta2(keras.layers.Layer):
         self.A = A
         self.n_AtA = n_AtA
         
-    def call(self, X):
+    def call(self, X, shifts):
         Y = tf.matmul(X, self.A)
         Y = tf.divide(Y, self.n_AtA)
         Y = tf.transpose(Y)
-        return Y    
+        shifts = tf.squeeze(shifts)
+        return (Y, shifts)   
     
     def get_config(self):
         base_config = super().get_config().copy()

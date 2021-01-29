@@ -82,7 +82,7 @@ class MotionCorrect(keras.layers.Layer):
         # print(X).shape
         X_center = X[:, self.c_shp_x:(self.shp_x-self.c_shp_x), self.c_shp_y:(self.shp_y-self.c_shp_y)]
         # X_center = X[:,:,:]
-
+        # import pdb; pdb.set_trace()
         # pass in center for normalization
         imgs_zm, imgs_var = self.normalize_image(X_center, self.template.shape, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon) 
@@ -103,8 +103,8 @@ class MotionCorrect(keras.layers.Layer):
         X_corrected = tfa.image.translate(X, (tf.squeeze(tf.stack([ys, xs], axis=1))), 
                                             interpolation="bilinear")
         # tf.print(timeit.default_timer()-st, "translate")
-        # return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :], [xs, ys])
-        return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :])
+        return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :], [xs, ys])
+        # return (tf.reshape(tf.transpose(tf.squeeze(X_corrected)), [-1])[None, :])
         # return (X_corrected, [xs,ys])
 
 

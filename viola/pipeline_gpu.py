@@ -40,13 +40,13 @@ def get_model(template, center_dims, Ab, num_layers=5, ms_h=10, ms_w=10):
 
     #Initialization of the motion correction layer, initialized with the template   
     mc_layer = MotionCorrect(template, center_dims, ms_h=ms_h, ms_w=ms_w)   
-    mc = mc_layer(fr_in)
+    mc, shifts = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
-    th2 = c_th2(mc)
+    (th2, shifts) = c_th2(mc, shifts)
     #Connects weights, calculated from the motion correction, to the NNLS layer
     nnls = NNLS(theta_1)
-    x_kk = nnls([y_in, x_in, k_in, th2])
+    x_kk = nnls([y_in, x_in, k_in, th2, shifts])
     #stacks NNLS 9 times
     for j in range(1, num_layers):
         x_kk = nnls(x_kk)
@@ -118,6 +118,7 @@ class Pipeline(object):
         #to be called separately. Input "bound" represents the number of frames. 
         #Starts at one because of initial values put on queue.
         output = [0]*bound
+        shifts = [0]*bound
         # times = [0]*bound
         start = timeit.default_timer()
         for idx in range(1, bound):
@@ -125,6 +126,7 @@ class Pipeline(object):
             out = self.output_q.get()
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
             output[idx-1] = out["nnls_1"]
+            shifts[idx-1] = out["nnls_4"]
             # times[idx-1]= timeit.default_timer()-start
             
         output[-1] = (self.output_q.get()["nnls_1"])
@@ -132,7 +134,7 @@ class Pipeline(object):
         self.frame_input_q.put(self.mc0)
         self.spike_input_q.put((self.y_0, self.x_0))
         # return (output, times)
-        return output
+        return output, shifts
    
 #%%
 class Pipeline_overall(object):    
