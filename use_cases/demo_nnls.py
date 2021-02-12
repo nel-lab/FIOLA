@@ -27,9 +27,8 @@ import scipy
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
-#%% The following section is for generating NNLS traces, as per Fig <insert number>
 #%% set folders
-base_folder = "../../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
+base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
 dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][0]
 slurm_data = base_folder + dataset + "/results_analysis_online_sensitive_SLURM_01.npz"
 #%% get ground truth data
@@ -91,10 +90,13 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 Cf = np.concatenate([noisyC_start,f_gt], axis=0)
 x0 = Cf[:,0].copy()[:,None]
 #%% nnls
+y = to_2D(a2)
 from scipy.optimize import nnls
 fe = slice(0,None)
-trace_nnls = np.array([nnls(Ab_gt,fr)[0] for fr in (a2)[fe]])
+trace_nnls = np.array([nnls(Ab_gt,fr)[0] for fr in (y)[fe]])
 trace_nnls = trace_nnls.T 
+#%%
+f30  = np.load(base_folder + dataset +  "/")
 #%% model creation
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 shapes = a2[0].shape
