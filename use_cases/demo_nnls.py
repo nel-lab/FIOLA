@@ -24,13 +24,24 @@ import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 from viola.caiman_functions import to_3D, to_2D
 import scipy
+import h5py
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 #%% set folders
-base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
-dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][0]
-slurm_data = base_folder + dataset + "/results_analysis_online_sensitive_SLURM_01.npz"
+calcium = False
+
+if calcium:
+    base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
+    dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][3]
+    slurm_data = base_folder + dataset + "/results_analysis_online_sensitive_SLURM_01.npz"
+else:
+    base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
+    dataset = ["/FOV1", "/FOV1_35um", "/FOV2_80um", "/FOV4_50um", "/403106_3min"][1]
+    H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
+    with h5py.File(base_folder + dataset + dataset + ".hdf5",'r') as h5:
+       a2 = np.array(h5['mov'])
+
 #%% get ground truth data
 with np.load(slurm_data, allow_pickle=True) as ld:
     print(list(ld.keys()))
@@ -89,14 +100,50 @@ theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 #Cff = np.concatenate([C_full+YrA_full,f_full], axis=0)
 Cf = np.concatenate([noisyC_start,f_gt], axis=0)
 x0 = Cf[:,0].copy()[:,None]
+#%% fiola nnls
+from viola.nnls_gpu import NNLS, compute_theta2
+from scipy.optimize import nnls
+
+Ab = H_new.astype(np.float32)
+b = a2[0].reshape(-1, order='F')
+x0 = nnls(Ab,b)[0][:,None].astype(np.float32)
+x_old, y_old = x0, x0
+AtA = Ab.T@Ab
+Atb = Ab.T@b
+n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
+theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+mc0 = a2[0:1,:,:, None]
+        
+c_th2 = compute_theta2(Ab, n_AtA)
+n = NNLS(theta_1)
+#%%
+num_layers = 30
+
+nnls_out = []
+k = np.zeros_like(1)
+shifts = [0.0, 0.0]
+for i in range(a2.shape[0]):
+    mc = np.reshape(np.transpose(a2[i]), [-1])[None, :]
+    (th2, shifts) = c_th2(mc, shifts)
+    x_kk = n([y_old, x_old, k, th2, shifts])
+
+    
+    for j in range(1, num_layers):
+        x_kk = n(x_kk)
+        
+    y_old, x_old = x_kk[0], x_kk[1]
+    nnls_out.append(y_old)
+nnls_out = np.array(nnls_out).squeeze().T
+np.save(base_folder + dataset + "/v_nnls_"+str(num_layers), nnls_out)
 #%% nnls
 y = to_2D(a2)
 from scipy.optimize import nnls
+H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
+
 fe = slice(0,None)
-trace_nnls = np.array([nnls(Ab_gt,fr)[0] for fr in (y)[fe]])
+trace_nnls = np.array([nnls(H_new,fr)[0] for fr in (y)[fe]])
 trace_nnls = trace_nnls.T 
-#%%
-f30  = np.load(base_folder + dataset +  "/")
 #%% model creation
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 shapes = a2[0].shape
