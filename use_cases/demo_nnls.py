@@ -27,20 +27,21 @@ import scipy
 import h5py
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+import glob
 
 #%% set folders
-calcium = False
+calcium = True
 
 if calcium:
-    base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
-    dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][3]
+    base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
+    dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][2]
     slurm_data = base_folder + dataset + "/results_analysis_online_sensitive_SLURM_01.npz"
 else:
-    base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
-    dataset = ["/FOV1", "/FOV1_35um", "/FOV2_80um", "/FOV4_50um", "/403106_3min"][1]
+    base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
+    dataset = ["/FOV1", "/FOV1_35um", "/FOV2_80um", "/FOV4_50um", "/403106_3min"][2]
     H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
     with h5py.File(base_folder + dataset + dataset + ".hdf5",'r') as h5:
-       a2 = np.array(h5['mov'])
+       a2 = np.array(h5['mov'])       
 
 #%% get ground truth data
 with np.load(slurm_data, allow_pickle=True) as ld:
@@ -72,8 +73,8 @@ a2 = []
 for i in range(noisyC.shape[1]//2):
     fname = "image" + str(i).zfill(5) + ".tif"
     im = io.imread(os.path.join(dirname, fname))
-    #a2.append(resize(im, (256, 256)))
-    a2.append(im)
+    a2.append(resize(im, (256, 256)))
+    # a2.append(im)
     #a2.append(im[0:125, 125:256])    
 #%% image normalization for movie
 img_norm = np.std(a2, axis=0)
@@ -81,7 +82,7 @@ img_norm += np.median(img_norm)
 a2 = a2/img_norm[None, :, :]
 #a2 = to_2D(np.asarray(Y_tot)).T
 #%% one-time calculations and template
-template = np.median(a2[:len(a2)//2], axis=0) # template created w/ first half
+# template = np.median(a2[:len(a2)//2], axis=0) # template created w/ first half
 #f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 #YrA = YrA_full[:, 0][:, None]
 # YrA = 
@@ -105,6 +106,7 @@ from viola.nnls_gpu import NNLS, compute_theta2
 from scipy.optimize import nnls
 
 Ab = H_new.astype(np.float32)
+# Ab = Ab_gt_start
 b = a2[0].reshape(-1, order='F')
 x0 = nnls(Ab,b)[0][:,None].astype(np.float32)
 x_old, y_old = x0, x0
@@ -113,12 +115,12 @@ Atb = Ab.T@b
 n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
 theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
 theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
+#%%
 mc0 = a2[0:1,:,:, None]
-        
-c_th2 = compute_theta2(Ab, n_AtA)
+c_th2 = compute_theta2(Ab_gt_start, n_AtA)
 n = NNLS(theta_1)
 #%%
-num_layers = 30
+num_layers = 5
 
 nnls_out = []
 k = np.zeros_like(1)
@@ -160,3 +162,94 @@ out = trace_extractor.get_traces(500)
 
 test_traces = out
 test_traces = np.array(test_traces).T.squeeze()
+#%% fig gen
+from scipy.stats import pearsonr
+names = []
+base_folder = "../../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
+datasets = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"]
+bgs = [2,1,2,3,3,3,0,0,0]
+for val in datasets:
+    names.append(base_folder + val)
+base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
+datasets += ["/FOV1", "/FOV2_80um", "/FOV4_50um"]
+for val in datasets[6:]:
+    names.append(base_folder + val)
+
+from collections import defaultdict        
+err = defaultdict(list)
+for i,n in enumerate(names):
+    gt = np.load(n + "/nnls.npy")
+    bg = bgs[i]
+    nnls30= np.load(n +"/v_nnls_30.npy")
+    nnls10= np.load(n +"/v_nnls_10.npy")
+    nnls5= np.load(n+ "/v_nnls_5.npy")
+    
+    num_comps = nnls30.shape[0]
+    l = nnls30.shape[1]//2
+    gt = np.append(gt[bg:num_comps], gt[0:bg], axis=0)
+    fill_len = 263-num_comps
+        
+    if i == 2:
+        err[n] = [pearsonr(gt[j], nnls30[j, l:])[0] for j in range(nnls30.shape[0])]
+        err[n]+=[np.nan]*fill_len
+        err[n]+=[pearsonr(gt[j], nnls10[j, l:])[0] for j in range(nnls10.shape[0])]
+        err[n]+=[np.nan]*fill_len
+        err[n]+=[pearsonr(gt[j], nnls5[j, l:])[0] for j in range(nnls5.shape[0])]
+        err[n]+=[np.nan]*fill_len
+        # err[n] = [np.nan if err[n][i] < 0.7 else err[n][i] for i in range(len(err[n]))]
+        # plt.plot(gt[-1]);plt.plot(nnls30[-1,l:])
+        # err[n+"10"] = [pearsonr(gt[j], nnls10[j, l:])[0] for j in range(nnls10.shape[0]-bg)]
+        # err[n+"5"] = [pearsonr(gt[j], nnls5[j, l:])[0] for j in range(nnls5.shape[0]-bg)]        
+    else:
+        err[n] = [pearsonr(gt[j, l:], nnls30[j, l:])[0] for j in range(nnls30.shape[0])]
+        err[n]+=[np.nan]*fill_len
+        err[n]+=[pearsonr(gt[j, l:], nnls10[j, l:])[0] for j in range(nnls10.shape[0])]
+        err[n]+=[np.nan]*fill_len
+        err[n]+=[pearsonr(gt[j, l:], nnls5[j, l:])[0] for j in range(nnls5.shape[0])]
+        err[n]+=[np.nan]*fill_len
+        # err[n] = [np.nan if err[n][i] < 0.7 else err[n][i] for i in range(len(err[n]))]
+        # err[n+"10"] = [pearsonr(gt[j, l:], nnls10[j, l:])[0] for j in range(nnls10.shape[0]-bg)]
+        # err[n+"5"] = [pearsonr(gt[j, l:], nnls5[j, l:])[0] for j in range(nnls5.shape[0]-bg)]
+        # plt.plot(gt[-3]);plt.plot(nnls30[-3])
+
+#%% to look at the "bad" traces:
+    #NOTE: for N.02.00 I only  saved teh back half of the scipy optimize NNLS so  you'll have to only plot the back 10,000 frames
+k=1   
+n=names[k]
+bg = bgs[k]
+bad = []
+for i,val in enumerate(err[n]):
+    if val < 0.8:
+        bad.append(i)
+
+nnls30 = np.load(n +"/v_nnls_30.npy")
+num_comps = nnls30.shape[0]
+gt = np.load(n + "/nnls.npy")
+gt = np.append(gt[bg:num_comps], gt[0:bg], axis=0)
+
+for idx in bad:
+    if idx < num_comps:
+        plt.plot(gt[idx])
+        plt.plot(nnls30[idx])
+        plt.pause(5)
+        plt.cla()
+
+#%% plotting
+import pandas as pd
+import seaborn as sns
+sns.set_theme(style="whitegrid")
+df = pd.DataFrame()
+i=0
+for key in err:
+    df.loc[:,i]=pd.Series(err[key])
+    i+=1
+df.columns = datasets
+df["layers"] = [30]*263 + [10]*263 + [5] * 263
+ 
+df = pd.melt(df, id_vars=["layers"], var_name="file", value_name="Error")
+plt.rcParams['pdf.fonttype']=42
+plt.rcParams['ps.fonttype']=42
+fig,ax = plt.subplots(1)
+
+sns.boxplot(x=df["file"], y=df["Error"], hue=df["layers"], palette="viridis")
+ax.set_xticklabels(datasets)
