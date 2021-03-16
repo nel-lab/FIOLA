@@ -41,36 +41,12 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
     ROIs = ROIs
     num_frames_total = mov.shape[0]
 
-    border_to_0 = 2
-    flip = True
-    thresh_range= [3, 4]
-    erosion=0 
-    hals_movie='hp_thresh'
-    use_rank_one_nmf=True
-    semi_nmf=False
-    update_bg = True
-    use_spikes=True 
-    initialize_with_gpu=False
-    adaptive_threshold=True
-    filt_window=15
-    
+
     opts_dict = {
         'fnames': fnames,
         'fr': fr,
         'ROIs': ROIs,
-        'num_frames_total': num_frames_total,
-        'border_to_0': border_to_0,
-        'flip': flip,
-        'thresh_range': thresh_range,
-        'erosion':erosion, 
-        'hals_movie': hals_movie,
-        'use_rank_one_nmf': use_rank_one_nmf,
-        'semi_nmf': semi_nmf,
-        'update_bg': update_bg,
-        'use_spikes':use_spikes, 
-        'initialize_with_gpu':initialize_with_gpu,
-        'adaptive_threshold': adaptive_threshold,
-        'filt_window': filt_window}
+        'num_frames_total': num_frames_total}
 
     opts = violaparams(params_dict=opts_dict)
     
@@ -105,16 +81,30 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
 
     #%%
     vio.compute_estimates()
+    plt.figure()
     plt.plot(normalize(vio.estimates.t_s[0]))
+    plt.show()
+    plt.figure()    
+    
+    plt.figure()
+    step = vio.estimates.params.spike['step']
+    plt.plot(vio.estimates.t_s[0])
+    for idx, tt in enumerate(vio.estimates.thresh[0]):
+        if idx == 0:
+            plt.hlines(tt, 0, 30000)
+        else:
+            plt.hlines(tt, 30000 + (idx -1) * step, 30000 + idx * step)
     #plt.hlines(vio.saoz.thresh[0, 0], 0, 30000)
     #print(vio.saoz.thresh_factor)
     
     #%% save
     save_name = f'viola_result_online_gpu_{online_gpu}_init_{opts.data["num_frames_init"]}' \
         f'_bg_{opts.mc_nnls["update_bg"]}_use_spikes_{opts.mc_nnls["use_spikes"]}' \
-        f'_hals_movie_{opts.mc_nnls["hals_movie"]}' \
+        f'_hals_movie_{opts.mc_nnls["hals_movie"]}_semi_nmf_{opts.mc_nnls["semi_nmf"]}' \
         f'_adaptive_threshold_{opts.spike["adaptive_threshold"]}' \
-        f'_do_scale_{opts.spike["do_scale"]}'
+        f'_do_scale_{opts.spike["do_scale"]}_freq_{opts.spike["freq"]}'\
+        f'_filt_window_{opts.spike["filt_window"]}_minimal_thresh_{opts.spike["minimal_thresh"]}'\
+        f'_template_window_{opts.spike["template_window"]}_v2.1'
     np.save(os.path.join(file_dir, 'viola', save_name), vio.estimates)
     
     log_files = glob.glob('*_LOG_*')
