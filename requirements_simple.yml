@@ -1,12 +1,10 @@
-channels:
-- conda-forge
 dependencies:
+- python=3.8
 - future
 - ipython
-- tensorflow
+- pip
 - opencv
-- spyder==4.2.1
+- spyder
 - scikit-image
 - scikit-learn
 - matplotlib
-- peakutils
