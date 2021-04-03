@@ -15,6 +15,8 @@ import tensorflow_addons as tfa
 import numpy as np
 from queue import Queue
 import timeit
+from time import time
+from mc_batch import MotionCorrectBatch
 
 #%%
 def get_model(template, center_dims, Ab, num_components, batch_size, ms_h=10, ms_w=10):
@@ -22,6 +24,7 @@ def get_model(template, center_dims, Ab, num_components, batch_size, ms_h=10, ms
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
     """
     shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+    # print(template.shape, "tempshp")
 #    c_shp_x, c_shp_y = shp_x//4, shp_y//4
 
 #    template = template[c_shp_x+10:-(c_shp_x+10),c_shp_y+10:-(c_shp_y+10), None, None]
@@ -38,7 +41,7 @@ def get_model(template, center_dims, Ab, num_components, batch_size, ms_h=10, ms
 #    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
     #Initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template, center_dims, batch_size, ms_h=ms_h, ms_w=ms_w)   
+    mc_layer = MotionCorrectBatch(template, batch_size, ms_h=ms_h, ms_w=ms_w)   
     mc = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
@@ -86,7 +89,6 @@ class Pipeline(object):
         
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-#            print(i.keys())
             self.output_q.put(i)
     
     def load_estimator(self):
@@ -116,20 +118,21 @@ class Pipeline(object):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
         length = bound//self.batch_size
         output = [0]*length
+        times = [0]*length
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
-#            st = timeit.default_timer()
-
             out = self.output_q.get()
             # import pdb; pdb.set_trace()
             i = (idx-1)//self.batch_size
             output[i] = out["nnls_1"]
             self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            times[i]  = timeit.default_timer()-start
 #            output.append(timeit.default_timer()-st)
         output[-1] = self.output_q.get()["nnls_1"]
+        times[-1] = timeit.default_timer() - start
         print(timeit.default_timer()-start)
-        return output
+        return times, output
 
 #%%    
 class Pipeline_overall_batch(object):    
@@ -220,9 +223,10 @@ class Pipeline_overall_batch(object):
         """
         length = bound//self.batch_size
         output = [0]*length
+        time = [0]*length
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
-#            st = timeit.default_timer()
+            st = timeit.default_timer()
 
             out = self.signal_q.get()
             # import pdb; pdb.set_trace()
@@ -230,41 +234,45 @@ class Pipeline_overall_batch(object):
             output[i] = out["nnls_1"]
             self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            time[i] = timeit.default_timer()-st
 #            output.append(timeit.default_timer()-st)
         output[-1] = self.signal_q.get()["nnls_1"]
         print(timeit.default_timer()-start)
+        return time
         """
         while self.frame_input_q.qsize() > 0:
             out = self.signal_q.get().copy()       
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
             traces_input = np.array(out["nnls_1"]).squeeze().T
             self.sao_input_q.put(traces_input)
+        
 
 #%%
+ 
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, center_dims, batch_size, ms_h=10, ms_w=10, strides=[1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
         """
         Tenforflow layer which perform motion correction on batches of frames. Notice that the input must be a 
         tensorflow tensor with dimension batch x width x height x channel
         Args:
-           template: ndarray
-               template against which to register
+            template: ndarray
+                template against which to register
             center_dims: tuple of ints
                 dimensions after cropping movie and template
-           ms_h: int
-               estimated minimum value of vertical shift
-           ms_w: int
-               estimated minimum value of horizontal shift    
-           strides: list
-               convolutional strides of tf.conv2D              
-           padding: str
-               "VALID" or "SAME": convolutional padding of tf.conv2D
-           epsilon':float
-               small value added to variances to prevent division by zero
+            ms_h: int
+                estimated minimum value of vertical shift
+            ms_w: int
+                estimated minimum value of horizontal shift    
+            strides: list
+                convolutional strides of tf.conv2D              
+            padding: str
+                "VALID" or "SAME": convolutional padding of tf.conv2D
+            epsilon':float
+                small value added to variances to prevent division by zero
         
         
         Returns:
-           X_corrected batch corrected when called upon a batch of inputs
+            X_corrected batch corrected when called upon a batch of inputs
         
         """
         super().__init__(**kwargs)
@@ -301,6 +309,7 @@ class MotionCorrect(keras.layers.Layer):
 
         ## normalize template
         self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
+        print(self.template_zm.shape)
         
         ## assign to kernel, normalizer
         self.kernel = self.template_zm
@@ -310,7 +319,10 @@ class MotionCorrect(keras.layers.Layer):
     @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
+        print(X.shape)
         X = X[0]
+        print(X.shape)
+
         X_center = X[:, self.c_shp_x:(self.shp_x-self.c_shp_x), self.c_shp_y:(self.shp_y-self.c_shp_y), :]
 
         # pass in center for normalization
@@ -318,7 +330,7 @@ class MotionCorrect(keras.layers.Layer):
                                             padding=self.padding, epsilon=self.epsilon) 
         denominator = tf.sqrt(self.normalizer * imgs_var)
         numerator = tf.nn.conv2d(imgs_zm, self.kernel, padding=self.padding, 
-                                 strides=self.strides)
+                                  strides=self.strides)
 #        
         tensor_ncc = tf.truediv(numerator, denominator)
 ##        self.kernel = self.kernel*1
@@ -349,9 +361,9 @@ class MotionCorrect(keras.layers.Layer):
         # remove mean and standardize so that normalized cross correlation can be computed
         imgs_zm = imgs - tf.reduce_mean(imgs, axis=[1,2], keepdims=True)
         localsum_sq = tf.nn.conv2d(tf.square(imgs), tf.ones(shape_template), 
-                                               padding=padding, strides=strides)
+                                                padding=padding, strides=strides)
         localsum = tf.nn.conv2d(imgs,tf.ones(shape_template), 
-                                               padding=padding, strides=strides)
+                                                padding=padding, strides=strides)
         
         
         imgs_var = localsum_sq - tf.square(localsum)/np.prod(shape_template) + epsilon
@@ -416,19 +428,19 @@ class NNLS(keras.layers.Layer):
         """
         Tensforflow layer which perform Non Negative Least Squares. Using  https://angms.science/doc/NMF/nnls_pgd.pdf
             arg min f(x) = 1/2 || Ax − b ||_2^2
-             {x≥0}
+              {x≥0}
              
         Notice that the input must be a tensorflow tensor with dimension batch 
         x width x height x channel
         Args:
-           theta_1: ndarray
-               theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
-           theta_2: ndarray
-               theta_2 = (Atb/n_AtA)[:,None]  
+            theta_1: ndarray
+                theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
+            theta_2: ndarray
+                theta_2 = (Atb/n_AtA)[:,None]  
           
         
         Returns:
-           x regressed values
+            x regressed values
         
         """
         super().__init__(**kwargs)

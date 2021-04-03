@@ -12,10 +12,12 @@ import tensorflow as tf
 import tensorflow.keras as keras
 from threading import Thread
 import numpy as np
-from .motion_correction_gpu import MotionCorrect
+from FFT_MOTION import MotionCorrect
 from .nnls_gpu import NNLS, compute_theta2
 from queue import Queue
 import timeit
+import time
+import datetime
 #%%
 def get_model(template, center_dims, Ab, num_layers=5, ms_h=10, ms_w=10):
     """
@@ -38,8 +40,9 @@ def get_model(template, center_dims, Ab, num_layers=5, ms_h=10, ms_w=10):
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
 #    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
-    #Initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template, center_dims, ms_h=ms_h, ms_w=ms_w)   
+    #Initialization of the motion correction layer, initialized with the template
+    #import pdb; pdb.set_trace();
+    mc_layer = MotionCorrect(template[:,:,None,None], ms_h=ms_h, ms_w=ms_w)   
     mc, shifts = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
@@ -67,7 +70,11 @@ class Pipeline(object):
         self.tot = tot
         self.num_neurons = tht2.shape[0]
         self.dim_x, self.dim_y = self.mc0.shape[1], self.mc0.shape[2]
+        print(self.mc0.shape)
         self.zero_tensor = [[0.0]]
+        self.output_types = {"m": tf.float32,"y": tf.float32,"x": tf.float32,"k": tf.float32}
+        self.output_shapes = {"m":(1, self.dim_x, self.dim_y, 1), "y":(1, self.num_neurons, 1),
+                              "x":(1, self.num_neurons, 1), "k":(1, 1)}
         
         self.frame_input_q = Queue()
         self.spike_input_q = Queue()
@@ -95,14 +102,8 @@ class Pipeline(object):
 
     def get_dataset(self):
         dataset = tf.data.Dataset.from_generator(self.generator, 
-                                                 output_types={"m": tf.float32,
-                                                               "y": tf.float32,
-                                                               "x": tf.float32,
-                                                               "k": tf.float32}, 
-                                                 output_shapes={"m":(1, self.dim_x, self.dim_y, 1),
-                                                                "y":(1, self.num_neurons, 1),
-                                                                "x":(1, self.num_neurons, 1),
-                                                                "k":(1, 1)})
+                                                 output_types=self.output_types, 
+                                                 output_shapes=self.output_shapes)
         return dataset
     
     def generator(self):
@@ -119,22 +120,28 @@ class Pipeline(object):
         #Starts at one because of initial values put on queue.
         output = [0]*bound
         shifts = [0]*bound
-        # times = [0]*bound
+        times = [0]*bound
         start = timeit.default_timer()
+        print("hi")
         for idx in range(1, bound):
+            # print("hi")
             self.frame_input_q.put(self.tot[idx:idx+1,:,:, None])
+            # print("hi2")
             out = self.output_q.get()
+
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            # print("hi4")
             output[idx-1] = out["nnls_1"]
-            shifts[idx-1] = out["nnls_4"]
-            # times[idx-1]= timeit.default_timer()-start
+            #shifts[idx-1] = out["nnls_4"]
+            # time.sleep(0.1)
+            times[idx-1]= timeit.default_timer()-start
             
         output[-1] = (self.output_q.get()["nnls_1"])
         print(timeit.default_timer()-start)
         self.frame_input_q.put(self.mc0)
         self.spike_input_q.put((self.y_0, self.x_0))
         # return (output, times)
-        return output, shifts
+        return output, shifts, times
    
 #%%
 class Pipeline_overall(object):    

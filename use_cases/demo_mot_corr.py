@@ -17,52 +17,96 @@ from queue import Queue
 from threading import Thread
 from past.utils import old_div
 from skimage import io
-from skimage.transform import resize
+from skimage.transform import resize,  rescale
 import cv2
 import timeit
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 from viola.caiman_functions import to_3D, to_2D
 import scipy
+import glob
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 #%% get files
-import glob
 many =  True
+names = []
 if many:
-    names = glob.glob('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
-    names += glob.glob('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*.hdf5')
-    names += glob.glob('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.hdf5')
+    names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
+    names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*.hdf5')
+    names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.hdf5')
+    j = 4 # 0,2,3,4,6,9,9,-1
+    movie = names[j]
+    # movie = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_1024.tif"
+    mov = io.imread(movie)
+    full = True
+    print(movie)
 else:
     # names.append('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/mesoscope.hdf5')
-    # names+=glob.glob('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/viola_movies/*.hdf5')
-    names = glob.glob('/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/*/*.tif') #One Neuron Tests
-#%%
-j = 6 # 0,2,3,4,6,9,9,-1
-movie = names[j]
-mov = io.imread(movie)
-full = True
-print(movie)
-#%%
-j=8
-movie = names[j]
-import h5py
-with h5py.File(movie, "r") as f:
-    print("Keys: %s" % f.keys())
-    a_group_key = list(f.keys())[0]
-    mov = np.array(f['mov'])
-full = True
-#%% optional rotation
+    names+=glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/*.hdf5')
+    names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*.hdf5')
+    cm_names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*cm_on_shifts.npy') #One Neuron Tests
+    vi_names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*full_shifts.npy') #One Neuron Tests
+    j=-1
+    movie = names[j]
+    import h5py
+    with h5py.File(movie, "r") as f:
+        print("Keys: %s" % f.keys())
+        a_group_key = list(f.keys())[0]
+        mov = np.array(f['mov'])
+    full = True
+# optional rotation
 # mov = np.transpose(mov, (0, 2, 1))
 # plt.imshow(mov[0])
 # full=True
-#%% motion correct layer setup
-from viola.motion_correction_gpu import MotionCorrectTest
-template = np.load(movie[:-4]+"_template_on.npy")
+# motion correct layer setup
+# from viola.motion_correction_gpu import MotionCorrectTest
+template = np.load(names[j][:-4]+"_template_on.npy")
+# template = np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/1MP_SIMPLE_Stephan__001_001_template_on.npy")
+# template =  np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/FOV1_35um/FOV1_35um._template_on.npy")
 # template = np.transpose(template)
 #template = temp
 # template = np.median(mov[:2000], axis=0)
+#%%FOR ESTIMATOR TIMING
+out = [0]*(mov.shape[0])
+def generator():
+    for fr in  mov:
+        yield{"m":fr[None,:,:,None]}
+             
+def get_frs():
+    dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32}, output_shapes={"m":(1,mov.shape[1],mov.shape[2],1)})
+    return dataset
+  
+from FFT_MOTION import get_mc_model
+import timeit
+import time
+import tensorflow.keras as keras
+model = get_mc_model(template[:,:,None,None])
+model.compile(optimizer='rmsprop', loss='mse')
+estimator = tf.keras.estimator.model_to_estimator(model)
+times = [0]*(mov.shape[0])
+curr=0
+start = timeit.default_timer()
+for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+    out[curr]=i
+    times[curr]=time.time()-start
+    curr += 1
+    # break
+print(timeit.default_timer()-start)
+plt.plot(np.diff(times))
+#%%
+x=[]
+y=[]
+kys  = list(out[0].keys())
+for val in  out:
+    x.append(np.squeeze(val[kys[1]]))
+    y.append(np.squeeze(val[kys[2]]))
+
+#%%
+# f = movie[70:73]
+f = input("names: ")
+save_loc =  "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/"
+np.save(save_loc+f+"_times_1.5", np.diff(times[1:-1]))
 #%%
 if full:
     mc_layer = MotionCorrectTest(template, mov[0].shape, ms_h=10, ms_w=10)
@@ -72,7 +116,7 @@ else:
 #%% run mc
 shifts = []
 # new_mov = []
-for i in range(len(mov)):
+for i in range(len(mov)//4):
     fr = mc_layer(mov[i, :, :, None][None, :].astype(np.float32))
     shifts.append(fr[1]) 
     # new_mov.append(fr[0]) #movie
@@ -91,17 +135,11 @@ if full:
 else:
     # np.save(movie[:73]+"new_cm/"+movie[73:-4]+"_viola_small_shifts", shifts)
     np.save(movie[:-4]+"_viola_small_shifts", shifts)
- 
-#%% plot
-# v_big = np.load(movie[:-4]+"_viola_shifts.npy")
-# plt.plot(x_shift)
-# plt.plot(v_big[1])
-# plt.plot(y_shift)
-# plt.plot(v_big[0])
+
 #%%  plotting traces
-j=9
 movie = names[j]
 cm = np.load(movie[:-4]+"_cm_on_shifts.npy")
+# cm = np.load(cm_names[0])
 cmx, cmy = [], []
 for i in range(len(cm)):
     cmx.append(cm[i][0])
@@ -110,18 +148,24 @@ cmx = np.array(cmx).squeeze()
 cmy = np.array(cmy).squeeze()
 
 v_big = np.load(names[j][:73]+names[j][73:-4]+"_viola_full_shifts.npy").squeeze()
+# v_big = np.load(vi_names[1])
 tempx,tempy=[],[]
 for i in range(len(cm)):
-    tempx.append(v_big[i][0])
-    tempy.append(v_big[i][1])
+    tempx.append(v_big[i][0].squeeze())
+    tempy.append(v_big[i][1].squeeze())
 v_big = [tempx,tempy]
-
+plt.plot(cmx);plt.plot(v_big[0]);plt.plot(x)
+plt.plot(cmy);plt.plot(v_big[1]);plt.plot(y)
+#%%
+np.save(save_loc + f + "_vf_shifts", [x,y])
+#%%
 v_small = np.load(names[j][:73]+names[j][73:-4]+"_viola_small_shifts.npy").squeeze()
 tempx,tempy=[],[]
 for i in range(len(cm)):
     tempx.append(v_small[i][0])
     tempy.append(v_small[i][1])
 v_small = [tempx,tempy]
+#%%
 len_half = len(cm)//2
 
 plt.rcParams['pdf.fonttype']=42
