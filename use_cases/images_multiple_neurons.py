@@ -163,11 +163,12 @@ for n, idx in enumerate(idx_list):
     ax.vlines(estimates['spikes'][idx_volpy], add+1.9, add+2.2, color='black')
     ax.vlines(spikes_online, add+1.55, add+1.85, color='red')
     ax.vlines(caiman_spikes[idx_caiman], add+1.2, add+1.5, color='orange')
-
     if n<length-1:
         ax.get_xaxis().set_visible(False)
         ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False) 
+        ax.spines['top'].set_visible(False)
+        
+        
         ax.spines['bottom'].set_visible(False) 
         ax.spines['left'].set_visible(False) 
         ax.set_yticks([])

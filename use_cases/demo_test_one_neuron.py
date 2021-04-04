@@ -33,7 +33,7 @@ from viola.match_spikes import match_spikes_greedy, compute_F1
 from use_cases.test_run_viola import run_viola # must be in use_cases folder
         
 #%%
-ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron'
+ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron'
 names = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
          '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
          '456462_Cell_5_40x_1xtube_10A6', '456462_Cell_5_40x_1xtube_10A7', 
@@ -46,121 +46,186 @@ names = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
 
 frate_all = np.array([400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 400.8 , 995.02, 400.8 ,
        400.8 , 400.8 , 400.8 , 400.8 , 995.02, 995.02, 995.02, 995.02,
-       300.  , 300.  , 400.  ])
+       300.  , 300.  , 500.  ])
+
+freq_all = np.array([15]*16 + [5,5,15])
+
+init_frames_all = np.array([20000]*16 + [15000]*3)
  
-#%%
-t_range = [10000, 20000]
-num_frames_init = 20000
-border_to_0 = 2
-flip = True
-thresh_range= [3, 4]
-erosion=0 
-use_rank_one_nmf=False
-hals_movie='hp_thresh'
-semi_nmf=False
-update_bg = False
-use_spikes= False
-use_batch=True
-batch_size=100
-center_dims=None
-initialize_with_gpu=False
-do_scale = True
-adaptive_threshold=True
-filt_window=15
-    
-options = {
-    'border_to_0': border_to_0,
-    'flip': flip,
-    'num_frames_init': num_frames_init, 
-    'thresh_range': thresh_range,
-    'erosion':erosion, 
-    'use_rank_one_nmf': use_rank_one_nmf,
-    'hals_movie': hals_movie,
-    'semi_nmf':semi_nmf,  
-    'update_bg': update_bg,
-    'use_spikes':use_spikes, 
-    'use_batch':use_batch,
-    'batch_size':batch_size,
-    'initialize_with_gpu':initialize_with_gpu,
-    'do_scale': do_scale,
-    'adaptive_threshold': adaptive_threshold,
-    'filt_window': filt_window}
 
 #%%
 #select = np.array([3])
-select = np.array(range(len(names)))[:16]
+#select = np.array(range(len(names)))[:16]
+select = np.array(range(len(names)))[15:]
 
 for idx, name in enumerate(np.array(names)[select]):
+    num_frames_init = init_frames_all[select][idx]
+    border_to_0 = 0
+    flip = True
+    thresh_range= [2.8, 5.0]
+    erosion=0 
+    use_rank_one_nmf=False
+    hals_movie='hp_thresh'
+    semi_nmf=False
+    update_bg = False
+    use_spikes= False
+    use_batch=True
+    batch_size=100
+    center_dims=None
+    initialize_with_gpu=True
+    do_scale = False
+    adaptive_threshold=True
+    filt_window=9
+    minimal_thresh=2.8
+    template_window=0
+    freq = freq_all[select][idx]
+    do_plot = True
+    step = 2500
+   
+    
+    options = {
+        'border_to_0': border_to_0,
+        'flip': flip,
+        'num_frames_init': num_frames_init, 
+        'thresh_range': thresh_range,
+        'erosion':erosion, 
+        'use_rank_one_nmf': use_rank_one_nmf,
+        'hals_movie': hals_movie,
+        'semi_nmf':semi_nmf,  
+        'update_bg': update_bg,
+        'use_spikes':use_spikes, 
+        'use_batch':use_batch,
+        'batch_size':batch_size,
+        'initialize_with_gpu':initialize_with_gpu,
+        'do_scale': do_scale,
+        'adaptive_threshold': adaptive_threshold,
+        'filt_window': filt_window, 
+        'minimal_thresh': minimal_thresh,
+        'template_window':template_window,
+        'freq':freq,
+        'do_plot':do_plot, 
+        'step':step}
+
+    
     fr = np.array(frate_all)[select][idx]
-    fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')
+    fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')  # files are motion corrected before
     path_ROIs = os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5')
     run_viola(fnames, path_ROIs, fr=fr, online_gpu=True, options=options)
 
 #%%
-f1_scores = []                
-prec = []
-rec = []
-thr = []
-for name in np.array(names)[select]:
-    gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
-    dict1 = np.load(gt_path, allow_pickle=True)
-    length = dict1['v_sg'].shape[0]    
-    
-    vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
-    vi_files = sorted([file for file in os.listdir(vi_folder) if 'online_gpu_True' in file and 'bg_False' in file and 'use_spikes_False' in file])
-    print(f'files number: {len(vi_files)}')
-    vi_file = vi_files[0]
-    vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
-    
-    vi_spatial = vi.H.copy()
-    vi_temporal = vi.t_s.copy()
-    vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
-    thr.append(vi.thresh_factor[0])
-    
-    n_cells = 1
-    vi_result = {'F1':[], 'precision':[], 'recall':[]}        
-    rr = {'F1':[], 'precision':[], 'recall':[]}
-    
-    vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])
-    
-    #vi_spikes = estimates.spikes[0]
-    
-    
-    dict1_v_sp_ = dict1['v_t'][vi_spikes]
-    #v_sg.append(dict1['v_sg'])
-     
-    belong_Marton=True
-    if belong_Marton:
-        for i in range(len(dict1['sweep_time']) - 1):
-            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
-        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
-    
-    precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
-                        = metric(dict1['sweep_time'], dict1['e_sg'], 
-                              dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
-                              dict1['v_sg'], dict1_v_sp_ , 
-                              dict1['v_t'], dict1['v_sub'],save=False, belong_Marton=belong_Marton)
+modes = ['viola', 'volpy']
+#mode = modes[0]
+result = {}
+select = np.array(range(19))[:]
+for mode in modes:
+    f1_scores = []                
+    prec = []
+    rec = []
+    thr = []
+    for idx, name in enumerate(np.array(names)[select]):
+        gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+        dict1 = np.load(gt_path, allow_pickle=True)
+        length = dict1['v_sg'].shape[0]    
         
-    p = len(e_match)/len(v_spike_aligned)
-    r = len(e_match)/len(e_spike_aligned)
-    f = (2 / (1 / p + 1 / r))
-
-    f1_scores.append(f)                
-    prec.append(p)
-    rec.append(r)
+        if mode == 'viola':
+            vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
+            vi_files = sorted([file for file in os.listdir(vi_folder) if 'filt_window_9' in file])# and '24000' in file])
+            #if len(vi_files) == 0:
+            #    vi_files = sorted([file for file in os.listdir(vi_folder) if 'v2.0' in file and 'thresh_factor' in file])# and '24000' in file])
+            print(f'files number: {len(vi_files)}')
+            if len(vi_files) != 1:
+                raise Exception('file number greater than 1')
+                vi_files = [file for file in vi_files if '15000' in file]
+            vi_file = vi_files[0]
+            vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
+            
+            vi_spatial = vi.H.copy()
+            vi_temporal = vi.t_s.copy()
+            vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
+            thr.append(vi.thresh_factor[0])
+            
+            n_cells = 1
+            vi_result = {'F1':[], 'precision':[], 'recall':[]}        
+            rr = {'F1':[], 'precision':[], 'recall':[]}        
+            vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])        
+            dict1_v_sp_ = dict1['v_t'][vi_spikes]
     
+        elif mode == 'volpy':
+            v_folder = os.path.join(ROOT_FOLDER, name, 'volpy')
+            v_files = sorted([file for file in os.listdir(v_folder)])
+            print(f'files number: {len(v_files)}')
+            v_file = v_files[0]
+            v = np.load(os.path.join(v_folder, v_file), allow_pickle=True).item()
+            
+            v_spatial = v['weights'][0]
+            v_temporal = v['ts'][0]
+            v_spikes = v['spikes'][0]        
+            v_spikes = np.delete(v_spikes, np.where(v_spikes >= dict1['v_t'].shape[0])[0])
+            dict1_v_sp_ = dict1['v_t'][v_spikes]
+         
+        if 'Cell' in name:
+            for i in range(len(dict1['sweep_time']) - 1):
+                dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+        
+        precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
+                            = metric(name, dict1['sweep_time'], dict1['e_sg'], 
+                                  dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
+                                  dict1['v_sg'], dict1_v_sp_ , 
+                                  dict1['v_t'], dict1['v_sub'],init_frames=init_frames_all[select][idx], save=False)
+            
+        p = len(e_match)/len(v_spike_aligned)
+        r = len(e_match)/len(e_spike_aligned)
+        f = (2 / (1 / p + 1 / r))
+    
+        f1_scores.append(f)                
+        prec.append(p)
+        rec.append(r)
+    result[mode] = {'f1':f1_scores, 'precision':prec, 'recall':rec}
+
 #%%
 plt.plot(f1_scores);plt.plot(prec);plt.plot(rec);plt.legend(['f1','prec', 'rec','threshold'])
+plt.figure();plt.plot(result['viola']['f1']);plt.plot(result['viola']['precision']);plt.plot(result['viola']['recall']);plt.legend(['f1','prec', 'rec','threshold'])
+
 plt.plot(thr)
 print(np.array(f1_scores).mean())
 print(np.array(prec).mean())
 print(np.array(rec).mean())
 plt.bar(range(16), f1_scores)
+
 #%%
-from viola.nmf_support import normalize
-plt.figure()
-plt.plot(normalize(vi_temporal[0]))
-plt.hlines(vi.thresh[0, 0], 0, 30000)
+SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron'
+np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_9_template_window_0'), result)
+
+   
+#%%
+for idx, name in enumerate(np.array(names)[select]):
+    gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+    dict1 = np.load(gt_path, allow_pickle=True)
+    length = dict1['v_sg'].shape[0]    
+    
+    vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
+    vi_files = sorted([file for file in os.listdir(vi_folder) if 'v2.0' in file and 'thresh_factor' not in file])# and '24000' in file])
+    print(f'files number: {len(vi_files)}')
+    if len(vi_files) > 1:
+        vi_files = [file for file in vi_files if 'freq_15' in file]
+    vi_file = vi_files[0]
+    vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
+    
+    vi_spatial = vi.H.copy()
+    vi_temporal = vi.t_s.copy()
+    
+    step = 5000
+    plt.figure()
+    plt.plot(vi.t_s[0])
+    plt.title(idx)
+    for idx, tt in enumerate(vi.thresh[0]):
+        if idx == 0:
+            plt.hlines(tt, 0, 30000)
+        else:
+            plt.hlines(tt, 30000 + (idx -1) * step, 30000 + idx * step)
+            
+#%%            
     
     
 #%%
@@ -603,7 +668,8 @@ for f in ff:
 #%%
 for name in names:
     try:
-        os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
+        #os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
+        os.makedirs(os.path.join(ROOT_FOLDER, name, 'volpy'))
         print('make folder')
     except:
         print('already exist')
@@ -621,6 +687,9 @@ for folder in folders:
             shutil.move(os.path.join(GT_FOLDER, file), os.path.join(ROOT_FOLDER, folder, file))
             print(f'{os.path.join(GT_FOLDER, file)}')
             print(f'{os.path.join(ROOT_FOLDER, folder, file)}')
+            
+#%% run volpy 
+            
             
         
     
