@@ -24,9 +24,10 @@ class VIOLA(object):
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
                  center_dims=None, initialize_with_gpu=False, 
-                 window = 10000, step = 5000, detrend=True, flip=True, do_scale=False, robust_std=False, 
-                 freq=15, adaptive_threshold=True, thresh_range=[3.5, 5], mfp=0.2, 
-                 filt_window=15, do_plot=False, params={}):
+                 window = 10000, step = 5000, detrend=True, flip=True, 
+                 do_scale=False, template_window=2, robust_std=False, freq=15, adaptive_threshold=True, 
+                 thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
+                 filt_window = 15, do_plot=False, params={}):
         if params is None:
             logging.warning("Parameters are not set from violaparams")
             raise Exception('Parameters are not set')
@@ -37,12 +38,19 @@ class VIOLA(object):
         print('Now start initialization of spatial footprint')
         border = self.params.mc_nnls['border_to_0']
         mask = self.params.data['ROIs']
+        
+        if len(mask.shape) == 2:
+           mask = mask[np.newaxis,:]
         if border > 0:
             mov[:, :border, :] = mov[:, border:border + 1, :]
             mov[:, -border:, :] = mov[:, -border-1:-border, :]
             mov[:, :, :border] = mov[:, :, border:border + 1]
             mov[:, :, -border:] = mov[:, :, -border-1:-border]
         self.mov = mov
+        self.mask = mask
+        
+        if not np.all(mov.shape[1:] == mask.shape[1:]):
+            raise Exception(f'Movie shape {mov.shape} does not match with masks shape {mask.shape}')
 
         if self.params.spike['flip'] == True:
             print('Flip movie for initialization')
@@ -59,8 +67,7 @@ class VIOLA(object):
             plt.imshow(mov[0])
             plt.figure()
             plt.imshow(mask.sum(0))
-            
-        
+       
         if self.params.mc_nnls['erosion'] > 0:
             try:
                 print('erode mask')
@@ -95,7 +102,6 @@ class VIOLA(object):
             H = H/nA
             W = W*nA
         else:
-            mask_2D = to_2D(mask)
             nA = np.linalg.norm(mask_2D)
             H = mask_2D/nA
             W = (y_input.T@H.T)
@@ -103,7 +109,7 @@ class VIOLA(object):
 
         if self.params.mc_nnls['do_plot_init']:
             plt.figure();plt.imshow(H.sum(axis=0).reshape(mov.shape[1:], order='F'));
-            plt.colorbar();plt.title('Spatial masks after rank1 nmf')
+            plt.colorbar();plt.title('Spatial masks before hals')
         
         print(f'HALS')
         H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1))/y_filt.shape[1],
@@ -183,13 +189,19 @@ class VIOLA(object):
                 else:
                     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (y)[fe]])
                 trace = trace_nnls.T.copy() 
-                
+
+            if np.ndim(trace) == 1:
+                trace = trace[None, :]
             print('Extract spikes for initialization')
-            saoz = SignalAnalysisOnlineZ(thresh_range=self.params.spike['thresh_range'], 
-                                         do_scale=self.params.spike['do_scale'], 
-                                         freq=self.params.spike['freq'], detrend=self.params.spike['detrend'], 
-                                         flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
-                                         filt_window=self.params.spike['filt_window'])
+            saoz = SignalAnalysisOnlineZ(window=self.params.spike['window'], step=self.params.spike['step'],
+                                         detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
+                                         do_scale=self.params.spike['do_scale'], template_window=self.params.spike['template_window'], 
+                                         robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
+                                         frate=self.params.data['fr'], freq=self.params.spike['freq'],
+                                         thresh_range=self.params.spike['thresh_range'], minimal_thresh=self.params.spike['minimal_thresh'],
+                                         mfp=self.params.spike['mfp'], online_filter_method = self.params.spike['online_filter_method'],                                        
+                                         filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
+            
             saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
             
             if not self.params.mc_nnls['use_batch']:
@@ -216,11 +228,14 @@ class VIOLA(object):
 
         if len(trace.shape) == 1:
             trace = trace[None, :]
-        saoz = SignalAnalysisOnlineZ(thresh_range=self.params.spike['thresh_range'], 
-                                     do_scale=self.params.spike['do_scale'], 
-                                     freq=self.params.spike['freq'], detrend=self.params.spike['detrend'], 
-                                     flip=self.params.spike['flip'], adaptive_threshold = self.params.spike['adaptive_threshold'],                                     
-                                     filt_window=self.params.spike['filt_window'])
+        saoz = SignalAnalysisOnlineZ(window=self.params.spike['window'], step=self.params.spike['step'],
+                                     detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
+                                     do_scale=self.params.spike['do_scale'], template_window=self.params.spike['template_window'], 
+                                     robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
+                                     frate=self.params.data['fr'], freq=self.params.spike['freq'],
+                                     thresh_range=self.params.spike['thresh_range'], minimal_thresh=self.params.spike['minimal_thresh'],
+                                     mfp=self.params.spike['mfp'], online_filter_method = self.params.spike['online_filter_method'],                                        
+                                     filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
         saoz.fit(trace[:,:self.params.data['num_frames_init']], num_frames=self.params.data['num_frames_total'])   
         for n in range(self.params.data['num_frames_init'], trace.shape[1]):
             saoz.fit_next(trace[:, n: n+1], n)

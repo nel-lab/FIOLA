@@ -11,16 +11,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 from scipy.optimize import nnls    
-from signal_analysis_online import SignalAnalysisOnlineZ
+from viola.signal_analysis_online import SignalAnalysisOnlineZ
 from skimage import measure
 from sklearn.decomposition import NMF
 
-from caiman_functions import signal_filter, to_3D, to_2D, bin_median, play
-from F1_score_computation import compute_distances, match_spikes_linear_sum, match_spikes_greedy, compute_F1
-from metrics import metric
-from nmf_support import hals, select_masks, normalize, nmf_sequential
+from viola.caiman_functions import signal_filter, to_3D, to_2D, bin_median, play
+from viola.F1_score_computation import compute_distances, match_spikes_linear_sum, match_spikes_greedy, compute_F1
+from viola.metrics import metric
+from viola.nmf_support import hals, select_masks, normalize, normalize_piecewise, nmf_sequential
 from skimage.io import imread
-from running_statistics import OnlineFilter
+from viola.running_statistics import OnlineFilter
 import matplotlib
 matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.rcParams['ps.fonttype'] = 42

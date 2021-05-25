@@ -181,6 +181,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
 
+#%%
 def nmf_sequential(y_seq, mask, seq, small_mask=True):
     """ Use rank-1 nmf to sequentially extract neurons' spatial filters.
     
@@ -315,19 +316,45 @@ def combine_datasets(movies, masks, num_frames, x_shifts=[3,-3], y_shifts=[3,-3]
         
     return new_mov, new_masks
 
-def normalize(signal):
-    """ Normalize the signal
+def normalize(data):
+    """ Normalize the data
     Args: 
-        signal: ndarray
-            input signal
+        data: ndarray
+            input data
     
     Returns:
-        normalized signal
-        
+        data_norm: ndarray
+            normalized data        
     """
-    signal = (signal-np.percentile(signal,1, axis=0))/(np.percentile(signal,99, axis=0)-np.percentile(signal,1, axis=0))
-    signal -= np.median(signal)
-    return signal
+    data = data - np.median(data)
+    ff1 = -data * (data < 0)
+    Ns = np.sum(ff1 > 0)
+    std = np.sqrt(np.divide(np.sum(ff1**2), Ns))
+    data_norm = data/std 
+    #signal = (signal-np.percentile(signal,1, axis=0))/(np.percentile(signal,99, axis=0)-np.percentile(signal,1, axis=0))
+    #signal -= np.median(signal)
+    return data_norm
+
+def normalize_piecewise(data, step=5000):
+    """ Normalize the data every step frames
+    Args: 
+        data: ndarray
+            input data
+        step: int
+            normalize the data every step of frames separately    
+    Returns:
+        data_norm: ndarray
+            normalized data        
+    """
+    data_norm = []
+    for i in range(np.ceil(len(data)/step).astype(np.int16)):
+        if (i + 1)*step > len(data):
+            d = data[i * step:]
+        else:
+            d = data[i * step : (i + 1) * step]
+        data_norm.append(normalize(d))
+    data_norm = np.hstack(data_norm)
+    return data_norm
 
 
 

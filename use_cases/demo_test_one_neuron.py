@@ -56,10 +56,12 @@ init_frames_all = np.array([20000]*16 + [15000]*3)
 #%%
 #select = np.array([3])
 #select = np.array(range(len(names)))[:16]
-select = np.array(range(len(names)))[15:]
+select = np.array(range(len(names)))
 
 for idx, name in enumerate(np.array(names)[select]):
     num_frames_init = init_frames_all[select][idx]
+    #num_frames_init = 30000
+    
     border_to_0 = 0
     flip = True
     thresh_range= [2.8, 5.0]
@@ -75,9 +77,9 @@ for idx, name in enumerate(np.array(names)[select]):
     initialize_with_gpu=True
     do_scale = False
     adaptive_threshold=True
-    filt_window=9
+    filt_window=[8, 4]
     minimal_thresh=2.8
-    template_window=0
+    template_window=2
     freq = freq_all[select][idx]
     do_plot = True
     step = 2500
@@ -110,26 +112,38 @@ for idx, name in enumerate(np.array(names)[select]):
     fr = np.array(frate_all)[select][idx]
     fnames = os.path.join(ROOT_FOLDER, name, name+'_mc.tif')  # files are motion corrected before
     path_ROIs = os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5')
-    run_viola(fnames, path_ROIs, fr=fr, online_gpu=True, options=options)
+    
+    from skimage.io import imread
+    if '.hdf5' in fnames:
+        with h5py.File(fnames,'r') as h5:
+            mov = np.array(h5['mov'])
+    elif '.tif' in fnames:
+        mov = imread(fnames)    
+    else:
+        print('do not support this movie format')
+    print(mov.shape)
+    #run_viola(fnames, path_ROIs, fr=fr, online_gpu=True, options=options)
 
 #%%
 modes = ['viola', 'volpy']
-#mode = modes[0]
+mode = modes[0]
 result = {}
-select = np.array(range(19))[:]
+select = np.array(range(19))[16:19]
 for mode in modes:
     f1_scores = []                
     prec = []
     rec = []
     thr = []
+    spnr_all = []
     for idx, name in enumerate(np.array(names)[select]):
         gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
         dict1 = np.load(gt_path, allow_pickle=True)
-        length = dict1['v_sg'].shape[0]    
+        length = dict1['v_sg'].shape[0] 
+        print(length)
         
         if mode == 'viola':
             vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
-            vi_files = sorted([file for file in os.listdir(vi_folder) if 'filt_window_9' in file])# and '24000' in file])
+            vi_files = sorted([file for file in os.listdir(vi_folder) if 'filt_window' not in file and 'v2.1' in file])# and '24000' in file])
             #if len(vi_files) == 0:
             #    vi_files = sorted([file for file in os.listdir(vi_folder) if 'v2.0' in file and 'thresh_factor' in file])# and '24000' in file])
             print(f'files number: {len(vi_files)}')
@@ -140,7 +154,7 @@ for mode in modes:
             vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
             
             vi_spatial = vi.H.copy()
-            vi_temporal = vi.t_s.copy()
+            vi_temporal = vi.t_s.copy().flatten()
             vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
             thr.append(vi.thresh_factor[0])
             
@@ -168,10 +182,10 @@ for mode in modes:
                 dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
             dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
         
-        precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
+        precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned, spnr\
                             = metric(name, dict1['sweep_time'], dict1['e_sg'], 
                                   dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
-                                  dict1['v_sg'], dict1_v_sp_ , 
+                                  vi_temporal, dict1_v_sp_ , 
                                   dict1['v_t'], dict1['v_sub'],init_frames=init_frames_all[select][idx], save=False)
             
         p = len(e_match)/len(v_spike_aligned)
@@ -181,7 +195,8 @@ for mode in modes:
         f1_scores.append(f)                
         prec.append(p)
         rec.append(r)
-    result[mode] = {'f1':f1_scores, 'precision':prec, 'recall':rec}
+        spnr_all.append(spnr)
+    result[mode] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
 
 #%%
 plt.plot(f1_scores);plt.plot(prec);plt.plot(rec);plt.legend(['f1','prec', 'rec','threshold'])
@@ -195,9 +210,86 @@ plt.bar(range(16), f1_scores)
 
 #%%
 SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron'
-np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_9_template_window_0'), result)
+np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_15_template_window_2'), result)
 
    
+#%%
+sp = spnr_all.copy()
+len(sp)
+
+np.save(os.path.join(SAVE_FOLDER, f'viola_spnr'), spnr_all)
+
+
+#%%
+plt.plot(dict1['e_t'], dict1['e_sg'])
+plt.vlines(dict1['e_sp'], -30, 20)
+
+#%%
+plt.plot(dict1['v_t'], vi_temporal)
+plt.plot(vi.thresh[0])
+
+#%%
+plt.plot(dict1['v_t'], vi_temporal)
+plt.vlines(dict1['e_sp'], 0, np.max(vi_temporal))
+
+#%%
+plt.imshow(vi_spatial.reshape([30,30], order='F'))
+
+mm = mov.reshape([50000, 900], order='F').copy()
+ss = vi_spatial.reshape([30,30], order='F').copy()
+tt = mm[:, vi_spatial[:,0]>0]
+tt = tt.mean(1)
+plt.plot(tt)
+
+from scipy.ndimage import median_filter
+plt.figure(); plt.plot(tt);
+mm =  median_filter(tt, 15)
+plt.plot(mm)
+
+#%%
+plt.figure(); plt.plot(dict1['v_t'], normalize(-(tt - mm)))
+plt.plot(dict1['v_t'], normalize(vi_temporal))
+plt.vlines(dict1['e_sp'], 0, 15)
+
+#%%
+a = np.matmul(mm, vi_spatial)
+am = median_filter(a, 15)
+plt.plot(dict1['v_t'], normalize(-(a-am)))
+#%%
+with h5py.File('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron/456462_Cell_5_40x_1xtube_10A5/456462_Cell_5_40x_1xtube_10A5_ROI_2_neurons.hdf5','r') as h5:
+    RR = np.array(h5['mov'])
+plt.figure(); plt.imshow(RR[0])
+plt.figure(); plt.imshow(RR[1])
+
+#%%
+RR = RR.reshape([2, 900], order='F')
+t1 = mm[:, RR[0]>0].copy()
+t2 = mm[:, RR[1]>0].copy()
+t1 = t1.mean(1)
+t2 = t2.mean(1)
+
+m1 =  median_filter(t1, 15)
+m2 =  median_filter(t2, 15)
+
+#%%
+plt.figure();plt.plot(dict1['v_t'], normalize(vi.t[0]))
+plt.figure(); plt.plot(dict1['v_t'], normalize(-(tt - mm)))
+plt.figure();plt.plot(dict1['v_t'], normalize(-(t1-m1)))
+plt.figure();plt.plot(dict1['v_t'], normalize(-(t2-m2)))
+plt.vlines(dict1['e_sp'], 12, 15)
+#%%
+step = 2500
+plt.plot(vi.t_s[0])
+#plt.vlines(dict1['e_sp'], 800, 1000)
+for idx, tt in enumerate(vi.thresh[0]):
+    if idx == 0:
+        plt.hlines(tt, 0, 30000)
+    else:
+        plt.hlines(tt, 30000 + (idx -1) * step, 30000 + idx * step)
+
+#%%
+from viola.caiman_functions import play
+play(mov, magnification=3)
 #%%
 for idx, name in enumerate(np.array(names)[select]):
     gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')

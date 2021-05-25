@@ -12,24 +12,48 @@ matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot as plt
 
-#%% timing for the algorithm
-img = img.astype(np.float32)
-sao = SignalAnalysisOnline(thresh_STD=None)
-#trace = img[np.newaxis, :]
-trace = np.array([img for i in range(50)])
-sao.fit(trace[:, :20000], num_frames=100000)
-for n in range(20000, img.shape[0]):
-    sao.fit_next(trace[:, n: n+1], n)
-indexes = np.array((list(set(sao.index[0]) - set([0]))))  
+#%% Supplementary figure timing for the algorithm
+tt = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy')
+trace = tt[:50,:].copy()
+trace = np.repeat(trace, 10, axis=0)
+saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                  detrend=True, flip=True, 
+                                  frate=400, thresh_range=[2.8, 5.0], 
+                                  adaptive_threshold=True, online_filter_method='median_filter',
+                                  template_window=2, filt_window=15, minimal_thresh=2.8, mfp=0.1, step=2500, do_plot=False)
+saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
+for n in range(10000, trace.shape[1]):
+    saoz.fit_next(trace[:, n: n+1], n)
 
+tt = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy')
+trace = tt[:50,:].copy()
+trace = np.repeat(trace, 2, axis=0)
+saoz1 = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                  detrend=True, flip=True, 
+                                  frate=400, thresh_range=[2.8, 5.0], 
+                                  adaptive_threshold=True, online_filter_method='median_filter',
+                                  template_window=2, filt_window=15, minimal_thresh=2.8, mfp=0.1, step=2500, do_plot=False)
+saoz1.fit(trace[:, :10000], num_frames=trace.shape[1])
+for n in range(10000, trace.shape[1]):
+    saoz1.fit_next(trace[:, n: n+1], n)
+
+t_detect = np.array(saoz.t_detect[10000:])*1000
+t1_detect = np.array(saoz1.t_detect[10000:])*1000
 #%%    
-plt.figure()
-plt.plot(sao.t_detect, label=f'avg:{np.mean(np.array(sao.t_detect)).round(4)}s')
-plt.legend()
-plt.xlabel('# frames')
-plt.ylabel('seconds(s)')
-plt.title('timing for spike extraction algorithm 50 neurons')
-plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/sao_50neurons.pdf')
+fig, ax = plt.subplots(1,1)
+ax.plot(t_detect, label=f'500 neurons', color='orange')
+ax.plot(t1_detect, label=f'100 neurons', color='blue')
+ax.set_xlabel('# frames (10^4)')
+ax.set_ylabel('time (ms)')
+ax.legend(frameon=False)
+ax.set_xticks(np.arange(0, 70000, 10000))
+ax.set_xticklabels(['0', '1', '2', '3', '4', '5', '6'])
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.xaxis.set_tick_params(length=8)
+ax.yaxis.set_tick_params(length=8)
+#plt.title('timing for spike extraction algorithm ')
+plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_timing_spike_extraction.png')
 
 #%%
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
@@ -126,10 +150,19 @@ ax1.set_ylim([0,1])
 #ax1.set_xticks(None)
 #ax1.set_xticklabels(labels, rotation='horizontal', fontsize=5)
 #ax1.legend()
-save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
 #plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1.pdf'))
 
-#%%
+#%% Fig 5a
+names = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
+         '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
+         '456462_Cell_5_40x_1xtube_10A6', '456462_Cell_5_40x_1xtube_10A7', 
+         '462149_Cell_1_40x_1xtube_10A1', '462149_Cell_1_40x_1xtube_10A2',
+         '456462_Cell_4_40x_1xtube_10A4', '456462_Cell_6_40x_1xtube_10A10',
+         '456462_Cell_5_40x_1xtube_10A8', '456462_Cell_5_40x_1xtube_10A9', 
+         '462149_Cell_3_40x_1xtube_10A3', '466769_Cell_2_40x_1xtube_10A_6',
+         '466769_Cell_2_40x_1xtube_10A_4', '466769_Cell_3_40x_1xtube_10A_8', 
+         '09282017Fish1-1', '10052017Fish2-2', 'Mouse_Session_1']
 #save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
 labels = names
 #lists1 = [li[:13]   for li in lists]
@@ -137,15 +170,17 @@ labels = names
 
 x = np.arange(len(labels))  # the label locations
 
-width = 0.35  # the width of the bars
+width = 0.66  # the width of the bars
 
 result = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy', allow_pickle=True).item()
 viola = result['viola']['f1']
 volpy = result['volpy']['f1']
-viola1 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_9_template_window_0.npy', allow_pickle=True)
+viola1 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_2.npy', allow_pickle=True)
 viola1 = viola1.item()['viola']['f1']
+viola2 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_0.npy', allow_pickle=True)
+viola2 = viola2.item()['viola']['f1']
 
-v = np.array([viola, volpy, viola1])
+v = np.array([viola, volpy, viola1, viola2])
 v_mean = v.mean(1)
 v_std = v.std(1)
 
@@ -154,9 +189,11 @@ fig = plt.figure(figsize=(8, 6))
 gs = gridspec.GridSpec(1, 2, width_ratios=[9, 1]) 
 ax0 = plt.subplot(gs[0])
 ax1 = plt.subplot(gs[1])
-rects1 = ax0.bar(x+1 - width/2, viola, width/2, label=f'Fiola_25ms')
-rects2 = ax0.bar(x+1 , volpy, width/2, label=f'VolPy')
-rects3 = ax0.bar(x+1 + width/2, viola1, width/2, label=f'Fiola_12.5ms')
+rects1 = ax0.bar(x+1 - width/2, viola, width/4, label=f'FIOLA_25ms')
+rects2 = ax0.bar(x+1 - width/4, volpy, width/4, label=f'VolPy')
+rects3 = ax0.bar(x+1  , viola1, width/4, label=f'FIOLA_17.5ms')
+rects4 = ax0.bar(x+1 + width/4, viola2, width/4, label=f'FIOLA_12.5ms')
+
 
 # Add some text for labels, title and custom x-axis tick labels, etc.
 ax0.spines['top'].set_visible(False)
@@ -179,9 +216,10 @@ plt.tight_layout()
 
 x = np.arange(0, 1)  # the label locations
 width = 0.35  # the width of the bars
-rects1 = ax1.bar(x - width/2, v_mean[0], width/2, yerr=v_std[0], capsize=5, label=f'Fiola_25ms')
-rects2 = ax1.bar(x , v_mean[1], width/2, yerr=v_std[1], capsize=5, label=f'VolPy')
-rects3 = ax1.bar(x + width/2, v_mean[2], width/2, yerr=v_std[2], capsize=5, label=f'Fiola_12.5ms')
+rects1 = ax1.bar(x - width/2, v_mean[0], width/4, yerr=v_std[0], capsize=5, label=f'FIOLA_25ms')
+rects2 = ax1.bar(x - width/4, v_mean[1], width/4, yerr=v_std[1], capsize=5, label=f'VolPy')
+rects3 = ax1.bar(x  , v_mean[2], width/4, yerr=v_std[2], capsize=5, label=f'FIOLA_17.5ms')
+rects4 = ax1.bar(x + width/4, v_mean[3], width/4, yerr=v_std[3], capsize=5, label=f'FIOLA_12.5ms')
 
 
 ax1.spines['top'].set_visible(False)
@@ -198,8 +236,116 @@ ax1.set_ylim([0,1])
 #ax1.set_xticks(None)
 #ax1.set_xticklabels(labels, rotation='horizontal', fontsize=5)
 #ax1.legend()
-save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1_Fiola_25ms_12.5ms.pdf'))
+#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1_Fiola&VolPy_non_symm_median_1.pdf'))
+
+#%%
+
+from scipy import stats
+rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
+rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
+stats.ttest_ind(volpy,viola2,  equal_var = False)
+#%% Fig5 b
+fig, ax = plt.subplots(1, 1)
+xx = np.arange(0.2, 1.1, 0.01)
+yy = xx.copy()
+ax.plot(xx, yy, '--', color='black')
+ax.scatter(v[0], v[1], color='black')
+ax.set_xlabel('FIOLA'); ax.set_ylabel('VolPy'); 
+ax.legend(frameon=False)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.xaxis.set_tick_params(length=8)
+ax.yaxis.set_tick_params(length=8)
+ax.set_xticks([0.2, 0.4, 0.6, 0.8, 1.0])
+ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
+ax.set_ylim([0.15, 1.05])
+ax.set_xlim([0.15, 1.05])
+plt.gca().set_aspect('equal', adjustable='box')
+#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#plt.savefig(os.path.join(save_folder, 'one_neuron_f1_score.pdf'))
+
+
+#%% Fig5 c F1 vs spnr
+from sklearn.linear_model import LinearRegression
+x_test = np.arange(1, 7.1, 0.1)[:, np.newaxis]
+x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
+VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+viola_files = os.listdir(VIOLA_FOLDER)
+viola_files = [os.path.join(VIOLA_FOLDER, file) for file in viola_files if 'v2.0.npy' in file and 'spnr' in file]
+files = viola_files
+result_all = [np.load(file, allow_pickle=True) for file in files][0]
+plt.plot(x, [np.array(result).sum()/len(result) for result in result_all],  marker='.', markersize=15)
+spnr_sim = np.array([np.array(result).sum()/len(result) for result in result_all])
+
+VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+viola_files = os.listdir(VIOLA_FOLDER)
+viola_files = [os.path.join(VIOLA_FOLDER, file) for file in viola_files if 'v2.0.npy' in file and 'spnr' not in file]
+files = viola_files
+result_all = [np.load(file, allow_pickle=True) for file in files][0]
+plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in result_all], marker='.', markersize=15)    
+plt.plot(spnr_sim, F1_sim, marker='.', markersize=15, color='orange')    
+
+F1_sim = np.array([np.array(result['F1']).sum()/len(result['F1']) for result in result_all])
+
+lr = LinearRegression()
+lr.fit(spnr_sim[:, np.newaxis], F1_sim)
+y_sim = lr.predict(x_test)
+
+spnr_real = np.array(np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_15_template_window_2.npy', allow_pickle=True).item()['viola']['spnr'])
+result = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy', allow_pickle=True).item()
+F1_real = np.array(result['viola']['f1']).copy()
+
+#spnr_real = np.delete(spnr_real, 3)
+#F1_real = np.delete(F1_real, 3)
+
+lr = LinearRegression()
+lr.fit(spnr_real[:, np.newaxis], F1_real)
+
+y_real = lr.predict(x_test)
+
+from sklearn.linear_model import RANSACRegressor
+ransac = RANSACRegressor(min_samples=17, loss='squared_loss')
+ransac = RANSACRegressor()
+ransac.fit(spnr_real[:, np.newaxis], F1_real)
+y_real_ransac = ransac.predict(x_test)
+#plt.plot(x_test.flatten(), y_real)
+
+from sklearn.linear_model import HuberRegressor
+huber = HuberRegressor(alpha=0.0, epsilon=2.1)
+huber.fit(spnr_real[:, np.newaxis], F1_real)
+y_real_huber = huber.predict(x_test)
+
+from sklearn.linear_model import TheilSenRegressor
+theilsen = TheilSenRegressor()
+theilsen.fit(spnr_real[:, np.newaxis], F1_real)
+y_real_theilsen = theilsen.predict(x_test)
+
+
+
+#%%
+fig, ax = plt.subplots(1, 1)
+ax.scatter(spnr_real, F1_real, label='real data'); ax.set_xlabel('SPNR'); ax.set_ylabel('F1 score')
+ax.scatter(spnr_sim, F1_sim, color='orange', label='simulation')    
+#ax.plot(x_test.flatten(), y_real, label='real data')
+#ax.plot(x_test.flatten(), y_real_ransac, label='real data ransac')
+#ax.plot(x_test.flatten(), y_real_huber, label='real data huber')
+#ax.plot(x_test.flatten(), y_real_theilsen, label='real data theilsen')
+#ax.plot(x_test.flatten(), y_sim, label='simulation')
+ax.legend(frameon=False)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.xaxis.set_tick_params(length=8)
+ax.yaxis.set_tick_params(length=8)
+ax.set_ylim([0.1, 1])
+ax.set_xticks([2, 4, 6, 8])
+ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
+#plt.savefig(os.path.join(save_folder, 'one_neuron_spnr_vs_f1_score.pdf'))
+
+#%%
+a = np.zeros((10,10))
+a[0,0] = 1
+plt.imshow(a)
 
 #%%
 from nmf_support import normalize 
