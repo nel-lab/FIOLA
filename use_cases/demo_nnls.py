@@ -73,8 +73,9 @@ a2 = []
 for i in range(noisyC.shape[1]//2):
     fname = "image" + str(i).zfill(5) + ".tif"
     im = io.imread(os.path.join(dirname, fname))
-    a2.append(resize(im, (256, 256)))
-    # a2.append(im)
+    # a2.append(resize(im, (256, 256)))
+    a2.append(im)
+
     #a2.append(im[0:125, 125:256])    
 #%% image normalization for movie
 img_norm = np.std(a2, axis=0)
@@ -105,9 +106,12 @@ x0 = Cf[:,0].copy()[:,None]
 from viola.nnls_gpu import NNLS, compute_theta2
 from scipy.optimize import nnls
 
-Ab = H_new.astype(np.float32)
-# Ab = Ab_gt_start
-b = a2[0].reshape(-1, order='F')
+
+# Ab = H_new.astype(np.float32)
+Ab  = Ab_gt_start
+# b = a2[0].reshape(-1, order='F')
+b = b[:,0]
+
 x0 = nnls(Ab,b)[0][:,None].astype(np.float32)
 x_old, y_old = x0, x0
 AtA = Ab.T@Ab
@@ -120,12 +124,15 @@ mc0 = a2[0:1,:,:, None]
 c_th2 = compute_theta2(Ab_gt_start, n_AtA)
 n = NNLS(theta_1)
 #%%
-num_layers = 5
+# from temp_new_pipeline import get_nnls_model
+model = get_nnls_model(template, Ab_gt_start)
+#%%
+num_layers = 30
 
 nnls_out = []
 k = np.zeros_like(1)
 shifts = [0.0, 0.0]
-for i in range(a2.shape[0]):
+for i in range(500):
     mc = np.reshape(np.transpose(a2[i]), [-1])[None, :]
     (th2, shifts) = c_th2(mc, shifts)
     x_kk = n([y_old, x_old, k, th2, shifts])
@@ -137,12 +144,12 @@ for i in range(a2.shape[0]):
     y_old, x_old = x_kk[0], x_kk[1]
     nnls_out.append(y_old)
 nnls_out = np.array(nnls_out).squeeze().T
-np.save(base_folder + dataset + "/v_nnls_"+str(num_layers), nnls_out)
+# np.save(base_folder + dataset + "/v_nnls_"+str(num_layers), nnls_out)
 #%% nnls
-y = to_2D(a2)
+y = to_2D(a2[:30])
 from scipy.optimize import nnls
-H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
-
+# H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
+H_new = Ab_gt_start
 fe = slice(0,None)
 trace_nnls = np.array([nnls(H_new,fr)[0] for fr in (y)[fe]])
 trace_nnls = trace_nnls.T 
@@ -162,6 +169,7 @@ out = trace_extractor.get_traces(500)
 
 test_traces = out
 test_traces = np.array(test_traces).T.squeeze()
+
 #%% fig gen
 from scipy.stats import pearsonr
 names = []
@@ -253,3 +261,4 @@ fig,ax = plt.subplots(1)
 
 sns.boxplot(x=df["file"], y=df["Error"], hue=df["layers"], palette="viridis")
 ax.set_xticklabels(datasets)
+
