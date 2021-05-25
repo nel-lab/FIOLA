@@ -24,10 +24,10 @@ import multiprocessing as mp
 from tensorflow.python.keras import backend as K
 from caiman_functions import to_3D, to_2D
 #%% folder setup and file import
-base_folder = '/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/nnls/'
+base_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/nnls/'
 
 caiman_saved_file = base_folder+'memmap__d1_512_d2_512_d3_1_order_C_frames_1825_.hdf5'
-a2 = np.load(base_folder+"n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy")
+a2 = np.load(base_folder+"N.01.01/n.01.01._rig__d1_512_d2_512_d3_1_order_F_frames_1825_.npy")
 # a2 = io.imread(base_folder+"JG10982_171121_field3_stim_00002_00001.tif")
 # a2 = io.imread("/home/nellab/NEL-LAB Dropbox/NEL/SIMONS_HOME_FOLDER/CaImAnOld/example_movies/k56_20160608_RSM_125um_41mW_zoom2p2_00001_00034.tif")
 Y_tot = to_2D(a2).T

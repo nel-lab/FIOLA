@@ -30,14 +30,14 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 import glob
 
 #%% set folders
-calcium = True
+calcium = False
 
 if calcium:
     base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
     dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][2]
     slurm_data = base_folder + dataset + "/results_analysis_online_sensitive_SLURM_01.npz"
 else:
-    base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
+    base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
     dataset = ["/FOV1", "/FOV1_35um", "/FOV2_80um", "/FOV4_50um", "/403106_3min"][2]
     H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
     with h5py.File(base_folder + dataset + dataset + ".hdf5",'r') as h5:
@@ -173,13 +173,14 @@ test_traces = np.array(test_traces).T.squeeze()
 #%% fig gen
 from scipy.stats import pearsonr
 names = []
-base_folder = "../../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
+base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
 datasets = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"]
 bgs = [2,1,2,3,3,3,0,0,0]
 for val in datasets:
     names.append(base_folder + val)
-base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
-datasets += ["/FOV1", "/FOV2_80um", "/FOV4_50um"]
+base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
+# datasets += ["/FOV1", "/FOV2_80um", "/FOV4_50um"]
+datasets += ["/FOV1"]
 for val in datasets[6:]:
     names.append(base_folder + val)
 

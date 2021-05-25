@@ -76,7 +76,6 @@ class MotionCorrect(keras.layers.Layer):
         self.center_dims = center_dims
 
         self.shp_c_x, self.shp_c_y = (self.shp_0[0] - center_dims[0])//2, (self.shp_0[1] - center_dims[1])//2
-        # print(self.shp_c_x)
         
         self.xmin, self.ymin = self.shp_0[0]-2*ms_w, self.shp_0[1]-2*ms_h
         if self.xmin < 5 or self.ymin < 5:
@@ -103,13 +102,13 @@ class MotionCorrect(keras.layers.Layer):
         # print(fr.shape)
         # fr = tf.cast(fr[None, :, :, None], tf.float32)
         # fr =  fr[0:1,:,:,None]
-        fr = fr[0, self.shp_c_x:(self.shp_0[0]-self.shp_c_x), self.shp_c_y:(self.shp_0[1]-self.shp_c_y)][None]
+        fr_center = fr[0, self.shp_c_x:(self.shp_0[0]-self.shp_c_x), self.shp_c_y:(self.shp_0[1]-self.shp_c_y)][None]
         # fr = fr[0,128:-128,128:-128][None]
         # fr = fr[0][None]
         # print(tf.math.reduce_mean(fr))
         # fr = fr[0][None]
         # print(fr.shape, self.template_var.shape)
-        imgs_zm, imgs_var = self.normalize_image(fr, self.shp, strides=self.strides,
+        imgs_zm, imgs_var = self.normalize_image(fr_center, self.shp, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)
         denominator = tf.sqrt(self.template_var * imgs_var)
         # print(imgs_zm.shape, imgs_var.shape)

@@ -27,6 +27,7 @@ import scipy
 import glob
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
+os.environ["TF_XLA_FLAGS"]="--tf_xla_enable_xla_devices"
 
 #%% get files
 many =  True
@@ -37,7 +38,7 @@ if many:
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.hdf5')
     j = 4 # 0,2,3,4,6,9,9,-1
     movie = names[j]
-    # movie = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_1024.tif"
+    # movie = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_256.tif"
     mov = io.imread(movie)
     full = True
     print(movie)
@@ -47,7 +48,7 @@ else:
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*.hdf5')
     cm_names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*cm_on_shifts.npy') #One Neuron Tests
     vi_names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*full_shifts.npy') #One Neuron Tests
-    j=-1
+    j=-5
     movie = names[j]
     import h5py
     with h5py.File(movie, "r") as f:
@@ -70,18 +71,19 @@ template = np.load(names[j][:-4]+"_template_on.npy")
 #%%FOR ESTIMATOR TIMING
 out = [0]*(mov.shape[0])
 def generator():
-    for fr in  mov:
-        yield{"m":fr[None,:,:,None]}
+    for frame in mov:
+        # print(np.mean(frame))
+        yield{"m":frame[None,:,:,None]}
              
 def get_frs():
     dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32}, output_shapes={"m":(1,mov.shape[1],mov.shape[2],1)})
     return dataset
-  
-from FFT_MOTION import get_mc_model
+#%%  
+from FFT_MOTION import get_mc_model, MotionCorrect
 import timeit
 import time
 import tensorflow.keras as keras
-model = get_mc_model(template[:,:,None,None])
+model = get_mc_model(template[:,:,None,None], (256, 256))
 model.compile(optimizer='rmsprop', loss='mse')
 estimator = tf.keras.estimator.model_to_estimator(model)
 times = [0]*(mov.shape[0])
@@ -97,16 +99,18 @@ plt.plot(np.diff(times))
 #%%
 x=[]
 y=[]
+frs = []
 kys  = list(out[0].keys())
 for val in  out:
+    frs.append(val[kys[0]])
     x.append(np.squeeze(val[kys[1]]))
     y.append(np.squeeze(val[kys[2]]))
-
+plt.plot(x);plt.plot(cmx)
 #%%
 # f = movie[70:73]
 f = input("names: ")
 save_loc =  "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/"
-np.save(save_loc+f+"_times_1.5", np.diff(times[1:-1]))
+np.save(save_loc+f+"_times_2.0", np.diff(times[1:-1]))
 #%%
 if full:
     mc_layer = MotionCorrectTest(template, mov[0].shape, ms_h=10, ms_w=10)
@@ -137,7 +141,7 @@ else:
     np.save(movie[:-4]+"_viola_small_shifts", shifts)
 
 #%%  plotting traces
-movie = names[j]
+movie = names[4]
 cm = np.load(movie[:-4]+"_cm_on_shifts.npy")
 # cm = np.load(cm_names[0])
 cmx, cmy = [], []

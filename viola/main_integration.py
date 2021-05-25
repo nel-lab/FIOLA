@@ -42,7 +42,7 @@ except NameError:
 string = os.getcwd().split('/')
 BASE_FOLDER = os.path.join('/'+string[1], string[2], 'NEL-LAB Dropbox/NEL/Papers/')
 
-n_neurons = ['1', '2', 'many', 'test'][0]
+n_neurons = ['1', '2', 'many', 'test'][2]
 
 if n_neurons in ['1', '2']:
     movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/one_neuron/'),
@@ -96,6 +96,8 @@ elif n_neurons == 'test':
                    'viola_sim2_7.hdf5']   # non-overlapping 50 neurons
 
 #%% Choosing datasets
+movie = base_folder + dataset + dataset + ".hdf5"
+rois = base_folder + dataset + dataset + "_ROIs.hdf5"
 if n_neurons == '1':
     file_set = [5]
     name = movie_lists[file_set[0]]
@@ -118,11 +120,11 @@ elif n_neurons == '2':
        mask = np.array(h5['mov'])
 
 elif n_neurons == 'many':
-    name = movie_lists[1]
+    # name = movie_lists[1]
     frate = 400
-    with h5py.File(os.path.join(movie_folder,name[:-8], name),'r') as h5:
+    with h5py.File(movie,'r') as h5:
        mov = np.array(h5['mov'])
-    with h5py.File(os.path.join(movie_folder, name[:-8],name[:-8]+'_ROIs.hdf5'),'r') as h5:
+    with h5py.File(rois,'r') as h5:
        mask = np.array(h5['mov'])
     mask = mask.transpose([0, 2, 1])
        
@@ -134,7 +136,7 @@ elif n_neurons == 'test':
     with h5py.File(os.path.join(movie_folder, 'viola', 'ROIs_gt.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
 
-#%% Preliminary processing
+# Preliminary processing
 # Remove border pixel of the motion corrected movie
 border_pixel = 2
 mov[:, :border_pixel, :] = mov[:, border_pixel:border_pixel + 1, :]
@@ -164,8 +166,8 @@ if do_plot:
             plt.imshow(mask[i], alpha=0.5)
 # mask = mask.transpose([0,2,1])
 
-#%% Use nmf sequentially to extract all neurons in the region
-num_frames_init = 20000
+# Use nmf sequentially to extract all neurons in the region
+num_frames_init = mov.shape[0]
 use_rank_one_nmf = False
 hals_movie = ['hp_thresh', 'hp', 'orig'][0]
 hals_orig = False
@@ -192,7 +194,7 @@ else:
     H = mask_2D/nA
     W = (y_input.T@H.T)
 
-#%% Use hals to optimize masks
+# Use hals to optimize masks
 #from nmf_support import hals_init_spikes
 # to make fish work one needs semi-nmf, input is high-passed movie
 update_bg = True
@@ -214,7 +216,7 @@ if update_bg:
 # normalization will enable gpu-nnls extracting bg signal 
 H_new = H_new / norm(H_new, axis=0)
 
-
+np.save(base_folder + dataset + dataset + "_H_new_full", H_new)
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
 #np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)

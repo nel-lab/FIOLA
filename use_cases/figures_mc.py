@@ -28,9 +28,13 @@ import scipy
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 tf.keras.backend.set_floatx("float32")
+import matplotlib
+matplotlib.rcParams['pdf.fonttype'] = 42
+matplotlib.rcParams['ps.fonttype'] = 42
+import matplotlib.pyplot  as plt
 
 #%% set folders
-cal = True
+cal = False
 if cal: 
     base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
     dataset = "/N.01.01"
@@ -72,7 +76,7 @@ else:
         names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
         names.append('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/mesoscope.hdf5')
         names+=glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/*.hdf5')
-    j=2
+    j=4
     movie = names[j]
     # movie='/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/Mouse_Session_1/Mouse_Session_1.tif'
     mov = io.imread(movie)
@@ -81,14 +85,15 @@ else:
 #%%
 full = True
 # from viola.motion_correction_gpu import MotionCorrectTest, MotionCorrect
-from mc_batch import MotionCorrect
+# from mc_batch import MotionCorrect
+from FFT_MOTION import MotionCorrect
 # mask = np.ones_like(template)
 
 mov  = mov.astype(np.float32)
 # plt.imshow(template)
 # template = np.median(mov[:2000], axis=0)
 if full:
-    mc_layer = MotionCorrect(template[:,:,None,None])
+    mc_layer = MotionCorrect(template[:,:,None,None], template.shape)
 else:
     mc_layer = MotionCorrect(template, template.shape)
 #  motion correction
@@ -96,12 +101,12 @@ tempout = []
 new_mov = []
 start = timeit.default_timer()
 print(tf.executing_eagerly())
-for i in range(500):
-    fr = mc_layer(mov[i:i+5, :, :, None][None, :].astype(np.float32))
+for i in range(1000):
+    fr = mc_layer(mov[i, :, :, None][None, :].astype(np.float32))
     # fr = mc_layer(mov[i])
     tempout.append(fr[1]) #traces
     new_mov.append(timeit.default_timer()-start) #movie
-    break
+
 # print(np.mean(fr[0]))   
 # #%%
 # new_mov_t = []
@@ -208,3 +213,49 @@ mc0 = np.expand_dims(mov[0:1, :, :], axis=3)
 trace_extractor = Pipeline(model,mc0, mov)
 #%%
 out = trace_extractor.get_traces(10)
+#%% BOX AND WHISKER PLOTS
+import seaborn as sns
+import pandas as pd
+import  glob
+sns.set_theme(style="whitegrid")
+crops = glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/*2.0.npy")
+crops += sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/k53_1024*_times.npy"))
+crops += glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/*1.0.npy")
+crops += sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/k53_512*_times.npy"))
+data  = {}
+flat_data = []
+for crop in crops:
+    data[crop[69:-4]] = 1/(np.load(crop))
+    flat_data.append(np.load(crop))
+# df = pd.DataFrame(data)
+# df = pd.melt(df)
+# sns.boxplot(x="variable",y="value", data=df)
+# sns.stripplot(x="variable",y="value", data=df)
+
+# plt.boxplot(x=flat_data)
+
+import matplotlib.cbook as cbook
+stats = {}
+# labels = ["512"]
+count=0
+for key in data.keys():
+    stats[key] = cbook.boxplot_stats(data[key], labels=str(count))[0]
+    stats[key]["q1"], stats[key]["q3"] = np.percentile(data[key], [5,95])
+    stats[key]["whishi"] = stats[key]["q3"] + 1.5*(stats[key]["q3"]-stats[key]["q1"])
+    stats[key]["whislo"] = stats[key]["q1"] - 1.5*(stats[key]["q3"]-stats[key]["q1"])
+    outliers = []
+    for val in stats[key]["fliers"]:
+        if val >= stats[key]['whishi']  or val <= stats[key]["whislo"]:
+            outliers.append(val)
+    stats[key]["fliers"] = outliers
+    count +=1
+
+colors =  ["green", "green",  "green","coral", "coral", "coral"]
+fig, ax=plt.subplots(1,1)
+bplot = ax.bxp(stats.values(),  positions=range(6),  patch_artist=True)
+for patch, color in zip(bplot["boxes"], colors):
+    print(color)
+    patch.set_facecolor(color)
+
+    
+
