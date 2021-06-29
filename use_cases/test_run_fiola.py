@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu Dec 17 14:01:46 2020
-viola simulation
+fiola simulation
 @author: @caichangjia
 """
 import glob
@@ -12,16 +12,14 @@ import numpy as np
 import os
 from time import time, sleep
 from threading import Thread
-
-from viola.nmf_support import normalize
-from viola.violaparams import violaparams
-from viola.viola import VIOLA
+from fiola.fiolaparams import fiolaparams
+from fiola.fiola import FIOLA
+from fiola.utilities import match_spikes_greedy, normalize, compute_F1
 import scipy.io
 from skimage.io import imread
-from viola.match_spikes import match_spikes_greedy, compute_F1
 
 #%%
-def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
+def run_fiola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
     # Load movie and ROIs
     file_dir = os.path.split(fnames)[0]
     if '.hdf5' in fnames:
@@ -48,7 +46,7 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
         'ROIs': ROIs,
         'num_frames_total': num_frames_total}
 
-    opts = violaparams(params_dict=opts_dict)
+    opts = fiolaparams(params_dict=opts_dict)
     
     if options is not None:
         print('using external options')
@@ -62,7 +60,7 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
     print(f'Number of frames for initialization: {opts.data["num_frames_init"]}')    
     print(f'Total Number of frames for processing: {opts.data["num_frames_total"]}')
     sleep(5)
-    vio = VIOLA(params=opts)
+    vio = FIOLA(params=opts)
     vio.fit(mov[:opts.data['num_frames_init']])
     
     #%% process online
@@ -98,14 +96,14 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
     #print(vio.saoz.thresh_factor)
     
     #%% save
-    save_name = f'viola_result_online_gpu_{online_gpu}_init_{opts.data["num_frames_init"]}' \
+    save_name = f'fiola_result_online_gpu_{online_gpu}_init_{opts.data["num_frames_init"]}' \
         f'_bg_{opts.mc_nnls["update_bg"]}_use_spikes_{opts.mc_nnls["use_spikes"]}' \
         f'_hals_movie_{opts.mc_nnls["hals_movie"]}_semi_nmf_{opts.mc_nnls["semi_nmf"]}' \
         f'_adaptive_threshold_{opts.spike["adaptive_threshold"]}' \
         f'_do_scale_{opts.spike["do_scale"]}_freq_{opts.spike["freq"]}'\
         f'_filt_window_{opts.spike["filt_window"]}_minimal_thresh_{opts.spike["minimal_thresh"]}'\
         f'_template_window_{opts.spike["template_window"]}_v2.1'
-    #np.save(os.path.join(file_dir, 'viola', save_name), vio.estimates)
+    #np.save(os.path.join(file_dir, 'fiola', save_name), vio.estimates)
     
     log_files = glob.glob('*_LOG_*')
     for log_file in log_files:

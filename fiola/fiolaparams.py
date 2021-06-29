@@ -1,15 +1,15 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 16 10:30:42 2020
-Parameters for online analysis of voltage imaging data.
+Parameters for online analysis of fluorescence (calcium/voltage) imaging data.
 @author: @agiovann, @caichangjia, @cynthia
 """
 
 import logging
 import numpy as np
 
-class violaparams(object):
+class fiolaparams(object):
     def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
                  border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
@@ -19,10 +19,10 @@ class violaparams(object):
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, params_dict={}):
-        """Class for setting parameters for voltage imaging. Including parameters for the data, motion correction and
+        """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
-        params_dict when initializing the CNMFParams object.
+        params_dict when initializing the fiolaparams object.
         """
         self.data = {
             'fnames': fnames, # name of the movie, only memory map file for spike detection

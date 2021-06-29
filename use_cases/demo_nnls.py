@@ -33,15 +33,15 @@ import glob
 calcium = False
 
 if calcium:
-    base_folder = "/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
-    dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][2]
+    base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
+    dataset = ["/N.00.00", "/N.01.01", "/N.02.00", "/N.03.00.t", "/N.04.00.t", "/YST"][1]
     slurm_data = base_folder + dataset + "/results_analysis_online_sensitive_SLURM_01.npz"
 else:
     base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data"
     dataset = ["/FOV1", "/FOV1_35um", "/FOV2_80um", "/FOV4_50um", "/403106_3min"][2]
     H_new = np.load(base_folder + dataset + dataset + "_H_new.npy")
-    with h5py.File(base_folder + dataset + dataset + ".hdf5",'r') as h5:
-       a2 = np.array(h5['mov'])       
+    # with h5py.File(base_folder + dataset + dataset + ".hdf5",'r') as h5:
+        # a2 = np.array(h5['mov'])       
 
 #%% get ground truth data
 with np.load(slurm_data, allow_pickle=True) as ld:
@@ -83,7 +83,7 @@ img_norm += np.median(img_norm)
 a2 = a2/img_norm[None, :, :]
 #a2 = to_2D(np.asarray(Y_tot)).T
 #%% one-time calculations and template
-# template = np.median(a2[:len(a2)//2], axis=0) # template created w/ first half
+template = np.median(a2[:len(a2)//2], axis=0) # template created w/ first half
 #f, Y =  f_full[:, 0][:, None], Y_tot[:, 0][:, None]
 #YrA = YrA_full[:, 0][:, None]
 # YrA = 
@@ -107,10 +107,11 @@ from viola.nnls_gpu import NNLS, compute_theta2
 from scipy.optimize import nnls
 
 
-# Ab = H_new.astype(np.float32)
-Ab  = Ab_gt_start
-# b = a2[0].reshape(-1, order='F')
-b = b[:,0]
+Ab = H_new.astype(np.float32)
+# Ab  = Ab_gt_start
+b = a2[0].reshape(-1, order='F')
+# b = b[:,0]
+# b = H_new[]
 
 x0 = nnls(Ab,b)[0][:,None].astype(np.float32)
 x_old, y_old = x0, x0
@@ -165,9 +166,9 @@ a2 = np.asarray(a2)
 mc0 = np.expand_dims(a2[0:1, :, :], axis=3)
 trace_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, a2)
 #%%
-out = trace_extractor.get_traces(500)
+out = trace_extractor.get_traces(20000)
 
-test_traces = out
+test_traces = out[0]
 test_traces = np.array(test_traces).T.squeeze()
 
 #%% fig gen

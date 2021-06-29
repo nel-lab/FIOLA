@@ -13,6 +13,7 @@ matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import scipy.io
 import sys
 from time import time, sleep
 from threading import Thread
@@ -26,14 +27,12 @@ try:
 except NameError:
     pass
 #%%
-from viola.nmf_support import normalize, normalize_piecewise
-from viola.violaparams import violaparams
-from viola.viola import VIOLA
-import scipy.io
-from viola.match_spikes import match_spikes_greedy, compute_F1
-#sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
-#sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/VIOLA'))
-from use_cases.test_run_viola import run_viola # must be in use_cases folder
+from fiola.fiolaparams import fiolaparams
+from fiola.fiola import FIOLA
+from fiola.utilities import normalize, normalize_piecewise, match_spikes_greedy, compute_F1
+#sys.path.append('/home/nel/Code/NEL_LAB/fiola/use_cases')
+#sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/fiola'))
+from use_cases.test_run_fiola import run_fiola # must be in use_cases folder
 
 #%%
 mode = ['overlapping', 'non_overlapping', 'positron'][0]
@@ -43,7 +42,7 @@ dropbox_folder = '/home/nel/NEL-LAB Dropbox/'
 if mode == 'overlapping':
     ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/data/voltage_data/simulation/overlapping'
     SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/overlapping'
-    names = [f'viola_sim3_{i}' for i in range(1, 19)]
+    names = [f'viola_sim3_{i}' for i in range(1, 2)]
 elif mode == 'non_overlapping':
     ROOT_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping'
     SAVE_FOLDER = dropbox_folder+'NEL/Papers/VolPy_online/result/test_simulations/non_overlapping'
@@ -104,7 +103,7 @@ for name in names:
     print(f'NOW PROCESSING: {fnames}')
     path_ROIs = os.path.join(ROOT_FOLDER, name, 'viola', 'ROIs_gt.hdf5')
     
-    run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=options)
+    run_fiola(fnames, path_ROIs, fr=400, online_gpu=True, options=options)
     
 #%% Non overlapping
 for idx, dist in enumerate(distance):

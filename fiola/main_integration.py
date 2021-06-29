@@ -15,17 +15,12 @@ import numpy as np
 from numpy.linalg import norm
 import os
 from scipy.optimize import nnls    
-from viola.signal_analysis_online import SignalAnalysisOnlineZ
+from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from skimage import measure
 from sklearn.decomposition import NMF
 
-from viola.caiman_functions import signal_filter, to_3D, to_2D, bin_median
-from viola.metrics import metric
-from viola.nmf_support import hals, select_masks, normalize, nmf_sequential
-from skimage.io import imread
-from viola.running_statistics import OnlineFilter
-from viola.match_spikes import match_spikes_greedy, compute_F1
-
+from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, select_masks, normalize, nmf_sequential, OnlineFilter, match_spikes_greedy, compute_F1
+from fiola.metrics import metric
 from time import time
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
@@ -88,7 +83,7 @@ elif n_neurons == 'test':
                     os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_5'),
                     os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_18'),
                     os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim2_7'),
-                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_7')][6]
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_7')][0]
     movie_lists = ['viola_sim3_1.hdf5',
                    'viola_sim3_2.hdf5',
                    'viola_sim3_3.hdf5',
@@ -98,8 +93,8 @@ elif n_neurons == 'test':
                    'viola_sim5_7.hdf5']   # non-overlapping 50 neurons
 
 #%% Choosing datasets
-movie = base_folder + dataset + dataset + ".hdf5"
-rois = base_folder + dataset + dataset + "_ROIs.hdf5"
+#movie = base_folder + dataset + dataset + ".hdf5"
+#rois = base_folder + dataset + dataset + "_ROIs.hdf5"
 if n_neurons == '1':
     file_set = [-3]
     name = movie_lists[file_set[0]]
@@ -131,7 +126,7 @@ elif n_neurons == 'many':
     #mask = mask.transpose([0, 2, 1])
        
 elif n_neurons == 'test':
-    name = movie_lists[6]
+    name = movie_lists[0]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
@@ -242,7 +237,7 @@ if use_GPU:
     center_dims =(template.shape[0], template.shape[1])
     #center_dims =(128, 128)
     if not use_batch:
-        from viola.pipeline_gpu import Pipeline, get_model
+        from fiola.pipeline_gpu import Pipeline, get_model
         b = mov[0].reshape(-1, order='F')
         x0 = nnls(Ab,b)[0][:,None]
         AtA = Ab.T@Ab
@@ -272,7 +267,7 @@ if use_GPU:
         n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
         theta_2 = (Atb/n_AtA).astype(np.float32)
 
-        from viola.batch_gpu import Pipeline, get_model
+        from fiola.batch_gpu import Pipeline, get_model
         model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)
         model_batch.compile(optimizer = 'rmsprop',loss='mse')
         mc0 = mov_in[0:batch_size, :, :, None][None, :]

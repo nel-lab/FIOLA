@@ -12,8 +12,8 @@ import tensorflow as tf
 import tensorflow.keras as keras
 from threading import Thread
 import numpy as np
-from FFT_MOTION import MotionCorrect
-from .nnls_gpu import NNLS, compute_theta2
+from fiola.FFT_MOTION import MotionCorrect
+from fiola.nnls_gpu import NNLS, compute_theta2
 from queue import Queue
 import timeit
 import time

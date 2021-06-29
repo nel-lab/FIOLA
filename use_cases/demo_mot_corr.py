@@ -34,9 +34,10 @@ many =  True
 names = []
 if many:
     names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
+    names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*.tif')
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*.hdf5')
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.hdf5')
-    j = 4 # 0,2,3,4,6,9,9,-1
+    j = 9 # 0,2,3,4,6,9,9,-1
     movie = names[j]
     # movie = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_256.tif"
     mov = io.imread(movie)
@@ -50,6 +51,7 @@ else:
     vi_names = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*full_shifts.npy') #One Neuron Tests
     j=-5
     movie = names[j]
+    # movie="/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/nnls/FOV4_50um_ROIs.hdf5"
     import h5py
     with h5py.File(movie, "r") as f:
         print("Keys: %s" % f.keys())
@@ -62,12 +64,70 @@ else:
 # full=True
 # motion correct layer setup
 # from viola.motion_correction_gpu import MotionCorrectTest
-template = np.load(names[j][:-4]+"_template_on.npy")
+# template = np.load(names[j][:-4]+"_template_on.npy")
+template = np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001_template_on.npy")
 # template = np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/1MP_SIMPLE_Stephan__001_001_template_on.npy")
 # template =  np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/FOV1_35um/FOV1_35um._template_on.npy")
 # template = np.transpose(template)
 #template = temp
 # template = np.median(mov[:2000], axis=0)
+#%%
+shifts = sorted(glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*_viola_full_shifts.npy'))[1:]
+shifts += sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*_viola_full_shifts.npy"))
+rshifts = sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*_viola_small_shifts.npy"))[1:]
+rshifts += sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*_viola_small_shifts.npy"))
+cshifts = sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*_cm_on_shifts.npy"))
+cshifts += sorted(glob.glob("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*cm_on_shifts.npy"))
+outx = np.array([])
+outy = np.array([])
+cmx = np.array([])
+cmy = np.array([])
+
+for c,s,r in zip(cshifts, shifts, rshifts):
+    t = np.load(r)
+    x_shift = []
+    y_shift = []
+    for i in range(len(t)):
+        x_shift.append(t[i][0])
+        y_shift.append(t[i][1])
+    x_shift = np.array(x_shift).squeeze()
+    y_shift = np.array(y_shift).squeeze()
+    outx=np.append(outx, x_shift)
+    outy=np.append(outy,  y_shift)
+    
+    tc = np.load(r)
+    x_shiftc = []
+    y_shiftc = []
+    for i in range(len(tc)):
+        x_shiftc.append(tc[i][0])
+        y_shiftc.append(tc[i][1])
+    x_shiftc = np.array(x_shiftc).squeeze()
+    y_shiftc = np.array(y_shiftc).squeeze()
+    
+    cm = np.load(c).squeeze()
+    tempx1, tempy1 = [], []
+    for i in range(len(cm)):
+        tempx1.append(cm[i][0])
+        tempy1.append(cm[i][1])
+        
+    cmx=np.append(cmx, tempx1)
+    cmy=np.append(cmy, tempy1)
+    
+
+    
+    print(s)
+    print(c)
+    print("stdx", np.std(x_shift-tempx1))
+    print("stdy", np.std(y_shift-tempy1))
+    # out[s] = [np.std(x_shift-tempx1), np.std(y_shift-tempy1)]
+    # out[r] = [np.std(x_shiftc-tempx1), np.std(y_shiftc-tempy1)] 
+    print()
+#%%
+print(s)
+print("stdx", np.std(abs(outx-cmx)))
+print("stdy", np.std(abs(outy-cmy)))
+print("meanx", np.mean(abs(outx-cmx)))
+print("meany", np.mean(abs(outy-cmy)))
 #%%FOR ESTIMATOR TIMING
 out = [0]*(mov.shape[0])
 def generator():
@@ -93,7 +153,7 @@ for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
     out[curr]=i
     times[curr]=time.time()-start
     curr += 1
-    # break
+    break
 print(timeit.default_timer()-start)
 plt.plot(np.diff(times))
 #%%

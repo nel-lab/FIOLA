@@ -13,19 +13,20 @@ import tensorflow.keras as keras
 import tensorflow_addons as tfa
 import timeit
 import os
-from viola.image_warp_3d import trilinear_interpolate_tf,  dense_image_warp_3D
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)       
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR) 
+os.environ["TF_XLA_FLAGS"]="--tf_xla_enable_xla_devices" 
+#%%
+from viola.image_warp_3d import trilinear_interpolate_tf,  dense_image_warp_3D     
 #%%
 class MotionCorrect(keras.layers.Layer):
-    def __init__(self, template, ms_h=10, ms_w=10, ms_d=2, strides=[1,1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
+    def __init__(self, template, ms_h=10, ms_w=10, ms_d=10, strides=[1,1,1,1,1], padding='VALID', epsilon=0.00000001, **kwargs):
         
         super().__init__(**kwargs)
         
         self.ms_h = ms_h
         self.ms_w = ms_w
         self.ms_d = ms_d
-    
         
         self.strides = strides
         self.padding = padding
@@ -33,13 +34,18 @@ class MotionCorrect(keras.layers.Layer):
         
         self.template = template
         self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
+        # print(self.template_var.shape, self.template_zm.shape, "tempvar\n")
+        # plt.imshow(self.template_zm[:,:,0, 0,0])
         
         self.shp = self.template.shape
         self.shp_prod = tf.cast(tf.reduce_prod(self.shp), tf.float32)
 
         self.shp_m_x, self.shp_m_y, self.shp_m_z = self.shp[0]//2, self.shp[1]//2, self.shp[2]//2
                 
-        self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[:,:,:,0], tf.complex128))
+        self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[None, :,:,:,0,0], tf.complex128))[0,:,:,:, None]
+        
+        # plt.imshow(self.template_zm[:,:,5,0,0])
+        plt.imshow(tf.cast(self.target_freq, dtype=tf.float32)[:,:,0])
         
         nshape = tf.cast(tf.shape(self.target_freq), dtype=tf.float32)
         self.nc = nshape[0]
@@ -53,52 +59,62 @@ class MotionCorrect(keras.layers.Layer):
        
     # @tf.function
     def call(self, fr):
-        # print(fr.shape)
-        # fr = tf.cast(fr[None, :, :, None], tf.float32)
-        # fr =  fr[0:1,:,:,None]
         fr = fr[0][None]
-        # print(fr.shape, self.template_var.shape)
         imgs_zm, imgs_var = self.normalize_image(fr, self.shp, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)
-        
         denominator = tf.sqrt(self.template_var * imgs_var)
-        # print(imgs_zm.shape, imgs_var.shape)
-
+        
+        self.imgs_zm = imgs_zm
+        
         fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:,0], tf.complex128))[0,:,:,:,None]
+        
+        self.fr_freq = fr_freq
+        
         img_product = fr_freq *  tf.math.conj(self.target_freq)
+        #return  fr_freq, self.target_freq
+        plt.imshow(tf.cast(img_product, dtype=tf.float32)[:,:,0])
+        
+        self.img_product = img_product
 
-        cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)[None]
-        # print(cross_correlation.shape, img_product.shape, self.shp_m_x)
-        # print(self.shp_m_x, self.shp_m_y)
+        cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product[None,:,:,:,0])), tf.float32)[:, :, :, :, None]
+        
+        self.corr = cross_correlation
         rolled_cc =  tf.roll(cross_correlation,(self.shp_m_x,self.shp_m_y,self.shp_m_z), axis=(1,2,3))
         
-        # print(rolled_cc.shape, denominator.shape,"roll")
+        print(rolled_cc.shape, denominator.shape,"roll\n")
         # ncc = rolled_cc[:,self.shp_m_x-self.ms_w:self.shp_m_x+self.ms_w+1, self.shp_m_y-self.ms_h:self.shp_m_y+self.ms_h+1]/denominator
         ncc = rolled_cc[:,self.shp_m_x-self.ms_w:self.shp_m_x+self.ms_w+1, self.shp_m_y-self.ms_h:self.shp_m_y+self.ms_h+1, self.shp_m_z-self.ms_d:self.shp_m_z+self.ms_d+1]/denominator
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
+        # plt.imshow(ncc[0,:,:,10,0])
+        # return ncc
+        
+        self.ncc = ncc
 
         sh_x, sh_y, sh_z = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w, self.ms_d)
         # print(sh_x, sh_y)
-        return sh_x, sh_y, sh_z, rolled_cc, ncc
+        print(sh_x)
+        #return sh_x, sh_y, sh_z, cross_correlation, ncc, denominator
         # print(fr_freq.shape,  fr_freq.dtype)
-        fr_corrected = self.apply_shifts_dft_tf(src_freq=fr_freq, shifts=[sh_x,sh_y,sh_z])
+        fr_corrected = self.apply_shifts_dft_tf(src_freq=fr_freq, shifts=[-sh_x,-sh_y,-sh_z])
         
         # print(tf.math.reduce_sum(fr_corrected))
         # print(sh_x)
         # return tf.reshape(tf.transpose(tf.squeeze(fr_corrected)), [-1])[None, :]
-        print(sh_x,sh_y,sh_z)
+        # print(sh_x,sh_y,sh_z)
         return tf.transpose(tf.squeeze(fr_corrected))
     
     def normalize_template(self, template, epsilon=0.00000001):
         # remove mean and divide by std
         template_zm = template - tf.reduce_mean(template, axis=[0,1,2], keepdims=True)
         template_var = tf.reduce_sum(tf.square(template_zm), axis=[0,1,2], keepdims=True) + epsilon
+        print(template_zm.shape, "zmt")
         # print(template.shape,tf.reduce_mean(template, axis=[0,1,2], keepdims=True).shape)
         return template_zm, template_var
         
     def normalize_image(self, imgs, shape_template, strides=[1,1,1,1,1], padding='VALID', epsilon=0.00000001):
         # remove mean and standardize so that normalized cross correlation can be computed
         imgs_zm = imgs - tf.reduce_mean(imgs, axis=[1,2,3], keepdims=True)
+        print(imgs_zm.shape, "it")
         img_stack = tf.stack([imgs[:,:,:,:,0], tf.square(imgs)[:,:,:,:,0]], axis=4)
         # print(img_stack.shape)
 
@@ -131,7 +147,7 @@ class MotionCorrect(keras.layers.Layer):
 
         # shifts_int_cast = tf.cast(shifts_int,tf.int64)
         sh_x, sh_y, sh_z = shifts_int[0],shifts_int[1],shifts_int[2]
-        print(sh_x,sh_y,sh_z,  ncc.shape)
+        # print(sh_x,sh_y,sh_z,  ncc.shape)
         # tf.print(timeit.default_timer() - st, "shifts")
         
         sh_x_n = tf.cast(-(sh_x - ms_h), tf.float32)
@@ -139,6 +155,7 @@ class MotionCorrect(keras.layers.Layer):
         sh_z_n = tf.cast(-(sh_z - ms_d), tf.float32)
         
         ncc_log = tf.math.log(ncc)
+        # print(ncc_log.shape, sh_x, sh_y, sh_z, "indx\n")
 
         n_batches = np.arange(1)
 
@@ -153,6 +170,7 @@ class MotionCorrect(keras.layers.Layer):
         idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0), tf.squeeze(sh_z-1, axis=0)]))
         log_x_y_zm1 =  tf.gather_nd(ncc_log, idx)
         idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0), tf.squeeze(sh_z+1, axis=0)]))
+        # print(idx)
         log_x_y_zp1 =  tf.gather_nd(ncc_log, idx)
         idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0),  tf.squeeze(sh_z, axis=0)]))
         six_log_xyz = 6 * tf.gather_nd(ncc_log, idx)
@@ -168,7 +186,7 @@ class MotionCorrect(keras.layers.Layer):
         sh_x_n = sh_x_n - tf.math.truediv((log_xm1_y_z - log_xp1_y_z), (2 * log_xm1_y_z - six_log_xyz + 2 * log_xp1_y_z))
         sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1_z - log_x_yp1_z), (2 * log_x_ym1_z - six_log_xyz + 2 * log_x_yp1_z))
         sh_z_n = sh_z_n - tf.math.truediv((log_x_y_zm1 - log_x_y_zp1), (2 * log_x_y_zm1 - six_log_xyz + 2 * log_x_y_zp1))
-
+        print(sh_x_n, "x\n")
         return tf.reshape(sh_x_n, [1, 1]), tf.reshape(sh_y_n, [1, 1]),  tf.reshape(sh_z_n, [1, 1])
     
     def argmax_3d(self, tensor):
@@ -180,13 +198,14 @@ class MotionCorrect(keras.layers.Layer):
         argmax= tf.cast(tf.argmax(flat_tensor, axis=1), tf.int32)
         # convert indexes into 3D coordinates
         shp = tf.shape(tensor)
-        yz_flat = shp[2]*shp[3]
-        
-        argmax_x = argmax // yz_flat  
-        argmax_y = (argmax % yz_flat) // shp[3]
-        argmax_z = argmax - argmax_x*yz_flat - shp[3]*argmax_y
+        yz_flat = shp[1]*shp[2]
+
+        argmax_x = argmax // yz_flat 
+
+        argmax_y = (argmax % yz_flat) // shp[2]
+        argmax_z = argmax - argmax_x*yz_flat - shp[2]*argmax_y
         # stack and return 2D coordinates
-        # print(argmax_x, argmax_y, argmax_z, argmax)
+        print(argmax_x, argmax_y, argmax_z, argmax, "argmax\n")
         return (argmax_x, argmax_y, argmax_z)
     
     # @tf.function
@@ -227,16 +246,38 @@ import math
 #     a_group_key = list(f.keys())[0]
 #     mov = np.array(f['mov'])
 # #%%    
-mov = np.zeros((4, 50, 50, 5)).astype(np.float32)
+mov = np.zeros((4, 50, 50, 50)).astype(np.float32).astype(np.float32)
+#mov = mov + (np.random.rand(4, 50, 50, 50)-0.5)/3
+mov = mov.astype(np.float32)
+# mov = np.random.uniform(low=0.0, high=1.0, size=(4,50,50,50))
 
 for i in range(mov.shape[0]):
-    spot = (5)//2
-    mov[i][spot:spot+10,spot:spot+10,0:2] = 20.0
-template = mov[0]
-mov[1] = np.roll(a=mov[1], shift=(2,3,1), axis=(0,1,2))
-mov[2] = np.roll(a=mov[2], shift=(2,3), axis=(0,1))
+    spot = 5
+    mov[i][spot-2:spot+2,spot-2:spot+2,spot-2:spot+2] = 20.0
+template = mov[0].copy()
+mov[1] = np.roll(a=mov[1], shift=(1,3,2), axis=(0,1,2))
+mov[2] = np.roll(a=mov[2], shift=(3,3), axis=(0,1))
 mov[3] = np.roll(a=mov[3], shift=(-2,-3), axis=(0,1))
-data = np.expand_dims(mov, axis=4)[None, :]
+data = np.expand_dims(mov, axis=4)[None, :]#.astype(np.double)  # batch size, time, x, y, z, channel
+
+#%%
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt
+import numpy as np
+
+i = 1
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+x, y, z = np.where(mov[i]>0)
+c = np.ones(x.shape)
+img = ax.scatter(x, y, z, c=c, cmap=plt.hot())
+ax.set_xlim([0, 50])
+ax.set_ylim([0, 50])
+ax.set_zlim([0, 50])
+#fig.colorbar(img)
+plt.show()#%%
+
 #%%
 mc_layer = MotionCorrect(template[:,:,:,None,None])
 import time
@@ -244,19 +285,102 @@ st = time.time()
 times = []
 nccs = []
 for i in range(mov.shape[0]):
-    ncc = mc_layer(data[:,1])
+    ncc = mc_layer(data[:,3])
     times.append(time.time()-st)
     # nccs.append(np.array(ncc).squeeze())
     break
+# print(time.time()-st)
+#fr_corrected = ncc
+#coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
+#tensor = np.squeeze(ncc[-1])  # template frequency
+#cc = np.squeeze(ncc[-2])    # frame frequency
+#print(coords)
+#xx = fr_corrected.numpy()
+#np.where(xx == xx.max())
+np.where(mc_layer.ncc.numpy()==mc_layer.ncc.numpy().max())
+#np.where(ncc == ncc.max())
+ii = 6
+plt.imshow(template[:,:,ii])
+plt.imshow(mov[3][:,:,ii])
+plt.imshow(ncc.numpy()[:,:,ii])
 
-print(time.time()-st)
-coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
-tensor = ncc[-1]
-print(coords)
+#%%
+from numpy.fft import fftn, ifftn
+mc_layer.template_zm.shape
+mc_layer.target_freq.shape
+mc_layer.imgs_zm.shape
+#self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[:,:,:,:,0], tf.complex128))
+
+fft_np = fftn(mc_layer.template_zm[:,:,:,:,0].numpy().copy())
+print(fft_np.mean())
+
+imgs_zm = mc_layer.imgs_zm.numpy().copy()
+fft_np1 = fftn(mc_layer.imgs_zm[:,:,:,:,0].numpy().copy())[0,:,:,:,None]
+print(fft_np1.mean())
+
+product_np = np.conj(fft_np) * fft_np1
+corr_np = np.abs(ifftn(product_np))
+print(np.where(corr_np ==corr_np.max()))
+
+#%%
+fft_tf = tf.signal.fft3d(tf.cast(mc_layer.template_zm[None,:,:,:,0,0], tf.complex128))
+tf.shape(fft_tf)
+print(fft_tf.numpy().mean())
+
+fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:, 0], tf.complex128))
+tf.shape(fr_freq)
+print(fr_freq.numpy().mean())
+
+img_product = fr_freq *  tf.math.conj(fft_tf)
+
+corr_tf = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)[None].numpy()
+print(np.where(corr_tf ==corr_tf.max()))
+
+#%%
+cc = mc_layer.corr.numpy().copy()
+print(np.where(cc ==cc.max()))
+
+#%%
+mm = ncc[-2].numpy()
+np.where(mm == mm.max())
+
+#%%
+mc_layer.template_zm.numpy().mean()
+mc_layer.imgs_zm.numpy().mean()
+
+
+
+img_product = fr_freq *  tf.math.conj(self.target_freq)
+#return  fr_freq, self.target_freq
+plt.imshow(tf.cast(img_product, dtype=tf.float32)[:,:,0])
+
+cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)[None]
+
+fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:,0], tf.complex128))[0,:,:,:,None]
+
 #%%
 img_stack = tf.stack([data[:,:,:,:,0], tf.square(data)[:,:,:,:,0]], axis=4)
 print(img_stack.shape)
 
 localsum_stack = tf.nn.avg_pool3d(img_stack,[1,template.shape[0]-20, template.shape[1]-2*10, template.shape[2]-4, 1], 
                                   padding="VALID", strides=[1,1,1,1,1])
+#%%
+tensor  = mov[0,:50,:28,:30,None]
+        # extract peaks from 3D tensor (takes batches as input too)
+
+        # flatten the Tensor along the height and width axes
+flat_tensor = tf.reshape(tensor, (1, tensor.shape[-4]*tensor.shape[-3]*tensor.shape[-2], 1))
+
+argmax= tf.cast(tf.argmax(flat_tensor, axis=1), tf.int32)
+# convert indexes into 3D coordinates
+shp = tf.shape(tensor)
+yz_flat = shp[1]*shp[2]
+
+argmax_x = argmax // yz_flat 
+print(yz_flat)
+argmax_y = (argmax % yz_flat) // shp[2]
+argmax_z = argmax - argmax_x*yz_flat - shp[2]*argmax_y
+# stack and return 2D coordinates
+print(argmax_x, argmax_y, argmax_z, argmax, "argmax\n")
+# return (argmax_x, argmax_y, argmax_z)
 

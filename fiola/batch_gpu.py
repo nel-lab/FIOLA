@@ -16,7 +16,7 @@ import numpy as np
 from queue import Queue
 import timeit
 from time import time
-from mc_batch import MotionCorrectBatch
+from fiola.mc_batch import MotionCorrectBatch
 
 #%%
 def get_model(template, center_dims, Ab, num_components, batch_size, ms_h=10, ms_w=10):

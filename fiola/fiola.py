@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 16 10:23:20 2020
-VIOLA object for online analysis of voltage imaging data. Including offline 
+FIOLA object for online analysis of fluorescence imaging data. Including offline 
 initialization of spatial masks and online analysis of voltage imaging data.
 Please check violaparams.py for the explanation of parameters.
 @author: @agiovann, @caichangjia, @cynthia
@@ -13,12 +13,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.linalg import norm
 from scipy.optimize import nnls    
-from .signal_analysis_online import SignalAnalysisOnlineZ
+from fiola.signal_analysis_online import SignalAnalysisOnlineZ
+from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential
 
-from .caiman_functions import signal_filter, to_3D, to_2D, bin_median
-from .nmf_support import hals, normalize, nmf_sequential
-
-class VIOLA(object):
+class FIOLA(object):
     def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
                  border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
@@ -29,7 +27,7 @@ class VIOLA(object):
                  thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, params={}):
         if params is None:
-            logging.warning("Parameters are not set from violaparams")
+            logging.warning("Parameters are not set from fiolaparams")
             raise Exception('Parameters are not set')
         else:
             self.params = params
@@ -140,7 +138,7 @@ class VIOLA(object):
                 center_dims = self.params.mc_nnls['center_dims'].copy()
     
             if not self.params.mc_nnls['use_batch']:
-                from .pipeline_gpu import get_model, Pipeline_overall, Pipeline
+                from fiola.pipeline_gpu import get_model, Pipeline_overall, Pipeline
                 b = mov[0].reshape(-1, order='F')
                 x0 = nnls(Ab,b)[0][:,None]
                 AtA = Ab.T@Ab
@@ -151,7 +149,7 @@ class VIOLA(object):
                 model = get_model(template, center_dims, Ab, 30, ms_h=0, ms_w=0)
                 model.compile(optimizer='rmsprop', loss='mse')
             else:
-                from .batch_gpu import Pipeline, get_model, Pipeline_overall_batch
+                from fiola.batch_gpu import Pipeline, get_model, Pipeline_overall_batch
                 b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
                 x0=[]
                 for i in range(batch_size):
@@ -170,18 +168,18 @@ class VIOLA(object):
             if self.params.mc_nnls['initialize_with_gpu']:
                 if not self.params.mc_nnls['use_batch']:
                     spike_extractor = Pipeline(model, x0[None, :], x0[None, :], mc0, theta_2, mov)
-                    traces_viola = spike_extractor.get_traces(mov.shape[0])
-                    traces_viola = np.array(traces_viola).squeeze().T
-                    trace = traces_viola.copy()
+                    traces_fiola = spike_extractor.get_traces(mov.shape[0])
+                    traces_fiola = np.array(traces_fiola).squeeze().T
+                    trace = traces_fiola.copy()
                 else:
                     spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov, num_components, batch_size)
                     spikes_gpu = spike_extractor.get_traces(len(mov))
-                    traces_viola = []
+                    traces_fiola = []
                     for spike in spikes_gpu:
                         for i in range(batch_size):
-                            traces_viola.append([spike[:,:,i]])
-                    traces_viola = np.array(traces_viola).squeeze().T
-                    trace = traces_viola.copy()
+                            traces_fiola.append([spike[:,:,i]])
+                    traces_fiola = np.array(traces_fiola).squeeze().T
+                    trace = traces_fiola.copy()
             else:
                 fe = slice(0,None)
                 if self.params.spike['flip'] == True:

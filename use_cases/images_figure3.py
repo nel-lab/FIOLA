@@ -50,10 +50,13 @@ ax.set_xticks(np.arange(0, 70000, 10000))
 ax.set_xticklabels(['0', '1', '2', '3', '4', '5', '6'])
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
+ax.hlines(0.7, 0, 65000, color='black', linestyle='--')
 ax.xaxis.set_tick_params(length=8)
 ax.yaxis.set_tick_params(length=8)
+
+#ax.plot(saoz.t_s[:, 10000:].mean(0)/200000)
 #plt.title('timing for spike extraction algorithm ')
-plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_timing_spike_extraction.png')
+plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_timing_spike_extraction1.png')
 
 #%%
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',

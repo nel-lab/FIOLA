@@ -15,8 +15,6 @@ import numpy as np
 from scipy import stats
 from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi
 
-
-
 class OnlineFilter(object):
     def __init__(self, freq, fr, order=3, mode='high'):
         '''

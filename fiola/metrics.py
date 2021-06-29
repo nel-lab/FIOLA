@@ -11,7 +11,7 @@ Created on Sat May 23 08:29:29 2020
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment
-from viola.nmf_support import normalize, normalize_piecewise
+from fiola.utilities import normalize, normalize_piecewise
 #from scipy.signal import find_peaks
 #import peakutils
 #from scipy import signal

@@ -248,7 +248,7 @@ def get_mc_model(template, center_dims, ms_h=10, ms_w=10):
     model = keras.Model(inputs=[fr_in], outputs=[mc, shifts])   
     return model
 #%%
-from viola.nnls_gpu import NNLS, compute_theta2
+from fiola.nnls_gpu import NNLS, compute_theta2
 def get_nnls_model(template, Ab, num_layers=30, ms_h=10, ms_w=10):
     """
     takes as input a template (median) of the movie, A_sp object, and b object from caiman.
