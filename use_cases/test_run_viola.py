@@ -105,7 +105,7 @@ def run_viola(fnames, path_ROIs, fr=400, online_gpu=True, options=None):
         f'_do_scale_{opts.spike["do_scale"]}_freq_{opts.spike["freq"]}'\
         f'_filt_window_{opts.spike["filt_window"]}_minimal_thresh_{opts.spike["minimal_thresh"]}'\
         f'_template_window_{opts.spike["template_window"]}_v2.1'
-    np.save(os.path.join(file_dir, 'viola', save_name), vio.estimates)
+    #np.save(os.path.join(file_dir, 'viola', save_name), vio.estimates)
     
     log_files = glob.glob('*_LOG_*')
     for log_file in log_files:

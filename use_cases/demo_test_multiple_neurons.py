@@ -197,7 +197,7 @@ for idx in range(len(tp_comp)):
 spiking_neuron_idx = np.where(np.array(spnr)[:,0] >0)[0]
 
 save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons'
-np.save(os.path.join(save_folder, name + '_spnr.npy'), np.array(spnr))
+#np.save(os.path.join(save_folder, name + '_spnr.npy'), np.array(spnr))
 
 
 vi_t = vi_t[spiking_neuron_idx]
@@ -255,7 +255,7 @@ for n, idx in enumerate(idx_list):
     
 plt.tight_layout()
 save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/Fig6'
-plt.savefig(os.path.join(save_folder, name + '.pdf'))
+#plt.savefig(os.path.join(save_folder, name + '.pdf'))
 #plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/multiple_neurons/06152017Fish1-2.pdf')
 
 #%% Spatial contours
@@ -275,7 +275,7 @@ for n, idx in enumerate(idx_list):
     plt.plot(contours[:, 1], contours[:, 0], linewidth=1, color=colorsets[np.mod(n,9)])
 
 save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/Fig6'
-plt.savefig(os.path.join(save_folder, name + '_spatial.pdf'))
+#plt.savefig(os.path.join(save_folder, name + '_spatial.pdf'))
 
 #%%
 folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons'
@@ -286,6 +286,7 @@ volpy = []
 volpy_std = []
 for file in files:
     mm = np.load(os.path.join(folder, file), allow_pickle=True)
+    print(mm)
     spnr = np.nanmean(mm, axis=0)
     std = np.nanstd(mm, axis=0)
     viola.append(spnr[0])
@@ -316,8 +317,8 @@ ax0.legend()
 ax0.legend(ncol=2, frameon=False, loc=0)
 plt.tight_layout()
 
-save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-plt.savefig(os.path.join(save_folder, 'SpNR_multiple_neurons.pdf'))
+#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#plt.savefig(os.path.join(save_folder, 'SpNR_multiple_neurons.pdf'))
 
 
 

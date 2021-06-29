@@ -19,7 +19,7 @@ from viola.signal_analysis_online import SignalAnalysisOnlineZ
 from skimage import measure
 from sklearn.decomposition import NMF
 
-from viola.caiman_functions import signal_filter, to_3D, to_2D, bin_median, play
+from viola.caiman_functions import signal_filter, to_3D, to_2D, bin_median
 from viola.metrics import metric
 from viola.nmf_support import hals, select_masks, normalize, nmf_sequential
 from skimage.io import imread
@@ -42,10 +42,10 @@ except NameError:
 string = os.getcwd().split('/')
 BASE_FOLDER = os.path.join('/'+string[1], string[2], 'NEL-LAB Dropbox/NEL/Papers/')
 
-n_neurons = ['1', '2', 'many', 'test'][2]
+n_neurons = ['1', '2', 'many', 'test'][3]
 
 if n_neurons in ['1', '2']:
-    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/one_neuron/'),
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/one_neuron/'),
                    os.path.join(BASE_FOLDER, 'VolPy/Marton/video_small_region/')][0]
     
     movie_lists = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
@@ -72,8 +72,8 @@ if n_neurons in ['1', '2']:
                    'neuron1&2_x[4, -2]_y[4, -2].tif', 
                    'neuron1&2_x[6, -2]_y[8, -2].tif']
 elif n_neurons == 'many':
-    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/multiple_neurons'), 
-                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/test')][0]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/original_data/multiple_neurons'), 
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/test')][0]
    
     movie_lists = ['demo_voltage_imaging_mc.hdf5', 
                    'FOV4_50um_mc.hdf5',
@@ -82,24 +82,26 @@ elif n_neurons == 'many':
                    'viola_sim1_1.hdf5']
     
 elif n_neurons == 'test':
-    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_1'),
-                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_2'),
-                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_3'),
-                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_5'),
-                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/overlapping/viola_sim3_18'),
-                    os.path.join(BASE_FOLDER, 'VolPy_online/test_data/simulation/non_overlapping/viola_sim2_7')][2]
+    movie_folder = [os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_1'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_2'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_3'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_5'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/overlapping/viola_sim3_18'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim2_7'),
+                    os.path.join(BASE_FOLDER, 'VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_7')][6]
     movie_lists = ['viola_sim3_1.hdf5',
                    'viola_sim3_2.hdf5',
                    'viola_sim3_3.hdf5',
                    'viola_sim3_5.hdf5',
                    'viola_sim3_18.hdf5',   # overlapping 8 neurons
-                   'viola_sim2_7.hdf5']   # non-overlapping 50 neurons
+                   'viola_sim2_7.hdf5',
+                   'viola_sim5_7.hdf5']   # non-overlapping 50 neurons
 
 #%% Choosing datasets
 movie = base_folder + dataset + dataset + ".hdf5"
 rois = base_folder + dataset + dataset + "_ROIs.hdf5"
 if n_neurons == '1':
-    file_set = [5]
+    file_set = [-3]
     name = movie_lists[file_set[0]]
     belong_Marton = True
     if ('Fish' in name) or ('Mouse' in name):
@@ -126,24 +128,33 @@ elif n_neurons == 'many':
        mov = np.array(h5['mov'])
     with h5py.File(rois,'r') as h5:
        mask = np.array(h5['mov'])
-    mask = mask.transpose([0, 2, 1])
+    #mask = mask.transpose([0, 2, 1])
        
 elif n_neurons == 'test':
-    name = movie_lists[2]
+    name = movie_lists[6]
     frate = 400
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
        mov = np.array(h5['mov'])
     with h5py.File(os.path.join(movie_folder, 'viola', 'ROIs_gt.hdf5'),'r') as h5:
        mask = np.array(h5['mov'])
+    
+"""
+with h5py.File(os.path.join(movie_folder, name),'r') as h5:
+       mov = np.array(h5['mov'])
+    with h5py.File(os.path.join(movie_folder, 'viola', 'ROIs_gt.hdf5'),'r') as h5:
+       mask = np.array(h5['mov'])
+"""    
 
 # Preliminary processing
 # Remove border pixel of the motion corrected movie
+"""
 border_pixel = 2
 mov[:, :border_pixel, :] = mov[:, border_pixel:border_pixel + 1, :]
 mov[:, -border_pixel:, :] = mov[:, -border_pixel-1:-border_pixel, :]
 mov[:, :, :border_pixel] = mov[:, :, border_pixel:border_pixel + 1]
 mov[:, :, -border_pixel:] = mov[:, :, -border_pixel-1:-border_pixel]
-      
+"""
+    
 # original movie !!!!
 flip = True
 if flip == True:
@@ -165,6 +176,7 @@ if do_plot:
         for i in range(mask.shape[0]):
             plt.imshow(mask[i], alpha=0.5)
 # mask = mask.transpose([0,2,1])
+
 
 # Use nmf sequentially to extract all neurons in the region
 num_frames_init = mov.shape[0]
@@ -192,7 +204,8 @@ else:
     mask_2D = to_2D(mask)
     nA = np.linalg.norm(mask_2D)
     H = mask_2D/nA
-    W = (y_input.T@H.T)
+    W = (y_input.T@H.T)   
+
 
 # Use hals to optimize masks
 #from nmf_support import hals_init_spikes
@@ -208,7 +221,6 @@ H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y.shape[1],1)) / y.shape[1],
 if do_plot:
     plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'));plt.colorbar()
     plt.figure();plt.imshow(b.reshape(mov.shape[1:], order='F'));plt.colorbar()
-    
 
 if update_bg:
      H_new = np.hstack((H_new, b))
@@ -219,7 +231,7 @@ H_new = H_new / norm(H_new, axis=0)
 np.save(base_folder + dataset + dataset + "_H_new_full", H_new)
 #%% Motion correct and use NNLS to extract signals
 # You can skip rank 1-nmf, hals step if H_new is saved
-#np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
+#np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data//multiple_neurons/FOV4_50um_H_new.npy', H_new)
 # H_new = np.load(os.path.join(movie_folder, name[:-8]+'_H_new.npy'))
 use_GPU = True
 use_batch = True
@@ -247,7 +259,7 @@ if use_GPU:
 
     else:
     #FOR BATCHES:
-        batch_size = 10
+        batch_size = 200
         num_components = Ab.shape[-1]
         template = bin_median(mov_in, exclude_nans=False)
         b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
@@ -266,7 +278,7 @@ if use_GPU:
         mc0 = mov_in[0:batch_size, :, :, None][None, :]
         x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])
         spike_extractor = Pipeline(model_batch, x_old, y_old, mc0, theta_2, mov_in, num_components, batch_size)
-        spikes_gpu = spike_extractor.get_traces(50000)
+        spikes_gpu = spike_extractor.get_traces(mov.shape[0])
         traces_viola = []
         for spike in spikes_gpu:
             for i in range(batch_size):
@@ -281,22 +293,19 @@ else:
     trace_nnls = np.array([nnls(H_new,yy)[0] for yy in (-y)[fe]])
     trace_all = trace_nnls.T.copy() 
 
-#%%
-    plt.figure(); plt.plot(trace_nnls[:,0]); plt.figure(); plt.plot(traces_viola)
-    plt.figure(); plt.plot(trace_nnls[:,0]); plt.plot(traces_viola[0])
 
 #%% Viola spike extraction, result is in the estimates object
 if True:    
     trace = trace_all[:].copy()
     if len(trace.shape) == 1:
         trace = trace[None, :]
-    saoz = SignalAnalysisOnlineZ(do_scale=True, freq=15, 
+    saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
                                   detrend=True, flip=True, 
                                   frate=frate, thresh_range=[2.8, 5.0], 
-                                  adaptive_threshold=True,
-                                  filt_window=15, mfp=0.1)
-    saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
-    for n in range(10000, trace.shape[1]):
+                                  adaptive_threshold=True, online_filter_method='median_filter',
+                                  template_window=2, filt_window=15, minimal_thresh=2.8, mfp=0.1, step=2500, do_plot=False)
+    saoz.fit(trace[:, :20000], num_frames=trace.shape[1])
+    for n in range(20000, trace.shape[1]):
         saoz.fit_next(trace[:, n: n+1], n)
     saoz.compute_SNR()
     saoz.reconstruct_signal()
@@ -310,13 +319,135 @@ if True:
     weights = weights.transpose([2, 0, 1])
     estimates.weights = weights
 
-    #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/test_data/ephys_voltage/10052017Fish2-2'
+    #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy/data/voltage_data/ephys_voltage/10052017Fish2-2'
     #save_path = os.path.join(SAVE_FOLDER, 'viola', f'viola_update_bg_{update_bg}_use_spikes_{use_spikes}')
     #np.save(save_path, estimates)    
+    
+    
 #%%
+    plt.plot(normalize(saoz.trace[0]))    
     plt.plot(normalize(saoz.t_d[0]))
+    plt.plot(normalize(saoz.t0[0]))
+    plt.plot(normalize(saoz.t_sub[0]))
+    #plt.plot(normalize(saoz.t0[0]-saoz.t_sub[0])); 
     plt.plot(normalize(saoz.t_s[0]))
+    plt.xlim([0, 10000])
 
+    plt.plot(normalize(saoz.t0[0]-saoz.t_sub[0]))
+    plt.plot(normalize(saoz.t0[0]))
+    
+#%%
+    tt = saoz.t0[0].copy()
+    tt.shape
+    t_new = []
+    step = 5000
+    for i in range(np.ceil(len(tt)/step).astype(np.int16)):
+        if (i+1)*5000 > len(tt):
+            ttt = tt[i*5000:]
+        else:
+            ttt = tt[i*5000:(i+1)*5000]
+        t_new.append(normalize(ttt))
+    plt.plot(np.hstack(t_new))
+
+#%%
+    np.save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy', trace_all)
+    
+    
+#%%
+    ROOT_FOLDER = movie_folder
+    gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+    dict1 = np.load(gt_path, allow_pickle=True)
+    length = dict1['v_sg'].shape[0]    
+    mode = 'viola'    
+    if mode == 'viola':
+        """
+        #vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
+        #vi_files = sorted([file for file in os.listdir(vi_folder) if 'filt_window' not in file and 'v2.1' in file])# and '24000' in file])
+        #if len(vi_files) == 0:
+        #    vi_files = sorted([file for file in os.listdir(vi_folder) if 'v2.0' in file and 'thresh_factor' in file])# and '24000' in file])
+        #print(f'files number: {len(vi_files)}')
+        #if len(vi_files) != 1:
+            raise Exception('file number greater than 1')
+            vi_files = [file for file in vi_files if '15000' in file]
+        vi_file = vi_files[0]
+        vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
+        """
+        #vi_spatial = saoz.H_new.copy()
+        vi = saoz
+        vi_temporal = vi.t_s.copy().flatten()
+        vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[0]
+        #thr.append(vi.thresh_factor[0])
+        
+        n_cells = 1
+        vi_result = {'F1':[], 'precision':[], 'recall':[]}        
+        rr = {'F1':[], 'precision':[], 'recall':[]}        
+        vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])        
+        
+        dict1_v_sp_ = dict1['v_t'][vi_spikes]
+    
+    elif mode == 'volpy':
+        v_folder = os.path.join(ROOT_FOLDER, name, 'volpy')
+        v_files = sorted([file for file in os.listdir(v_folder)])
+        print(f'files number: {len(v_files)}')
+        v_file = v_files[0]
+        v = np.load(os.path.join(v_folder, v_file), allow_pickle=True).item()
+        
+        v_spatial = v['weights'][0]
+        v_temporal = v['ts'][0]
+        v_spikes = v['spikes'][0]        
+        v_spikes = np.delete(v_spikes, np.where(v_spikes >= dict1['v_t'].shape[0])[0])
+        dict1_v_sp_ = dict1['v_t'][v_spikes]
+     
+    if 'Cell' in name:
+        for i in range(len(dict1['sweep_time']) - 1):
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+    
+    from viola.metrics import metric
+    precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned, spnr\
+                        = metric(name, dict1['sweep_time'], dict1['e_sg'], 
+                              dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
+                              vi_temporal, dict1_v_sp_ , 
+                              dict1['v_t'], dict1['v_sub'],init_frames=20000, save=False)
+        
+    p = len(e_match)/len(v_spike_aligned)
+    r = len(e_match)/len(e_spike_aligned)
+    f = (2 / (1 / p + 1 / r))
+
+
+#%%
+plt.plot(dict1['e_t'], dict1['e_sg'])
+plt.vlines(dict1['e_sp'], -30, 20)
+
+#%%
+plt.plot(dict1['v_t'], vi_temporal)
+plt.plot(vi.thresh[0])
+
+#%%
+vi_temporal = vi.t.copy().flatten()
+plt.plot(dict1['v_t'], vi_temporal)
+plt.vlines(dict1['e_sp'], np.max(vi_temporal), np.max(vi_temporal)*1.1)
+#%%
+    from scipy.ndimage import median_filter
+    from scipy.signal import savgol_filter
+    from viola.running_statistics import non_symm_median_filter
+    tt = saoz.t0[0].copy()
+    m_15 = median_filter(tt, 15)
+    m_13 = median_filter(tt, 13)
+    """
+    w = [8, 4]
+    mm = tt.copy()
+    for i in range(len(tt)):
+        if i > w[0] & i < len(tt) - w[1]:
+            mm[i] = np.median(tt[i - w[0] : i + w[1] + 1])
+    """
+    mm = non_symm_median_filter(tt, [8, 4])        
+    #s_15 = savgol_filter(tt, 15, polyorder=1)
+    #s_9 = savgol_filter(tt, 9, polyorder=1)
+    plt.plot(tt); 
+    plt.plot(m_15); plt.plot(m_13);plt.plot(mm); plt.xlim([0, 3000])
+    
+    
     
 #%% Load simulation groundtruth
     import scipy.io
@@ -340,8 +471,133 @@ if True:
         rr['precision'].append(precision)
         rr['recall'].append(recall)  
         
-    plt.boxplot(rr['F1']); plt.title('viola')
-   
+    fig, ax =  plt.subplots(1,3)
+    ax[0].boxplot(rr['F1']); plt.title('F1')
+    ax[1].boxplot(rr['precision']); plt.title('precision')
+    ax[2].boxplot(rr['recall']); plt.title('recall')
+
+
+#%%
+    
+result = {}
+for ff in [[7, 3], [6, 3], [5, 3], [4, 3], [3, 3]]:
+    for tem in [2, 0]:
+        trace = trace_all[:].copy()
+        if len(trace.shape) == 1:
+            trace = trace[None, :]
+        saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+                                      detrend=True, flip=True, 
+                                      frate=frate, thresh_range=[2.8, 5.0], 
+                                      adaptive_threshold=True, online_filter_method='median_filter',
+                                      template_window=tem, filt_window=ff, minimal_thresh=3, mfp=0.1, step=2500, do_plot=False)
+        saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
+        for n in range(10000, trace.shape[1]):
+            saoz.fit_next(trace[:, n: n+1], n)
+        saoz.compute_SNR()
+        saoz.reconstruct_signal()
+        print(f'thresh:{saoz.thresh}')
+        print(f'SNR: {saoz.SNR}')
+        print(f'Mean_SNR: {np.array(saoz.SNR).mean()}')
+        print(f'Spikes based on mask sequence: {(saoz.index>0).sum(1)}')
+        estimates = saoz
+        estimates.spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz.index])
+        weights = H_new.reshape((mov.shape[1], mov.shape[2], H_new.shape[1]), order='F')
+        weights = weights.transpose([2, 0, 1])
+        estimates.weights = weights        
+        
+        t_range = [10000, 75000]
+        n_cells = spikes.shape[0]
+        rr = {'F1':[], 'precision':[], 'recall':[]}
+        for idx in range(n_cells):
+            s1 = spikes[idx].flatten()
+            s1 = s1[np.logical_and(s1>=t_range[0], s1<t_range[1])]
+            s2 = estimates.spikes[idx]
+            s2 = s2[np.logical_and(s2>=t_range[0], s2<t_range[1])]
+            idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
+            F1, precision, recall = compute_F1(s1, s2, idx1_greedy, idx2_greedy)   
+            rr['F1'].append(F1)
+            rr['precision'].append(precision)
+            rr['recall'].append(recall)  
+            
+        fig, ax =  plt.subplots(1,3)
+        ax[0].boxplot(rr['F1']); plt.title('F1')
+        ax[1].boxplot(rr['precision']); plt.title('precision')
+        ax[2].boxplot(rr['recall']); plt.title('recall')
+        print(np.mean(rr['F1']))
+        
+        result[f'filt_window{ff}, template_window{tem}'] = np.mean(rr['F1'])
+        
+        print(result)
+        print('**************************************')
+    
+#%%
+    step = 2500
+    plt.plot(saoz.t_s[0])
+    for idx, tt in enumerate(saoz.thresh[0]):
+        if idx == 0:
+            plt.hlines(tt, 0, 30000)
+        else:
+            plt.hlines(tt, 30000 + (idx -1) * step, 30000 + idx * step)
+    
+#%%
+ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron'
+select = np.array(range(1))[:]
+names = movie_lists.copy()
+f1_scores = []                
+prec = []
+rec = []
+thr = []
+for idx, name in enumerate(np.array(names)[select]):
+    gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+    dict1 = np.load(gt_path, allow_pickle=True)
+    length = dict1['v_sg'].shape[0]    
+    
+    vi_temporal = saoz.t_s.copy()
+    vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in saoz.index])[0]
+    #thr.append(vi.thresh_factor[0])
+    
+    n_cells = 1
+    vi_result = {'F1':[], 'precision':[], 'recall':[]}        
+    rr = {'F1':[], 'precision':[], 'recall':[]}        
+    vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])        
+    dict1_v_sp_ = dict1['v_t'][vi_spikes]
+
+    if 'Cell' in name:
+        for i in range(len(dict1['sweep_time']) - 1):
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+    
+    precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned\
+                        = metric(name, dict1['sweep_time'], dict1['e_sg'], 
+                              dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
+                              dict1['v_sg'], dict1_v_sp_ , 
+                              dict1['v_t'], dict1['v_sub'],init_frames=20000, save=False)
+        
+    p = len(e_match)/len(v_spike_aligned)
+    r = len(e_match)/len(e_spike_aligned)
+    f = (2 / (1 / p + 1 / r))
+
+    f1_scores.append(f)                
+    prec.append(p)
+    rec.append(r)
+print(f1_scores)    
+
+
+#%%
+m = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron/Mouse_Session_1/volpy/volpy_Session_adaptive_threshold_4_ridge_bg_0.01.npy' , allow_pickle=True)
+#m = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron/10052017Fish2-2/volpy/volpy_registere_adaptive_threshold_4_ridge_bg_0.01.npy' , allow_pickle=True)
+#m = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron/09282017Fish1-1/volpy/volpy_registere_adaptive_threshold_4_ridge_bg_0.01.npy', allow_pickle=True)
+plt.figure(); plt.plot(normalize(m.item()['ts'][2]))  # 2,0,7
+#plt.plot(normalize(ts))
+plt.plot(normalize(saoz.t_s[0]))
+#plt.plot(normalize(aa))
+#%%
+plt.plot(saoz.t_s[0]);
+plt.hlines(saoz.thresh[0,0], 0, 20000)
+
+
+
+    
 #%%    
 ##############################################################################################################
     
@@ -403,7 +659,7 @@ plt.plot(xdata, func(xdata, *popt), 'r-',label='fit: a=%5.3f, b=%5.3f, c=%5.3f' 
     
     
     #%%
-    vpy = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/simulation/test/volpy_viola_sim1_1_adaptive_threshold.npy', allow_pickle=True).item()        
+    vpy = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/test/volpy_viola_sim1_1_adaptive_threshold.npy', allow_pickle=True).item()        
     idx = 0
     plt.plot(normalize(vpy['t'][idx]))
     plt.plot(normalize(saoz_5000.t0[np.argsort(seq)][idx]))
@@ -891,3 +1147,79 @@ y_filt = signal_filter(y.T,freq = 1/3, fr=frate).T
 mov_detrend = to_3D(y_filt, shape=mov[scope[0]:scope[1]].shape)
 play(mov_detrend, q_min=80, q_max=98)
 
+#%%
+from viola.spikepursuit import denoise_spikes
+t = W.flatten().copy()
+t0 = t.copy()
+recon = np.zeros((y_input.T.shape[0], y_input.T.shape[1]+1))
+recon[:,0] = 1
+recon[:,1:] = y_input.copy().T
+
+ts, spikes, t_rec, templates, low_spikes, thresh = denoise_spikes(t, 
+        window_length=5, fr=400,  hp_freq=1, threshold_method='simple', pnorm=0.5, 
+        threshold=3.5, min_spikes=10, do_plot=True)
+
+for _ in range(3):
+    tr = t_rec.copy()
+    
+    from sklearn.linear_model import Ridge
+    #Ri = Ridge(alpha=9212983, fit_intercept=True, solver='lsqr')
+    Ri = Ridge(alpha=0, fit_intercept=True, solver='lsqr')
+
+    Ri.fit(recon, tr)
+    weights = Ri.coef_
+    weights[0] = Ri.intercept_
+    
+    plt.figure(); plt.imshow(weights[1:].reshape([30,30],order='F')); plt.show()
+    # update the signal            
+    t = np.matmul(recon, weights)
+    t = t - np.mean(t)
+    
+    """
+    b = Ridge(alpha=alpha, fit_intercept=False, solver='lsqr').fit(Ub, t).coef_
+    t = t - np.matmul(Ub, b)
+    """
+    # correct shrinkage
+    t = np.double(t * np.mean(t0[spikes]) / np.mean(t[spikes]))
+    
+    # estimate spike times
+    ts, spikes, t_rec, templates, low_spikes, thresh = denoise_spikes(t, 
+            window_length=8, fr=400,  hp_freq=1, threshold_method='simple', pnorm=0.5, 
+            threshold=3.5, min_spikes=10, do_plot=True)
+    
+#%%
+t = trace_all.copy()
+t = -signal_filter(t, 15, 400)
+plt.plot(t[-1])
+
+#%%
+t1 = t.copy()   # classic
+t2 = t.copy()   # orig, use_spikes True
+t3 = t.copy()    # hp_thresh, use_spikes True
+t4 = t.copy()
+t5 = t.copy()
+
+#%%
+plt.plot(normalize(t1[0])); plt.plot(normalize(t2[0])); 
+plt.plot(normalize(t3[0])); 
+plt.plot(normalize(t4[0])); plt.plot(normalize(t5[0]))
+
+plt.plot(normalize(t4[0])); plt.plot(normalize(t1[0])); 
+plt.legend(['classic', 'original use_spikes True', 'hp_thresh, use_spikes True'])
+#%%
+t = trace_all.flatten()
+t = -signal_filter(t, 1/3, 400)
+ts, spikes, t_rec, templates, low_spikes, thresh = denoise_spikes(t, 
+            window_length=8, fr=400,  hp_freq=1, threshold_method='simple', pnorm=0.5, 
+            threshold=3.5, min_spikes=10, do_plot=True)
+plt.plot(ts)
+
+t = trace_all.flatten()
+t = -signal_filter(t, 5, 400)
+plt.plot(t)
+
+
+
+#%%
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.figure(); plt.plot(traces_viola)
+    plt.figure(); plt.plot(trace_nnls[:,0]); plt.plot(traces_viola[0])

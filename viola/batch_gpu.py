@@ -179,11 +179,14 @@ class Pipeline_overall_batch(object):
         self.flag=0 # note the first batch is for initialization, it should not be passed to spike extraction
         while True:
             traces_input = self.sao_input_q.get()
-            if self.batch_size == 1:
-                traces_input = traces_input[None, :]
+
             if self.flag > 0:
                 for i in range(len(traces_input)):
-                    self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
+                    if self.batch_size == 1:
+                        traces_input = traces_input[None, :]
+                        self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
+                    else:
+                        self.saoz.fit_next(traces_input[i:i+1].T, self.n)
                             
                     if self.n % 1000 == 0:
                         print(f'{self.n} frames processed ####DETECT##### ')

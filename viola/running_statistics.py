@@ -182,3 +182,10 @@ def compute_thresh(peak_height, prev_thresh=None, delta_max=0.03, number_maxima_
     plt.pause(0.1)
     
     return thresh
+
+def non_symm_median_filter(t, filt_window):
+    m = t.copy()
+    for i in range(len(t)):
+        if (i > filt_window[0]) and (i < len(t) - filt_window[1]):
+            m[i] = np.median(t[i - filt_window[0] : i + filt_window[1] + 1])
+    return m

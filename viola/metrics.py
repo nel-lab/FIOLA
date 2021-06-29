@@ -11,6 +11,7 @@ Created on Sat May 23 08:29:29 2020
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+from viola.nmf_support import normalize, normalize_piecewise
 #from scipy.signal import find_peaks
 #import peakutils
 #from scipy import signal
@@ -108,6 +109,23 @@ def spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist, save=
         plt.savefig(f'{volpy_path}/spike_sweep{i}_{vpy.params.volspike["threshold_method"]}.pdf')
     return precision, recall, F1, match, spike
 
+def spnr_computation(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist, save=False):
+    spnr = []
+    e_sg = e_sg[np.where(np.multiply(e_t>=scope[0], e_t<=scope[1]))[0]]
+    e_sg = (e_sg - np.mean(e_sg))/(np.max(e_sg)-np.min(e_sg))*np.max(v_sg)
+    e_sp = e_sp[np.where(np.multiply(e_sp>=scope[0], e_sp<=scope[1]))[0]]
+    e_t = e_t[np.where(np.multiply(e_t>=scope[0], e_t<=scope[1]))[0]]
+    
+    v_sg = normalize_piecewise(v_sg, step=5000)    
+    v_sg = v_sg[np.where(np.multiply(v_t>=scope[0], v_t<=scope[1]))[0]]
+    v_sp = v_sp[np.where(np.multiply(v_sp>=scope[0], v_sp<=scope[1]))[0]]
+    v_t = v_t[np.where(np.multiply(v_t>=scope[0], v_t<=scope[1]))[0]]
+    
+    for e in e_sp:
+        tp = np.where(np.abs(v_t - e) == np.min(np.abs(v_t - e)))[0][0]
+        spnr.append(np.max(v_sg[tp-1:tp+2]))
+    return spnr
+
 # Compute subthreshold correlation coefficents
 def sub_correlation(i, v_t, e_sub, v_sub, scope, save=False):
     e_sub = e_sub[np.where(np.multiply(v_t>=scope[0], v_t<=scope[1]))[0]]
@@ -121,7 +139,7 @@ def sub_correlation(i, v_t, e_sub, v_sub, scope, save=False):
         plt.savefig(f'{volpy_path}/spike_sweep{i}_subthreshold.pdf')
     return corr
 
-def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=False, belong_Marton=True):
+def metric(name, sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, init_frames=20000, save=False):
     precision = []
     recall = []
     F1 = []
@@ -130,10 +148,10 @@ def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=Fals
     e_match = []
     v_match = []
     e_spike_aligned = []
-    v_spike_aligned = []
+    v_spike_aligned = []    
+    spnr = []
     
-    
-    if belong_Marton:
+    if 'Cell' in name: # belong Marton
         for i in range(len(sweep_time)):
             print(f'sweep{i}')
             if i == 0:
@@ -144,31 +162,67 @@ def metric(sweep_time, e_sg, e_sp, e_t, e_sub, v_sg, v_sp, v_t, v_sub, save=Fals
                 scope = [sweep_time[i][0], sweep_time[i][-1]]
             mean_time.append(1 / 2 * (scope[0] + scope[-1]))
             
-            pr, re, F, match, spike = spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.05, save=save)
-            corr = sub_correlation(i, v_t, e_sub, v_sub, scope, save=save)
-            precision.append(pr)
-            recall.append(re)
-            F1.append(F)
-            sub_corr.append(corr)
-            e_match.append(match[0])
-            v_match.append(match[1])
-            e_spike_aligned.append(spike[0])
-            v_spike_aligned.append(spike[1])
+            # frames for initialization are not counted for F1 score            
+            if v_t[init_frames] < scope[1]:
+                if v_t[init_frames] < scope[0]:
+                    pass
+                else:
+                    scope[0] = v_t[init_frames]               
+                mean_time.append(1 / 2 * (scope[0] + scope[-1]))
+                pr, re, F, match, spike = spike_comparison(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.01, save=save)
+                sp = spnr_computation(i, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.01, save=save)
+                corr = sub_correlation(i, v_t, e_sub, v_sub, scope, save=save)
+                precision.append(pr)
+                recall.append(re)
+                F1.append(F)
+                spnr.append(sp)
+                sub_corr.append(corr)
+                e_match.append(match[0])
+                v_match.append(match[1])
+                e_spike_aligned.append(spike[0])
+                v_spike_aligned.append(spike[1])
+            else:
+                print(f'sweep{i} is used for initialization and not counted for F1 score')                
             
         e_match = np.concatenate(e_match)
         v_match = np.concatenate(v_match)
         e_spike_aligned = np.concatenate(e_spike_aligned)
         v_spike_aligned = np.concatenate(v_spike_aligned)
+        spnr = np.mean(np.concatenate(spnr))
     else: 
+        #import pdb
+        #pdb.set_trace()
         scope = [e_t.min(), e_t.max()]
-        pr, re, F, match, spike = spike_comparison(None, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=500, save=False)
+        scope[0] = v_t[init_frames]
+        print(scope)
+        
+        if 'Mouse' in name:
+            max_dist = 200  # 20000 Hz* 0.01s
+        elif 'Fish' in name: 
+            max_dist = 60 # 6000Hz * 0.01s
+
+        pr, re, F, match, spike = spike_comparison(None, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=max_dist, save=False)
+        sp = spnr_computation(None, e_sg, e_sp, e_t, v_sg, v_sp, v_t, scope, max_dist=0.01, save=save)
         precision.append(pr)
         recall.append(re)
         F1.append(F)
+        spnr = np.mean(sp)
         e_match = match[0]
         v_match = match[1]
         e_spike_aligned = spike[0]
         v_spike_aligned = spike[1]
 
 
-    return precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned
+    return precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned, spnr
+
+def compute_spnr(t1, t2, s1, s2, t_range, min_counts=10):
+    t1 = normalize(t1)
+    t2 = normalize(t2)
+    both_found = np.intersect1d(s1, s2)
+    both_found = both_found[np.logical_and(both_found>t_range[0], both_found<t_range[1])]
+    print(len(both_found))
+    spnr = [np.mean(t1[both_found]), np.mean(t2[both_found])]
+    if len(both_found) < min_counts:
+        spnr = [np.nan, np.nan]
+    return spnr
+

@@ -15,9 +15,10 @@ class violaparams(object):
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
                  center_dims=None, initialize_with_gpu=False, 
-                 window = 10000, step = 5000, detrend=True, flip=True, do_scale=False, robust_std=False, 
-                 freq=15, adaptive_threshold=True, thresh_range=[3.5, 5], mfp=0.2, 
-                 filt_window=15, do_plot=False, params_dict={}):
+                 window = 10000, step = 5000, detrend=True, flip=True, 
+                 do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
+                 thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
+                 filt_window = 15, do_plot=False, params_dict={}):
         """Class for setting parameters for voltage imaging. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -53,17 +54,20 @@ class violaparams(object):
             'flip': flip, # whether to flip signal to find spikes    
             'detrend': detrend, # whether to remove photobleaching
             'do_scale': do_scale, # whether to scale the input trace or not
+            'template_window':template_window,
             'robust_std':robust_std, # whether to use robust way to estimate noise
             'freq': freq, # frequency for removing subthreshold activity
             'adaptive_threshold': adaptive_threshold, #whether to use adaptive threshold method for deciding threshold level
             'thresh_range':thresh_range, # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
+            'minimal_thresh':minimal_thresh,
             'mfp': mfp, #  Maximum estimated false positive. An upper bound for estimated false positive rate based on noise
+            'online_filter_method': online_filter_method,
             'filt_window': filt_window, # window size for removing the subthreshold activities 
             'do_plot': do_plot # Whether to plot or not
         }
 
         self.change_params(params_dict)
-#%%
+
     def set(self, group, val_dict, set_if_not_exists=False, verbose=False):
         """ Add key-value pairs to a group. Existing key-value pairs will be overwritten
             if specified in val_dict, but not deleted.
@@ -89,7 +93,6 @@ class violaparams(object):
                         "Changing key {0} in group {1} from {2} to {3}".format(k, group, d[k], v))
                 d[k] = v
 
-#%%
     def get(self, group, key):
         """ Get a value for a given group and key. Raises an exception if no such group/key combination exists.
 
