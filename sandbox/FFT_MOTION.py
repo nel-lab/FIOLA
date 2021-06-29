@@ -95,6 +95,7 @@ class MotionCorrect(keras.layers.Layer):
         self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
         
         self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[:,:,:,0], tf.complex128))
+        plt.imshow(tf.cast(self.target_freq, tf.float32));plt.colorbar()
             
        
     @tf.function
