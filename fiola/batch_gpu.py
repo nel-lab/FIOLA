@@ -132,7 +132,7 @@ class Pipeline(object):
         output[-1] = self.output_q.get()["nnls_1"]
         times[-1] = timeit.default_timer() - start
         print(timeit.default_timer()-start)
-        return times, output
+        return output
 
 #%%    
 class Pipeline_overall_batch(object):    
