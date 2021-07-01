@@ -38,10 +38,8 @@ def get_model(template, center_dims, Ab, num_layers=5, ms_h=10, ms_w=10):
     AtA = Ab.T@Ab
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
-#    theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
 
     #Initialization of the motion correction layer, initialized with the template
-    #import pdb; pdb.set_trace();
     mc_layer = MotionCorrect(template[:,:,None,None],center_dims, ms_h=ms_h, ms_w=ms_w)   
     mc, shifts = mc_layer(fr_in)
     #Chains motion correction layer to weight-calculation layer
