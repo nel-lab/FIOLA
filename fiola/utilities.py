@@ -15,6 +15,7 @@ import matplotlib.cm as mpl_cm
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.fft import ifftshift
 
 from past.utils import old_div
 import random
@@ -40,6 +41,310 @@ from sklearn.decomposition import NMF
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+#%% Below are functions for 3D motion correction
+def local_correlations_movie(self,
+                       eight_neighbours: bool = False,
+                       swap_dim: bool = False,
+                       frames_per_chunk: int = 1500,
+                       do_plot: bool = False,
+                       order_mean: int =1) -> np.ndarray:
+    """Computes the correlation image (CI) for the input movie. If the movie has
+    length more than 3000 frames it will automatically compute the max-CI
+    taken over chunks of a user specified length.
+
+        Args:
+            self:  np.ndarray (3D or 4D)
+                Input movie data in 3D or 4D format
+
+            eight_neighbours: Boolean
+                Use 8 neighbors if true, and 4 if false for 3D data (default = True)
+                Use 6 neighbors for 4D data, irrespectively
+
+            swap_dim: Boolean
+                True indicates that time is listed in the last axis of Y (matlab format)
+                and moves it in the front (default: False)
+
+            frames_per_chunk: int
+                Length of chunks to split the file into (default: 1500)
+
+            do_plot: Boolean (False)
+                Display a plot that updates the CI when computed in chunks
+
+            order_mean: int (1)
+                Norm used to average correlations over neighborhood (default: 1).
+
+        Returns:
+            rho: d1 x d2 [x d3] matrix, cross-correlation with adjacent pixels
+
+    """
+    T = self.shape[0]
+    Cn = np.zeros(self.shape[1:])
+    if T <= 3000:
+        Cn = local_correlations(np.array(self),
+                                   eight_neighbours=eight_neighbours,
+                                   swap_dim=swap_dim,
+                                   order_mean=order_mean)
+    else:
+
+        n_chunks = T // frames_per_chunk
+        for jj, mv in enumerate(range(n_chunks - 1)):
+            logging.debug('number of chunks:' + str(jj) + ' frames: ' +
+                          str([mv * frames_per_chunk, (mv + 1) * frames_per_chunk]))
+            rho = local_correlations(np.array(self[mv * frames_per_chunk:(mv + 1) * frames_per_chunk]),
+                                        eight_neighbours=eight_neighbours,
+                                        swap_dim=swap_dim,
+                                        order_mean=order_mean)
+            Cn = np.maximum(Cn, rho)
+            if do_plot:
+                pl.imshow(Cn, cmap='gray')
+                pl.pause(.1)
+
+        logging.debug('number of chunks:' + str(n_chunks - 1) + ' frames: ' +
+                      str([(n_chunks - 1) * frames_per_chunk, T]))
+        rho = local_correlations(np.array(self[(n_chunks - 1) * frames_per_chunk:]),
+                                    eight_neighbours=eight_neighbours,
+                                    swap_dim=swap_dim,
+                                    order_mean=order_mean)
+        Cn = np.maximum(Cn, rho)
+        if do_plot:
+            pl.imshow(Cn, cmap='gray')
+            pl.pause(.1)
+
+    return Cn
+
+def local_correlations(Y, eight_neighbours: bool = True, swap_dim: bool = True, order_mean=1) -> np.ndarray:
+    """Computes the correlation image for the input dataset Y
+
+    Args:
+        Y:  np.ndarray (3D or 4D)
+            Input movie data in 3D or 4D format
+    
+        eight_neighbours: Boolean
+            Use 8 neighbors if true, and 4 if false for 3D data (default = True)
+            Use 6 neighbors for 4D data, irrespectively
+    
+        swap_dim: Boolean
+            True indicates that time is listed in the last axis of Y (matlab format)
+            and moves it in the front
+
+        order_mean: (undocumented)
+
+    Returns:
+        rho: d1 x d2 [x d3] matrix, cross-correlation with adjacent pixels
+    """
+
+    if swap_dim:
+        Y = np.transpose(Y, tuple(np.hstack((Y.ndim - 1, list(range(Y.ndim))[:-1]))))
+
+    rho = np.zeros(np.shape(Y)[1:])
+    w_mov = (Y - np.mean(Y, axis=0)) / np.std(Y, axis=0)
+
+    rho_h = np.mean(np.multiply(w_mov[:, :-1, :], w_mov[:, 1:, :]), axis=0)
+    rho_w = np.mean(np.multiply(w_mov[:, :, :-1], w_mov[:, :, 1:]), axis=0)
+
+    # yapf: disable
+    if order_mean == 0:
+        rho = np.ones(np.shape(Y)[1:])
+        rho_h = rho_h
+        rho_w = rho_w
+        rho[:-1, :] = rho[:-1, :] * rho_h
+        rho[1:,  :] = rho[1:,  :] * rho_h
+        rho[:, :-1] = rho[:, :-1] * rho_w
+        rho[:,  1:] = rho[:,  1:] * rho_w
+    else:
+        rho[:-1, :] = rho[:-1, :] + rho_h**(order_mean)
+        rho[1:,  :] = rho[1:,  :] + rho_h**(order_mean)
+        rho[:, :-1] = rho[:, :-1] + rho_w**(order_mean)
+        rho[:,  1:] = rho[:,  1:] + rho_w**(order_mean)
+
+    if Y.ndim == 4:
+        rho_d = np.mean(np.multiply(w_mov[:, :, :, :-1], w_mov[:, :, :, 1:]), axis=0)
+        rho[:, :, :-1] = rho[:, :, :-1] + rho_d
+        rho[:, :, 1:] = rho[:, :, 1:] + rho_d
+
+        neighbors = 6 * np.ones(np.shape(Y)[1:])
+        neighbors[0]        = neighbors[0]        - 1
+        neighbors[-1]       = neighbors[-1]       - 1
+        neighbors[:,     0] = neighbors[:,     0] - 1
+        neighbors[:,    -1] = neighbors[:,    -1] - 1
+        neighbors[:,  :, 0] = neighbors[:,  :, 0] - 1
+        neighbors[:, :, -1] = neighbors[:, :, -1] - 1
+
+    else:
+        if eight_neighbours:
+            rho_d1 = np.mean(np.multiply(w_mov[:, 1:, :-1], w_mov[:, :-1, 1:,]), axis=0)
+            rho_d2 = np.mean(np.multiply(w_mov[:, :-1, :-1], w_mov[:, 1:, 1:,]), axis=0)
+
+            if order_mean == 0:
+                rho_d1 = rho_d1
+                rho_d2 = rho_d2
+                rho[:-1, :-1] = rho[:-1, :-1] * rho_d2
+                rho[1:,   1:] = rho[1:,   1:] * rho_d1
+                rho[1:,  :-1] = rho[1:,  :-1] * rho_d1
+                rho[:-1,  1:] = rho[:-1,  1:] * rho_d2
+            else:
+                rho[:-1, :-1] = rho[:-1, :-1] + rho_d2**(order_mean)
+                rho[1:,   1:] = rho[1:,   1:] + rho_d1**(order_mean)
+                rho[1:,  :-1] = rho[1:,  :-1] + rho_d1**(order_mean)
+                rho[:-1,  1:] = rho[:-1,  1:] + rho_d2**(order_mean)
+
+            neighbors = 8 * np.ones(np.shape(Y)[1:3])
+            neighbors[0,   :] = neighbors[0,   :] - 3
+            neighbors[-1,  :] = neighbors[-1,  :] - 3
+            neighbors[:,   0] = neighbors[:,   0] - 3
+            neighbors[:,  -1] = neighbors[:,  -1] - 3
+            neighbors[0,   0] = neighbors[0,   0] + 1
+            neighbors[-1, -1] = neighbors[-1, -1] + 1
+            neighbors[-1,  0] = neighbors[-1,  0] + 1
+            neighbors[0,  -1] = neighbors[0,  -1] + 1
+        else:
+            neighbors = 4 * np.ones(np.shape(Y)[1:3])
+            neighbors[0,  :]  = neighbors[0,  :] - 1
+            neighbors[-1, :]  = neighbors[-1, :] - 1
+            neighbors[:,  0]  = neighbors[:,  0] - 1
+            neighbors[:, -1]  = neighbors[:, -1] - 1
+
+    # yapf: enable
+    if order_mean == 0:
+        rho = np.power(rho, 1. / neighbors)
+    else:
+        rho = np.power(np.divide(rho, neighbors), 1 / order_mean)
+
+    return rho
+
+def apply_shifts_dft(src_freq, shifts, diffphase, is_freq=True, border_nan=True):
+    """
+    adapted from SIMA (https://github.com/losonczylab) and the
+    scikit-image (http://scikit-image.org/) package.
+
+
+    Unless otherwise specified by LICENSE.txt files in individual
+    directories, all code is
+
+    Copyright (C) 2011, the scikit-image team
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are
+    met:
+
+     1. Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+     2. Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in
+        the documentation and/or other materials provided with the
+        distribution.
+     3. Neither the name of skimage nor the names of its contributors may be
+        used to endorse or promote products derived from this software without
+        specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT,
+    INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+    SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+    HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+    STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+    POSSIBILITY OF SUCH DAMAGE.
+    Args:
+        apply shifts using inverse dft
+        src_freq: ndarray
+            if is_freq it is fourier transform image else original image
+        shifts: shifts to apply
+        diffphase: comes from the register_translation output
+    """
+
+    is3D = len(src_freq.shape) == 3
+    if not is_freq:
+        if is3D:
+            src_freq = np.fft.fftn(src_freq)
+        else:
+            src_freq = np.dstack([np.real(src_freq), np.imag(src_freq)])
+            src_freq = fftn(src_freq, flags=cv2.DFT_COMPLEX_OUTPUT + cv2.DFT_SCALE)
+            src_freq = src_freq[:, :, 0] + 1j * src_freq[:, :, 1]
+            src_freq = np.array(src_freq, dtype=np.complex128, copy=False)
+
+    if not is3D:
+        shifts = shifts[::-1]
+        nc, nr = np.shape(src_freq)
+        Nr = ifftshift(np.arange(-np.fix(nr/2.), np.ceil(nr/2.)))
+        Nc = ifftshift(np.arange(-np.fix(nc/2.), np.ceil(nc/2.)))
+        Nr, Nc = np.meshgrid(Nr, Nc)
+        Greg = src_freq * np.exp(1j * 2 * np.pi *
+                                 (-shifts[0] * 1. * Nr / nr - shifts[1] * 1. * Nc / nc))
+    else:
+        #shifts = np.array([*shifts[:-1][::-1],shifts[-1]])
+        #import pdb
+        #pdb.set_trace()
+        shifts = np.array(list(shifts[:-1][::-1]) + [shifts[-1]])
+        nc, nr, nd = np.array(np.shape(src_freq), dtype=float)
+        Nr = ifftshift(np.arange(-np.fix(nr / 2.), np.ceil(nr / 2.)))
+        Nc = ifftshift(np.arange(-np.fix(nc / 2.), np.ceil(nc / 2.)))
+        Nd = ifftshift(np.arange(-np.fix(nd / 2.), np.ceil(nd / 2.)))
+        Nr, Nc, Nd = np.meshgrid(Nr, Nc, Nd)
+        Greg = src_freq * np.exp(-1j * 2 * np.pi *
+                                 (-shifts[0] * Nr / nr - shifts[1] * Nc / nc -
+                                  shifts[2] * Nd / nd))
+
+
+
+    Greg = Greg.dot(np.exp(1j * diffphase))
+    if is3D:
+        new_img = np.real(np.fft.ifftn(Greg))
+    else:
+        Greg = np.dstack([np.real(Greg), np.imag(Greg)])
+        new_img = ifftn(Greg)[:, :, 0]
+
+    if border_nan is not False:
+        max_w, max_h, min_w, min_h = 0, 0, 0, 0
+        max_h, max_w = np.ceil(np.maximum(
+            (max_h, max_w), shifts[:2])).astype(np.int)
+        min_h, min_w = np.floor(np.minimum(
+            (min_h, min_w), shifts[:2])).astype(np.int)
+        if is3D:
+            max_d = np.ceil(np.maximum(0, shifts[2])).astype(np.int)
+            min_d = np.floor(np.minimum(0, shifts[2])).astype(np.int)
+        if border_nan is True:
+            new_img[:max_h, :] = np.nan
+            if min_h < 0:
+                new_img[min_h:, :] = np.nan
+            new_img[:, :max_w] = np.nan
+            if min_w < 0:
+                new_img[:, min_w:] = np.nan
+            if is3D:
+                new_img[:, :, :max_d] = np.nan
+                if min_d < 0:
+                    new_img[:, :, min_d:] = np.nan
+        elif border_nan == 'min':
+            min_ = np.nanmin(new_img)
+            new_img[:max_h, :] = min_
+            if min_h < 0:
+                new_img[min_h:, :] = min_
+            new_img[:, :max_w] = min_
+            if min_w < 0:
+                new_img[:, min_w:] = min_
+            if is3D:
+                new_img[:, :, :max_d] = min_
+                if min_d < 0:
+                    new_img[:, :, min_d:] = min_
+        elif border_nan == 'copy':
+            new_img[:max_h] = new_img[max_h]
+            if min_h < 0:
+                new_img[min_h:] = new_img[min_h-1]
+            if max_w > 0:
+                new_img[:, :max_w] = new_img[:, max_w, np.newaxis]
+            if min_w < 0:
+                new_img[:, min_w:] = new_img[:, min_w-1, np.newaxis]
+            if is3D:
+                if max_d > 0:
+                    new_img[:, :, :max_d] = new_img[:, :, max_d, np.newaxis]
+                if min_d < 0:
+                    new_img[:, :, min_d:] = new_img[:, :, min_d-1, np.newaxis]
+
+    return new_img
 #%% Below are functions for computing metrics for Marton's data
 def distance_spikes(s1, s2, max_dist):
     """ Define distance matrix between two spike train.
@@ -1098,6 +1403,27 @@ def bin_median(mat, window=10, exclude_nans=True):
         img = np.median(np.mean(np.reshape(
             mat[:num_frames], (window, num_windows, d1, d2)), axis=0), axis=0)
     return img
+
+def bin_median_3d(self, window=10):
+    """ compute median of 4D array in along axis o by binning values
+
+    Args:
+        mat: ndarray
+            input 4D matrix, (T, h, w, z)
+
+        window: int
+            number of frames in a bin
+
+    Returns:
+        img:
+            median image
+
+    """
+    T, d1, d2, d3 = np.shape(self)
+    num_windows = np.int(old_div(T, window))
+    num_frames = num_windows * window
+    return np.nanmedian(np.nanmean(np.reshape(self[:num_frames], (window, num_windows, d1, d2, d3)), axis=0),
+                        axis=0)
 
 def nf_match_neurons_in_binary_masks(masks_gt,
                                      masks_comp,
