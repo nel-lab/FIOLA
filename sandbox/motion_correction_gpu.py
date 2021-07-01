@@ -404,3 +404,108 @@ class MotionCorrectTest(keras.layers.Layer):
         sh_x_n = sh_x_n - tf.math.truediv((log_xm1_y - log_xp1_y), (2 * log_xm1_y - four_log_xy + 2 * log_xp1_y))
         sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1 - log_x_yp1), (2 * log_x_ym1 - four_log_xy + 2 * log_x_yp1))
         return tf.reshape(sh_x_n, [1, 1]), tf.reshape(sh_y_n, [1, 1])
+
+#%% Extra models for timings and figure generation
+def get_mc_model(template, center_dims, ms_h=10, ms_w=10):
+    """
+    takes as input a template (median) of the movie, A_sp object, and b object from caiman.
+    outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
+    """
+    shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+    template = template.astype(np.float32)
+
+    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
+
+    #Initialization of the motion correction layer, initialized with the template
+    mc_layer = MotionCorrect(template, center_dims, ms_h=ms_h, ms_w=ms_w)   
+    mc, shifts = mc_layer(fr_in)
+
+   
+    #create final model, returns it and the first weight
+    model = keras.Model(inputs=[fr_in], outputs=[mc, shifts])   
+    return model
+#%%
+from fiola.nnls_gpu import NNLS, compute_theta2
+def get_nnls_model(template, Ab, num_layers=30, ms_h=10, ms_w=10):
+    """
+    takes as input a template (median) of the movie, A_sp object, and b object from caiman.
+    outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
+    """
+    shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+    Ab = Ab.astype(np.float32)
+    template = template.astype(np.float32)
+    num_components = Ab.shape[-1]
+
+    y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="y") # Input Layer for components
+    x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="x") # Input layer for components
+    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
+    k_in = tf.keras.layers.Input(shape=(1,), name="k") #Input layer for the counter within the NNLS layers
+ 
+    #Calculations to initialize Motion Correction
+    AtA = Ab.T@Ab
+    n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+    theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
+
+    #Initialization of the motion correction layer, initialized with the template
+    mc_layer = Empty()
+    mc = mc_layer(fr_in)
+    shifts = [0.0, 0.0]
+    #Chains motion correction layer to weight-calculation layer
+    c_th2 = compute_theta2(Ab, n_AtA)
+    (th2, shifts) = c_th2(mc, shifts)
+    #Connects weights, calculated from the motion correction, to the NNLS layer
+    nnls = NNLS(theta_1)
+    x_kk = nnls([y_in, x_in, k_in, th2, shifts])
+    #stacks NNLS 9 times
+    for j in range(1, num_layers):
+        x_kk = nnls(x_kk)
+   
+    #create final model, returns it and the first weight
+    model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
+    return model  
+#%%
+# max_shifts = [10,10]
+# vect = a2[10].copy()
+# templ = np.roll(a2.mean(0), (0,0), axis=(0,1))
+# # plt.imshow(vect)
+# # plt.pause(1)
+# # plt.imshow(templ)
+# mask = np.ones_like(template).astype(np.float64)
+# mask[max_shifts[0]:-max_shifts[0], :] = 0
+# mask[:, max_shifts[1]:-max_shifts[1]] = 0
+# mask = tf.convert_to_tensor(mask)
+# target_image = tf.convert_to_tensor(templ[None,:,:,None].astype(np.complex128))
+# target_freq = tf.signal.fft2d(target_image[0,:,:,0])
+# shp = vect.shape
+#%%
+# def mot_cor(vect,templ, target_freq):
+#     src_image = tf.convert_to_tensor(vect[None,:,:,None].astype(np.complex128))
+#     target_image = tf.convert_to_tensor(templ[None,:,:,None].astype(np.complex128))
+#     src_freq = tf.signal.fft2d(src_image[0,:,:,0])
+#     print(np.mean(target_image))
+#     shape = src_freq.shape
+#     image_product = src_freq * tf.math.conj(target_freq)
+#     cross_correlation = tf.signal.ifft2d(image_product)
+#     new_cross_corr = tf.math.abs(cross_correlation)
+#     # plt.imshow(new_cross_corr)
+#     plt.imshow(np.roll(new_cross_corr,(shp[0]//2,shp[1]//2), axis=(0,1))[245:267, 245:267])
+#     plt.colorbar()
+#     print(np.roll(new_cross_corr,(shp[0]//2,shp[1]//2), axis=(0,1)).argmax())
+#     #
+#     shifts = np.array(np.unravel_index(np.roll(new_cross_corr,(shp[0]//2,shp[1]//2), axis=(0,1)).argmax(), templ.shape))
+#     print(shifts)
+#     shifts -=  np.array([shp[0]//2, shp[1]//2])
+#     return shifts
+#     # print(shifts)
+# mot_cor(mc, template, target_freq)
+#%%
+# maxima = np.unravel_index(np.argmax(new_cross_corr),cross_correlation.shape)
+# midpoints = np.array([np.fix(axis_size//2) for axis_size in shape])
+# shifts = np.array(maxima, dtype=np.float64)
+# shifts[shifts > midpoints] -= np.array(shape)[shifts > midpoints] 
+# print(shifts)
+class Empty(keras.layers.Layer):
+    def call(self,  fr):
+        fr = fr[0][None]
+        return tf.reshape(tf.transpose(tf.squeeze(fr)), [-1])[None, :]
+        
