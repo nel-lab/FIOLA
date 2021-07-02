@@ -31,27 +31,18 @@ class MotionCorrect(keras.layers.Layer):
         self.strides = strides
         self.padding = padding
         self.epsilon =  epsilon
-        self.shifts = []
-        
         self.template = template
         self.template_zm, self.template_var = self.normalize_template(self.template, epsilon=self.epsilon)
-        # print(self.template_var.shape, self.template_zm.shape, "tempvar\n")
-        # plt.imshow(self.template_zm[:,:,0, 0,0])
-        
         self.shp = self.template.shape
         self.shp_prod = tf.cast(tf.reduce_prod(self.shp), tf.float32)
 
         self.shp_m_x, self.shp_m_y, self.shp_m_z = self.shp[0]//2, self.shp[1]//2, self.shp[2]//2
                 
-        self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[None, :,:,:,0,0], tf.complex128))[0,:,:,:, None]
-        
-        # plt.imshow(self.template_zm[:,:,5,0,0])
-        plt.imshow(tf.cast(self.target_freq, dtype=tf.float32)[:,:,0])
-        
-        nshape = tf.cast(tf.shape(self.target_freq), dtype=tf.float32)
-        self.nc = nshape[0]
-        self.nr = nshape[1]
-        self.nd = nshape[2]
+        self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[None, :,:,:,0,0], tf.complex128))   # 1*x*y*z
+        nshape = tf.cast(tf.shape(self.target_freq[1:]), dtype=tf.float32)
+        self.nc = nshape[1]
+        self.nr = nshape[2]
+        self.nd = nshape[3]
         Nr = tf.signal.ifftshift(tf.range(-tf.experimental.numpy.fix(self.nr / 2.), tf.math.ceil(self.nr / 2.)))
         Nc = tf.signal.ifftshift(tf.range(-tf.experimental.numpy.fix(self.nc / 2.), tf.math.ceil(self.nc / 2.)))
         Nd = tf.signal.ifftshift(tf.range(-tf.experimental.numpy.fix(self.nd / 2.), tf.math.ceil(self.nd / 2.)))
@@ -60,32 +51,36 @@ class MotionCorrect(keras.layers.Layer):
        
     # @tf.function
     def call(self, fr):
-        fr = fr[0][None]
+        fr = fr[0]
+        print(f'fr: {fr.shape}')
         imgs_zm, imgs_var = self.normalize_image(fr, self.shp, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)
-        denominator = tf.sqrt(self.template_var * imgs_var)
+        denominator = tf.sqrt(self.template_var * imgs_var)[...,0]
         
         self.imgs_zm = imgs_zm
+        self.denominator = denominator
         
-        fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:,0], tf.complex128))[0,:,:,:,None]
+        fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:,0], tf.complex128)) # batch *x*y*z
         
         self.fr_freq = fr_freq
         
         img_product = fr_freq *  tf.math.conj(self.target_freq)
         #return  fr_freq, self.target_freq
-        plt.imshow(tf.cast(img_product, dtype=tf.float32)[:,:,0])
+        #plt.imshow(tf.cast(img_product, dtype=tf.float32)[:,:,0])
         
         self.img_product = img_product
 
-        cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product[None,:,:,:,0])), tf.float32)[:, :, :, :, None]
+        cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)
         
         self.corr = cross_correlation
         self.denominator = denominator
         rolled_cc =  tf.roll(cross_correlation,(self.shp_m_x,self.shp_m_y,self.shp_m_z), axis=(1,2,3))
         #self.rolledncc = ncc
         print(rolled_cc.shape, denominator.shape,"roll\n")
+        self.cc = rolled_cc[:,self.shp_m_x-self.ms_h:self.shp_m_x+self.ms_h+1, self.shp_m_y-self.ms_w:self.shp_m_y+self.ms_w+1, self.shp_m_z-self.ms_d:self.shp_m_z+self.ms_d+1]
         # ncc = rolled_cc[:,self.shp_m_x-self.ms_w:self.shp_m_x+self.ms_w+1, self.shp_m_y-self.ms_h:self.shp_m_y+self.ms_h+1]/denominator
-        ncc = rolled_cc[:,self.shp_m_x-self.ms_h:self.shp_m_x+self.ms_h+1, self.shp_m_y-self.ms_w:self.shp_m_y+self.ms_w+1, self.shp_m_z-self.ms_d:self.shp_m_z+self.ms_d+1]/denominator
+        ncc = rolled_cc[:,self.shp_m_x-self.ms_h:self.shp_m_x+self.ms_h+1, self.shp_m_y-self.ms_w:self.shp_m_y+self.ms_w+1, self.shp_m_z-self.ms_d:self.shp_m_z+self.ms_d+1]#/denominator
+        # denominator seems not useful as we are doing fft/ifft
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
         # plt.imshow(ncc[0,:,:,10,0])
         self.ncc = ncc
@@ -93,9 +88,9 @@ class MotionCorrect(keras.layers.Layer):
         
         
         sh_x, sh_y, sh_z = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w, self.ms_d)
-        
+        self.shifts = [-sh_x,-sh_y,-sh_z]
         # print(sh_x, sh_y)
-        return sh_x, sh_y, sh_z#, cross_correlation, ncc, denominator
+        #return sh_x, sh_y, sh_z#, cross_correlation, ncc, denominator
         # print(fr_freq.shape,  fr_freq.dtype)
         fr_corrected = self.apply_shifts_dft_tf(src_freq=fr_freq, shifts=[-sh_x,-sh_y,-sh_z])
         
@@ -103,7 +98,7 @@ class MotionCorrect(keras.layers.Layer):
         # print(sh_x)
         # return tf.reshape(tf.transpose(tf.squeeze(fr_corrected)), [-1])[None, :]
         # print(sh_x,sh_y,sh_z)
-        #return tf.transpose(tf.squeeze(fr_corrected))
+        return fr_corrected, [sh_x, sh_y, sh_z]
     
     def normalize_template(self, template, epsilon=0.00000001):
         # remove mean and divide by std
@@ -118,16 +113,20 @@ class MotionCorrect(keras.layers.Layer):
         imgs_zm = imgs - tf.reduce_mean(imgs, axis=[1,2,3], keepdims=True)
         print(imgs_zm.shape, "it")
         img_stack = tf.stack([imgs[:,:,:,:,0], tf.square(imgs)[:,:,:,:,0]], axis=4)
-        # print(img_stack.shape)
+        print(f'img_stack: {img_stack.shape}')
 
         localsum_stack = tf.nn.avg_pool3d(img_stack,[1,self.template.shape[0]-2*self.ms_h, self.template.shape[1]-2*self.ms_w, self.template.shape[2]-2*self.ms_d, 1], 
                                                padding=padding, strides=strides)
+        print(f'localsum_stack: {localsum_stack.shape}')
+        
+        #import pdb
+        #pdb.set_trace()
         localsum_ustack = tf.unstack(localsum_stack, axis=4)
         
         localsum_sq = localsum_ustack[1][:,:,:,:,None]
         localsum = localsum_ustack[0][:,:,:,:,None]
 
-        imgs_var = localsum_sq - tf.square(localsum)/self.shp_prod + epsilon
+        imgs_var = localsum_sq - tf.square(localsum) + epsilon #/self.shp_prod + epsilon
         # Remove small machine precision errors after subtraction
         imgs_var = tf.where(imgs_var<0, tf.zeros_like(imgs_var), imgs_var)
         # del localsum_sq, localsum
@@ -149,7 +148,6 @@ class MotionCorrect(keras.layers.Layer):
 
         # shifts_int_cast = tf.cast(shifts_int,tf.int64)
         sh_x, sh_y, sh_z = shifts_int[0],shifts_int[1],shifts_int[2]
-        # print(sh_x,sh_y,sh_z,  ncc.shape)
         # tf.print(timeit.default_timer() - st, "shifts")
         
         sh_x_n = tf.cast(-(sh_x - ms_h), tf.float32)
@@ -159,23 +157,23 @@ class MotionCorrect(keras.layers.Layer):
         ncc_log = tf.math.log(ncc)
         # print(ncc_log.shape, sh_x, sh_y, sh_z, "indx\n")
 
-        n_batches = np.arange(1)
-
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x-1, axis=0), tf.squeeze(sh_y, axis=0), tf.squeeze(sh_z, axis=0)]))
+        n_batches = np.arange(ncc.shape[0])
+        
+        idx = tf.transpose(tf.stack([n_batches, sh_x-1, sh_y, sh_z]))
         log_xm1_y_z = tf.gather_nd(ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x+1, axis=0), tf.squeeze(sh_y, axis=0), tf.squeeze(sh_z, axis=0)]))
+        idx = tf.transpose(tf.stack([n_batches, sh_x+1, sh_y, sh_z]))
         log_xp1_y_z = tf.gather_nd(ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y-1, axis=0), tf.squeeze(sh_z, axis=0)]))
+        idx = tf.transpose(tf.stack([n_batches, sh_x, sh_y-1, sh_z]))
         log_x_ym1_z = tf.gather_nd(ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y+1, axis=0), tf.squeeze(sh_z, axis=0)]))
+        idx = tf.transpose(tf.stack([n_batches, sh_x, sh_y+1, sh_z]))
         log_x_yp1_z =  tf.gather_nd(ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0), tf.squeeze(sh_z-1, axis=0)]))
+        idx = tf.transpose(tf.stack([n_batches, sh_x, sh_y, sh_z-1]))
         log_x_y_zm1 =  tf.gather_nd(ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0), tf.squeeze(sh_z+1, axis=0)]))
-        # print(idx)
+        idx = tf.transpose(tf.stack([n_batches, sh_x, sh_y, sh_z+1]))
         log_x_y_zp1 =  tf.gather_nd(ncc_log, idx)
-        idx = tf.transpose(tf.stack([n_batches, tf.squeeze(sh_x, axis=0), tf.squeeze(sh_y, axis=0),  tf.squeeze(sh_z, axis=0)]))
+        idx = tf.transpose(tf.stack([n_batches, sh_x, sh_y, sh_z]))
         six_log_xyz = 6 * tf.gather_nd(ncc_log, idx)    # 4 or 6 need check
+
         # print()
         # print(six_log_xyz, " siz")
         # print()
@@ -189,13 +187,13 @@ class MotionCorrect(keras.layers.Layer):
         sh_y_n = sh_y_n - tf.math.truediv((log_x_ym1_z - log_x_yp1_z), (3 * log_x_ym1_z - six_log_xyz + 3 * log_x_yp1_z))
         sh_z_n = sh_z_n - tf.math.truediv((log_x_y_zm1 - log_x_y_zp1), (3 * log_x_y_zm1 - six_log_xyz + 3 * log_x_y_zp1))
         print(sh_x_n, "x\n")
-        return tf.reshape(sh_x_n, [1, 1]), tf.reshape(sh_y_n, [1, 1]),  tf.reshape(sh_z_n, [1, 1])
+        return sh_x_n, sh_y_n, sh_z_n
     
     def argmax_3d(self, tensor):
         # extract peaks from 3D tensor (takes batches as input too)
 
         # flatten the Tensor along the height and width axes
-        flat_tensor = tf.reshape(tensor, (1, tensor.shape[-4]*tensor.shape[-3]*tensor.shape[-2], 1))
+        flat_tensor = tf.reshape(tensor, (tensor.shape[0], -1))
 
         argmax= tf.cast(tf.argmax(flat_tensor, axis=1), tf.int32)
         # convert indexes into 3D coordinates
@@ -213,24 +211,27 @@ class MotionCorrect(keras.layers.Layer):
     def apply_shifts_dft_tf(self, src_freq, shifts, diffphase=tf.cast([0],dtype=tf.complex128)):
         shifts =  (shifts[1], shifts[0], shifts[2]) #p.array(list(shifts[:-1][::-1]) + [shifts[-1]])
         # print(shifts)
-        src_freq  = src_freq[:,:,:,0]
+        #src_freq  = src_freq
         # print(src_freq.dtype)
+        #import pdb
+        #pdb.set_trace()
+        #sh_0 = -shifts[0] * self.Nr / self.nr
+        #sh_1 = -shifts[1] * self.Nc / self.nc
+        #sh_2 = -shifts[2] * self.Nd / self.nd
+        sh_0 = tf.tensordot(-shifts[0], self.Nr / self.nr, axes=0)
+        sh_1 = tf.tensordot(-shifts[1], self.Nc / self.nc, axes=0)
+        sh_2 = tf.tensordot(-shifts[2], self.Nd / self.nd, axes=0)
 
 
-        sh_0 = -shifts[0] * self.Nr / self.nr
-        sh_1 = -shifts[1] * self.Nc / self.nc
-        sh_2 = -shifts[2] * self.Nd / self.nd
         sh_tot = (sh_0 +  sh_1 + sh_2)
-
         Greg = src_freq * tf.math.exp(-1j * 2 * math.pi * tf.cast(sh_tot, dtype=tf.complex128))
 
-    
         #todo: check difphase and eventually dot product?
         Greg = Greg * tf.math.exp(1j * diffphase)
         new_img = tf.math.real(tf.signal.ifft3d(Greg))
         
     
-        return new_img[None,:,:,:,None]
+        return new_img
         
     def get_config(self):
         base_config = super().get_config().copy()
@@ -249,7 +250,7 @@ import math
 #     mov = np.array(f['mov'])
 # #%%    
 mov = np.zeros((4, 70, 50, 20)).astype(np.float32).astype(np.float32)
-mov = mov + np.random.rand(mov.shape[0], mov.shape[1], mov.shape[2], mov.shape[3])/1.5
+#mov = mov + np.random.rand(mov.shape[0], mov.shape[1], mov.shape[2], mov.shape[3])/1.5
 mov = mov.astype(np.float32)
 
 for i in range(mov.shape[0]):
@@ -271,34 +272,45 @@ st = time.time()
 times = []
 nccs = []
 for i in range(mov.shape[0]):
-    ncc = mc_layer(data[:,2])
+    corrected = mc_layer(data[:,3:4])
     times.append(time.time()-st)
     # nccs.append(np.array(ncc).squeeze())
     break
 # print(time.time()-st)
 #fr_corrected = ncc
-coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
+#coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
 #tensor = np.squeeze(ncc[-1])  # template frequency
 #cc = np.squeeze(ncc[-2])    # frame frequency
 print(coords)
 self = mc_layer
-cc = self.ncc.numpy()
-np.where(cc==cc.max())
+ncc = self.ncc.numpy()
+np.where(ncc==ncc.max())
 
 corr = self.corr.numpy()
 np.where(corr==corr.max())
 
-self.denominator
+cc = self.cc.numpy()
+np.where(cc==cc.max())
+plt.imshow(cc[0, :, :, 6]) 
+
+
 dd = self.denominator.numpy()
 np.where(dd==dd.max())
+dd[0, 7, 8, 6]
+dd[0, 8, 8, 6]
+plt.imshow(dd[0, :, :, 6]) 
+
+print(self.shifts)
 #xx = fr_corrected.numpy()
 #np.where(xx == xx.max())
 #np.where(mc_layer.ncc.numpy()==mc_layer.ncc.numpy().max())
 #np.where(ncc == ncc.max())
-#ii = 6
-#plt.imshow(template[:,:,ii])
-#plt.imshow(mov[1][:,:,ii])
-#plt.imshow(ncc.numpy()[:,:,ii])
+#%%
+ii = 5
+plt.imshow(template[:,:,ii])
+plt.imshow(mov[3][:,:,ii])
+plt.imshow(corrected.numpy()[0, :,:,ii]); plt.colorbar()
+#plt.imshow(self.denominator.numpy()[0, ii, :, :])
 
 #%%
 import numpy as np
@@ -437,17 +449,17 @@ from tifffile.tifffile import imsave
 from skimage.io import imread
 
 #%%
-def gen_data(p=1, noise=.5, T=256, framerate=30, firerate=2., motion=True, plot=False):
+def gen_data(p=1, D=3, dims=(70,50,10), sig=(4,4,2), bkgrd=10, N=20, noise=.5, T=256, 
+             framerate=30, firerate=2., motion=True, plot=False):
     if p == 2:
         gamma = np.array([1.5, -.55])
     elif p == 1:
         gamma = np.array([.9])
     else:
         raise
-    dims = (70, 50, 10)  # size of image
-    sig = (4, 4, 2)  # neurons size
-    bkgrd = 10
-    N = 20  # number of neurons
+    dims = dims[:D]
+    sig = sig[:D]
+    
     np.random.seed(0)#7)
     centers = np.asarray([[np.random.randint(s, x - s)
                            for x, s in zip(dims, sig)] for i in range(N)])
@@ -465,20 +477,33 @@ def gen_data(p=1, noise=.5, T=256, framerate=30, firerate=2., motion=True, plot=
         else:
             truth[:, i] += gamma[0] * truth[:, i - 1]
     for i in range(N):
-        Y[:, centers[i, 0], centers[i, 1], centers[i, 2]] = truth[i]
+        Y[(slice(None),) + tuple(centers[i, :])] = truth[i]
+        #Y[:, centers[i, 0], centers[i, 1], centers[i, 2]] = truth[i]
     tmp = np.zeros(dims)
     tmp[tuple(np.array(dims)//2)] = 1.
     z = np.linalg.norm(gaussian_filter(tmp, sig).ravel())
     Y = bkgrd + noise * np.random.randn(*Y.shape) + 10 * gaussian_filter(Y, (0,) + sig) / z
     if motion:
         shifts = np.transpose([np.convolve(np.random.randn(T-10), np.ones(11)/11*s) for s in sig])
-        Y = np.array([apply_shifts_dft(img, (sh[0], sh[1], sh[2]), 0,
+        
+        if D == 2:
+            shifts = np.hstack((shifts, np.zeros(shifts.shape[0])[:, None]))
+            Y = Y[..., None]
+        
+        Y = np.array([apply_shifts_dft(img, tuple(sh), 0,
                                                                      is_freq=False, border_nan='copy')
                                for img, sh in zip(Y, shifts)])
-        Y = Y[:, 2*sig[0]:-2*sig[0], 2*sig[1]:-2*sig[1], 2*sig[2]:-2*sig[2]]
+        #Y = Y[:, 2*sig[0]:-2*sig[0], 2*sig[1]:-2*sig[1], 2*sig[2]:-2*sig[2]]
+        Y = Y[(slice(None),) + tuple([(slice(2*si, -2*si, 1)) for si in sig])]
+        
+        if D == 2:
+            #shifts = shifts[..., 0]
+            Y = Y[..., 0]
     else:
         shifts = None
-    T, d1, d2, d3 = Y.shape
+        
+    print(Y.shape)
+    #T, d1, d2, d3 = Y.shape
 
     if plot:
         Cn = local_correlations_movie(Y, swap_dim=False)
@@ -520,6 +545,16 @@ Y, truth, trueSpikes, centers, dims, shifts = gen_data(p=2)
 imsave(fname, Y)
 print(fname)#%%
 dims = (70, 50, 10)
+
+#%%
+fname = os.path.join('/home/nel/caiman_data', 'example_movies', 'demoMovie2D.tif')
+Y, truth, trueSpikes, centers, dims, shifts = gen_data(D=2, T=3000)
+imsave(fname, Y)
+print(fname)#%%
+
+#%%
+yy = Yr.reshape((20, 30, 3000), order='F').transpose([2, 0, 1]).copy()
+play(yy)
 #%%
 Y = imread(fname)   
 Cn = local_correlations_movie(Y, swap_dim=False)
@@ -548,11 +583,15 @@ plt.show()
 play(Y[...,5], magnification=2)
 
 #%%
+Y.shape
+shifts = np.hstack((shifts, np.zeros(shifts.shape[0])[:, None]))
+
+Y = Y[..., None]
 Y = Y.astype(np.float32)
 template = bin_median_3d(Y, 30)
 
 #%%
-mc_layer = MotionCorrect(template[:,:,:,None,None], ms_h=4, ms_w=4, ms_d=2)
+mc_layer = MotionCorrect(template[:,:,:,None,None], ms_h=4, ms_w=4, ms_d=0)
 data = Y[None, ..., None]
 print(f'data shape: {data.shape}')
 print(f'template shape: {template.shape}')
@@ -562,13 +601,24 @@ times = []
 nccs = []
 shifts_gpu_mc = np.zeros((Y.shape[0], 3))
 for i in range(data.shape[1]):
-    ncc = mc_layer(data[:,i])
+    _, ncc = mc_layer(data[:,i:i+1])
     coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
     shifts_gpu_mc[i] = coords
     #shifts_all.append(mc_layer.shifts)
     times.append(time.time()-st)
     
-    
+#%%
+batch = 16
+shifts_gpu_mc = np.zeros((Y.shape[0], 3))
+for i in range(data.shape[1]//batch):
+    _, ncc = mc_layer(data[:,batch*i:batch*(i+1)])
+    coords = np.array([ncc[0],ncc[1],ncc[2]]).T
+    shifts_gpu_mc[batch*i:batch*(i+1)] = coords
+    #shifts_all.append(mc_layer.shifts)
+    times.append(time.time()-st)
+
+
+
 #%%
 plt.figure(figsize=(12,3))
 for i, s in enumerate((-shifts_gpu_mc +shifts_gpu_mc.mean(0), shifts - shifts.mean(0))):
@@ -580,8 +630,13 @@ for i, s in enumerate((-shifts_gpu_mc +shifts_gpu_mc.mean(0), shifts - shifts.me
     plt.xlabel('frames')
     plt.ylabel('pixels')
     plt.ylim(-4, 4)
+    plt.xlim(0, 300)
 
 #print(f'shifts: {shifts[1]}')
+
+#%%
+for i in range(3):
+    print(f'{["x","y","z"][i]}: {np.corrcoef(-shifts_gpu_mc[:, i], shifts[:, i])}')
 
 #%%
 tensor = self.ncc.numpy()
@@ -598,5 +653,28 @@ argmax_y = (argmax % xy_flat) // shp[1]
 argmax_x = argmax - argmax_z*xy_flat - shp[1]*argmax_y
 
 
-
+#%%
+def gen_data(D=3, noise=.5, T=300, framerate=30, firerate=2.):
+    N = 4                                                              # number of neurons
+    dims = [(20, 30), (12, 14, 16)][D - 2]                             # size of image
+    sig = (2, 2, 2)[:D]                                                # neurons size
+    bkgrd = 10                                                         # fluorescence baseline
+    gamma = .9                                                         # calcium decay time constant
+    np.random.seed(5)
+    centers = np.asarray([[np.random.randint(4, x - 4) for x in dims] for i in range(N)])
+    trueA = np.zeros(dims + (N,), dtype=np.float32)
+    trueS = np.random.rand(N, T) < firerate / float(framerate)
+    trueS[:, 0] = 0
+    trueC = trueS.astype(np.float32)
+    for i in range(1, T):
+        trueC[:, i] += gamma * trueC[:, i - 1]
+    for i in range(N):
+        trueA[tuple(centers[i]) + (i,)] = 1.
+    tmp = np.zeros(dims)
+    tmp[tuple(d // 2 for d in dims)] = 1.
+    z = np.linalg.norm(gaussian_filter(tmp, sig).ravel())
+    trueA = 10 * gaussian_filter(trueA, sig + (0,)) / z
+    Yr = bkgrd + noise * np.random.randn(*(np.prod(dims), T)) + \
+        trueA.reshape((-1, 4), order='F').dot(trueC)
+    return Yr, trueC, trueS, trueA, centers, dims
 

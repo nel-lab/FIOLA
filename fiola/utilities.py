@@ -16,6 +16,7 @@ import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.fft import ifftshift
+from numpy.fft import fftn, ifftn
 
 from past.utils import old_div
 import random
