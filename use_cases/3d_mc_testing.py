@@ -6,13 +6,14 @@ Created on Sun Apr  4 11:49:25 2021
 @author: nel
 """
 #%%
-import tensorflow as tf
+import math
 import numpy as np
+import os
 import pylab as plt
+import tensorflow as tf
 import tensorflow.keras as keras
 import tensorflow_addons as tfa
 import timeit
-import os
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR) 
 os.environ["TF_XLA_FLAGS"]="--tf_xla_enable_xla_devices" 
@@ -56,48 +57,27 @@ class MotionCorrect(keras.layers.Layer):
         imgs_zm, imgs_var = self.normalize_image(fr, self.shp, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)
         denominator = tf.sqrt(self.template_var * imgs_var)[...,0]
-        
         self.imgs_zm = imgs_zm
         self.denominator = denominator
-        
         fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:,0], tf.complex128)) # batch *x*y*z
-        
         self.fr_freq = fr_freq
-        
         img_product = fr_freq *  tf.math.conj(self.target_freq)
-        #return  fr_freq, self.target_freq
-        #plt.imshow(tf.cast(img_product, dtype=tf.float32)[:,:,0])
-        
         self.img_product = img_product
-
         cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)
         
         self.corr = cross_correlation
         self.denominator = denominator
         rolled_cc =  tf.roll(cross_correlation,(self.shp_m_x,self.shp_m_y,self.shp_m_z), axis=(1,2,3))
-        #self.rolledncc = ncc
-        print(rolled_cc.shape, denominator.shape,"roll\n")
         self.cc = rolled_cc[:,self.shp_m_x-self.ms_h:self.shp_m_x+self.ms_h+1, self.shp_m_y-self.ms_w:self.shp_m_y+self.ms_w+1, self.shp_m_z-self.ms_d:self.shp_m_z+self.ms_d+1]
-        # ncc = rolled_cc[:,self.shp_m_x-self.ms_w:self.shp_m_x+self.ms_w+1, self.shp_m_y-self.ms_h:self.shp_m_y+self.ms_h+1]/denominator
         ncc = rolled_cc[:,self.shp_m_x-self.ms_h:self.shp_m_x+self.ms_h+1, self.shp_m_y-self.ms_w:self.shp_m_y+self.ms_w+1, self.shp_m_z-self.ms_d:self.shp_m_z+self.ms_d+1]#/denominator
         # denominator seems not useful as we are doing fft/ifft
+        
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
-        # plt.imshow(ncc[0,:,:,10,0])
         self.ncc = ncc
-        #return ncc
-        
-        
         sh_x, sh_y, sh_z = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w, self.ms_d)
         self.shifts = [-sh_x,-sh_y,-sh_z]
-        # print(sh_x, sh_y)
-        #return sh_x, sh_y, sh_z#, cross_correlation, ncc, denominator
-        # print(fr_freq.shape,  fr_freq.dtype)
         fr_corrected = self.apply_shifts_dft_tf(src_freq=fr_freq, shifts=[-sh_x,-sh_y,-sh_z])
-        
-        # print(tf.math.reduce_sum(fr_corrected))
-        # print(sh_x)
-        # return tf.reshape(tf.transpose(tf.squeeze(fr_corrected)), [-1])[None, :]
-        # print(sh_x,sh_y,sh_z)
+
         return fr_corrected, [sh_x, sh_y, sh_z]
     
     def normalize_template(self, template, epsilon=0.00000001):
@@ -118,9 +98,6 @@ class MotionCorrect(keras.layers.Layer):
         localsum_stack = tf.nn.avg_pool3d(img_stack,[1,self.template.shape[0]-2*self.ms_h, self.template.shape[1]-2*self.ms_w, self.template.shape[2]-2*self.ms_d, 1], 
                                                padding=padding, strides=strides)
         print(f'localsum_stack: {localsum_stack.shape}')
-        
-        #import pdb
-        #pdb.set_trace()
         localsum_ustack = tf.unstack(localsum_stack, axis=4)
         
         localsum_sq = localsum_ustack[1][:,:,:,:,None]
@@ -239,8 +216,7 @@ class MotionCorrect(keras.layers.Layer):
                 "padding": self.padding, "epsilon": self.epsilon, 
                                         "ms_h": self.ms_h,"ms_w": self.ms_w , "ms_d":self.ms_d}
 
-#%%
-import math
+#%% A test dataset
 # movie = '/home/nel/NEL-LAB Dropbox/NEL/Datasets/PanosBoyden/Organoids/Org3_BP_Fov2_run1/plane_51.hdf5'
 # import h5py
 # #%%
@@ -281,7 +257,6 @@ for i in range(mov.shape[0]):
 #coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
 #tensor = np.squeeze(ncc[-1])  # template frequency
 #cc = np.squeeze(ncc[-2])    # frame frequency
-print(coords)
 self = mc_layer
 ncc = self.ncc.numpy()
 np.where(ncc==ncc.max())
@@ -309,8 +284,278 @@ print(self.shifts)
 ii = 5
 plt.imshow(template[:,:,ii])
 plt.imshow(mov[3][:,:,ii])
-plt.imshow(corrected.numpy()[0, :,:,ii]); plt.colorbar()
+plt.imshow(corrected[0].numpy()[0, :,:,ii])#; plt.colorbar()
 #plt.imshow(self.denominator.numpy()[0, ii, :, :])
+
+
+
+#%%
+from scipy.ndimage.filters import gaussian_filter
+from fiola.utilities import apply_shifts_dft, local_correlations_movie, play, bin_median_3d
+from tifffile.tifffile import imsave
+from skimage.io import imread
+
+#%%
+def gen_data(p=1, D=3, dims=(70,50,10), sig=(4,4,2), bkgrd=10, N=20, noise=.5, T=256, 
+             framerate=30, firerate=2., motion=True, plot=False):
+    if p == 2:
+        gamma = np.array([1.5, -.55])
+    elif p == 1:
+        gamma = np.array([.9])
+    else:
+        raise
+    dims = dims[:D]
+    sig = sig[:D]
+    
+    np.random.seed(0)#7)
+    centers = np.asarray([[np.random.randint(s, x - s)
+                           for x, s in zip(dims, sig)] for i in range(N)])
+    if motion:
+        centers += np.array(sig) * 2
+        Y = np.zeros((T,) + tuple(np.array(dims) + np.array(sig) * 4), dtype=np.float32)      
+    else:
+        Y = np.zeros((T,) + dims, dtype=np.float32)
+    trueSpikes = np.random.rand(N, T) < firerate / float(framerate)
+    trueSpikes[:, 0] = 0
+    truth = trueSpikes.astype(np.float32)
+    for i in range(2, T):
+        if p == 2:
+            truth[:, i] += gamma[0] * truth[:, i - 1] + gamma[1] * truth[:, i - 2]
+        else:
+            truth[:, i] += gamma[0] * truth[:, i - 1]
+    for i in range(N):
+        Y[(slice(None),) + tuple(centers[i, :])] = truth[i]
+        #Y[:, centers[i, 0], centers[i, 1], centers[i, 2]] = truth[i]
+    tmp = np.zeros(dims)
+    tmp[tuple(np.array(dims)//2)] = 1.
+    z = np.linalg.norm(gaussian_filter(tmp, sig).ravel())
+    Y = bkgrd + noise * np.random.randn(*Y.shape) + 10 * gaussian_filter(Y, (0,) + sig) / z
+    if motion:
+        shifts = np.transpose([np.convolve(np.random.randn(T-10), np.ones(11)/11*s) for s in sig])
+        
+        if D == 2:
+            shifts = np.hstack((shifts, np.zeros(shifts.shape[0])[:, None]))
+            Y = Y[..., None]
+        
+        Y = np.array([apply_shifts_dft(img, tuple(sh), 0,
+                                                                     is_freq=False, border_nan='copy')
+                               for img, sh in zip(Y, shifts)])
+        #Y = Y[:, 2*sig[0]:-2*sig[0], 2*sig[1]:-2*sig[1], 2*sig[2]:-2*sig[2]]
+        Y = Y[(slice(None),) + tuple([(slice(2*si, -2*si, 1)) for si in sig])]
+        
+        if D == 2:
+            #shifts = shifts[..., 0]
+            Y = Y[..., 0]
+    else:
+        shifts = None
+        
+    print(Y.shape)
+    #T, d1, d2, d3 = Y.shape
+
+    if plot:
+        Cn = local_correlations_movie(Y, swap_dim=False)
+        plt.figure(figsize=(15, 3))
+        plt.plot(truth.T)
+        plt.figure(figsize=(15, 3))
+        for c in centers:
+            plt.plot(Y[c[0], c[1], c[2]])
+
+        d1, d2, d3 = dims
+        x, y = (int(1.2 * (d1 + d3)), int(1.2 * (d2 + d3)))
+        scale = 6/x
+        fig = plt.figure(figsize=(scale*x, scale*y))
+        axz = fig.add_axes([1-d1/x, 1-d2/y, d1/x, d2/y])
+        plt.imshow(Cn.max(2).T, cmap='gray')
+        plt.scatter(*centers.T[:2], c='r')
+        plt.title('Max.proj. z')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        axy = fig.add_axes([0, 1-d2/y, d3/x, d2/y])
+        plt.imshow(Cn.max(0), cmap='gray')
+        plt.scatter(*centers.T[:0:-1], c='r')
+        plt.title('Max.proj. x')
+        plt.xlabel('z')
+        plt.ylabel('y')
+        axx = fig.add_axes([1-d1/x, 0, d1/x, d3/y])
+        plt.imshow(Cn.max(1).T, cmap='gray')
+        plt.scatter(*centers.T[np.array([0,2])], c='r')
+        plt.title('Max.proj. y')
+        plt.xlabel('x')
+        plt.ylabel('z');
+        plt.show()
+
+    return Y, truth, trueSpikes, centers, dims, -shifts
+
+#%% Generate toy datasets
+D = 2
+
+if D == 3:
+    fname = os.path.join('/home/nel/caiman_data', 'example_movies', 'demoMovie3D.tif')
+    Y, truth, trueSpikes, centers, dims, shifts = gen_data(D=3, p=2)
+    imsave(fname, Y)
+    print(fname)#%%
+    dims = (70, 50, 10)
+    
+    Y = imread(fname)   
+    Cn = local_correlations_movie(Y, swap_dim=False)
+    d1, d2, d3 = dims
+    x, y = (int(1.2 * (d1 + d3)), int(1.2 * (d2 + d3)))
+    scale = 6/x
+    fig = plt.figure(figsize=(scale*x, scale*y))
+    axz = fig.add_axes([1-d1/x, 1-d2/y, d1/x, d2/y])
+    plt.imshow(Cn.max(2).T, cmap='gray')
+    plt.title('Max.proj. z')
+    plt.xlabel('x')
+    plt.ylabel('y')
+    axy = fig.add_axes([0, 1-d2/y, d3/x, d2/y])
+    plt.imshow(Cn.max(0), cmap='gray')
+    plt.title('Max.proj. x')
+    plt.xlabel('z')
+    plt.ylabel('y')
+    axx = fig.add_axes([1-d1/x, 0, d1/x, d3/y])
+    plt.imshow(Cn.max(1).T, cmap='gray')
+    plt.title('Max.proj. y')
+    plt.xlabel('x')
+    plt.ylabel('z');
+    plt.show()
+    
+    play(Y[...,5], magnification=2)
+    
+elif D == 2:
+    fname = os.path.join('/home/nel/caiman_data', 'example_movies', 'demoMovie2D.tif')
+    Y, truth, trueSpikes, centers, dims, shifts = gen_data(D=2, T=256)
+    imsave(fname, Y)
+    print(fname)#%%
+
+#%%
+if D == 3:
+    ms_h = 4; ms_w = 4; ms_d = 2
+elif D == 2:
+    if len(Y.shape) != 4:
+        Y = Y[..., None]
+    ms_h = 5; ms_w = 5; ms_d = 0
+Y = Y.astype(np.float32)
+template = bin_median_3d(Y, 30)
+
+#%%
+mc_layer = MotionCorrect(template[:,:,:,None,None], ms_h=ms_h, ms_w=ms_w, ms_d=ms_d)
+data = Y[None, ..., None]
+print(f'data shape: {data.shape}')
+print(f'template shape: {template.shape}')
+import time
+st = time.time()
+times = []
+nccs = []
+shifts_gpu_mc = np.zeros((Y.shape[0], 3))
+for i in range(data.shape[1]):
+    _, ncc = mc_layer(data[:,i:i+1])
+    coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
+    shifts_gpu_mc[i] = coords
+    #shifts_all.append(mc_layer.shifts)
+    times.append(time.time()-st)
+    
+#%%
+batch = 16
+shifts_gpu_mc = np.zeros((Y.shape[0], 3))
+for i in range(data.shape[1]//batch):
+    _, ncc = mc_layer(data[:,batch*i:batch*(i+1)])
+    coords = np.array([ncc[0],ncc[1],ncc[2]]).T
+    shifts_gpu_mc[batch*i:batch*(i+1)] = coords
+    #shifts_all.append(mc_layer.shifts)
+    times.append(time.time()-st)
+
+
+
+#%%
+plt.figure(figsize=(12,3))
+for i, s in enumerate((-shifts_gpu_mc +shifts_gpu_mc.mean(0), shifts - shifts.mean(0))):
+    plt.subplot(1,2,i+1)
+    for k in (0,1,2):
+        plt.plot(np.array(s)[:,k], label=('x','y','z')[k])
+    plt.legend()
+    plt.title(('inferred shifts', 'true shifts')[i])
+    plt.xlabel('frames')
+    plt.ylabel('pixels')
+    plt.ylim(-4, 4)
+    plt.xlim(0, 300)
+
+#print(f'shifts: {shifts[1]}')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#%%
+for i in range(3):
+    print(f'{["x","y","z"][i]}: {np.corrcoef(-shifts_gpu_mc[:, i], shifts[:, i])}')
+
+#%%
+tensor = self.ncc.numpy()
+
+flat_tensor = np.reshape(tensor, (1, tensor.shape[-4]*tensor.shape[-3]*tensor.shape[-2], 1))
+
+argmax= np.argmax(flat_tensor, axis=1)
+# convert indexes into 3D coordinates
+shp = tensor.shape
+
+yz_flat = shp[2]*shp[3]
+argmax_z = argmax // xy_flat 
+argmax_y = (argmax % xy_flat) // shp[1]
+argmax_x = argmax - argmax_z*xy_flat - shp[1]*argmax_y
+
+
+#%%
+def gen_data(D=3, noise=.5, T=300, framerate=30, firerate=2.):
+    N = 4                                                              # number of neurons
+    dims = [(20, 30), (12, 14, 16)][D - 2]                             # size of image
+    sig = (2, 2, 2)[:D]                                                # neurons size
+    bkgrd = 10                                                         # fluorescence baseline
+    gamma = .9                                                         # calcium decay time constant
+    np.random.seed(5)
+    centers = np.asarray([[np.random.randint(4, x - 4) for x in dims] for i in range(N)])
+    trueA = np.zeros(dims + (N,), dtype=np.float32)
+    trueS = np.random.rand(N, T) < firerate / float(framerate)
+    trueS[:, 0] = 0
+    trueC = trueS.astype(np.float32)
+    for i in range(1, T):
+        trueC[:, i] += gamma * trueC[:, i - 1]
+    for i in range(N):
+        trueA[tuple(centers[i]) + (i,)] = 1.
+    tmp = np.zeros(dims)
+    tmp[tuple(d // 2 for d in dims)] = 1.
+    z = np.linalg.norm(gaussian_filter(tmp, sig).ravel())
+    trueA = 10 * gaussian_filter(trueA, sig + (0,)) / z
+    Yr = bkgrd + noise * np.random.randn(*(np.prod(dims), T)) + \
+        trueA.reshape((-1, 4), order='F').dot(trueC)
+    return Yr, trueC, trueS, trueA, centers, dims
 
 #%%
 import numpy as np
@@ -441,240 +686,3 @@ ax.set_ylim([0, 50])
 ax.set_zlim([0, 50])
 #fig.colorbar(img)
 plt.show()#%%
-
-#%%
-from scipy.ndimage.filters import gaussian_filter
-from fiola.utilities import apply_shifts_dft, local_correlations_movie, play, bin_median_3d
-from tifffile.tifffile import imsave
-from skimage.io import imread
-
-#%%
-def gen_data(p=1, D=3, dims=(70,50,10), sig=(4,4,2), bkgrd=10, N=20, noise=.5, T=256, 
-             framerate=30, firerate=2., motion=True, plot=False):
-    if p == 2:
-        gamma = np.array([1.5, -.55])
-    elif p == 1:
-        gamma = np.array([.9])
-    else:
-        raise
-    dims = dims[:D]
-    sig = sig[:D]
-    
-    np.random.seed(0)#7)
-    centers = np.asarray([[np.random.randint(s, x - s)
-                           for x, s in zip(dims, sig)] for i in range(N)])
-    if motion:
-        centers += np.array(sig) * 2
-        Y = np.zeros((T,) + tuple(np.array(dims) + np.array(sig) * 4), dtype=np.float32)      
-    else:
-        Y = np.zeros((T,) + dims, dtype=np.float32)
-    trueSpikes = np.random.rand(N, T) < firerate / float(framerate)
-    trueSpikes[:, 0] = 0
-    truth = trueSpikes.astype(np.float32)
-    for i in range(2, T):
-        if p == 2:
-            truth[:, i] += gamma[0] * truth[:, i - 1] + gamma[1] * truth[:, i - 2]
-        else:
-            truth[:, i] += gamma[0] * truth[:, i - 1]
-    for i in range(N):
-        Y[(slice(None),) + tuple(centers[i, :])] = truth[i]
-        #Y[:, centers[i, 0], centers[i, 1], centers[i, 2]] = truth[i]
-    tmp = np.zeros(dims)
-    tmp[tuple(np.array(dims)//2)] = 1.
-    z = np.linalg.norm(gaussian_filter(tmp, sig).ravel())
-    Y = bkgrd + noise * np.random.randn(*Y.shape) + 10 * gaussian_filter(Y, (0,) + sig) / z
-    if motion:
-        shifts = np.transpose([np.convolve(np.random.randn(T-10), np.ones(11)/11*s) for s in sig])
-        
-        if D == 2:
-            shifts = np.hstack((shifts, np.zeros(shifts.shape[0])[:, None]))
-            Y = Y[..., None]
-        
-        Y = np.array([apply_shifts_dft(img, tuple(sh), 0,
-                                                                     is_freq=False, border_nan='copy')
-                               for img, sh in zip(Y, shifts)])
-        #Y = Y[:, 2*sig[0]:-2*sig[0], 2*sig[1]:-2*sig[1], 2*sig[2]:-2*sig[2]]
-        Y = Y[(slice(None),) + tuple([(slice(2*si, -2*si, 1)) for si in sig])]
-        
-        if D == 2:
-            #shifts = shifts[..., 0]
-            Y = Y[..., 0]
-    else:
-        shifts = None
-        
-    print(Y.shape)
-    #T, d1, d2, d3 = Y.shape
-
-    if plot:
-        Cn = local_correlations_movie(Y, swap_dim=False)
-        plt.figure(figsize=(15, 3))
-        plt.plot(truth.T)
-        plt.figure(figsize=(15, 3))
-        for c in centers:
-            plt.plot(Y[c[0], c[1], c[2]])
-
-        d1, d2, d3 = dims
-        x, y = (int(1.2 * (d1 + d3)), int(1.2 * (d2 + d3)))
-        scale = 6/x
-        fig = plt.figure(figsize=(scale*x, scale*y))
-        axz = fig.add_axes([1-d1/x, 1-d2/y, d1/x, d2/y])
-        plt.imshow(Cn.max(2).T, cmap='gray')
-        plt.scatter(*centers.T[:2], c='r')
-        plt.title('Max.proj. z')
-        plt.xlabel('x')
-        plt.ylabel('y')
-        axy = fig.add_axes([0, 1-d2/y, d3/x, d2/y])
-        plt.imshow(Cn.max(0), cmap='gray')
-        plt.scatter(*centers.T[:0:-1], c='r')
-        plt.title('Max.proj. x')
-        plt.xlabel('z')
-        plt.ylabel('y')
-        axx = fig.add_axes([1-d1/x, 0, d1/x, d3/y])
-        plt.imshow(Cn.max(1).T, cmap='gray')
-        plt.scatter(*centers.T[np.array([0,2])], c='r')
-        plt.title('Max.proj. y')
-        plt.xlabel('x')
-        plt.ylabel('z');
-        plt.show()
-
-    return Y, truth, trueSpikes, centers, dims, -shifts
-
-#%%
-fname = os.path.join('/home/nel/caiman_data', 'example_movies', 'demoMovie3D.tif')
-Y, truth, trueSpikes, centers, dims, shifts = gen_data(p=2)
-imsave(fname, Y)
-print(fname)#%%
-dims = (70, 50, 10)
-
-#%%
-fname = os.path.join('/home/nel/caiman_data', 'example_movies', 'demoMovie2D.tif')
-Y, truth, trueSpikes, centers, dims, shifts = gen_data(D=2, T=3000)
-imsave(fname, Y)
-print(fname)#%%
-
-#%%
-yy = Yr.reshape((20, 30, 3000), order='F').transpose([2, 0, 1]).copy()
-play(yy)
-#%%
-Y = imread(fname)   
-Cn = local_correlations_movie(Y, swap_dim=False)
-d1, d2, d3 = dims
-x, y = (int(1.2 * (d1 + d3)), int(1.2 * (d2 + d3)))
-scale = 6/x
-fig = plt.figure(figsize=(scale*x, scale*y))
-axz = fig.add_axes([1-d1/x, 1-d2/y, d1/x, d2/y])
-plt.imshow(Cn.max(2).T, cmap='gray')
-plt.title('Max.proj. z')
-plt.xlabel('x')
-plt.ylabel('y')
-axy = fig.add_axes([0, 1-d2/y, d3/x, d2/y])
-plt.imshow(Cn.max(0), cmap='gray')
-plt.title('Max.proj. x')
-plt.xlabel('z')
-plt.ylabel('y')
-axx = fig.add_axes([1-d1/x, 0, d1/x, d3/y])
-plt.imshow(Cn.max(1).T, cmap='gray')
-plt.title('Max.proj. y')
-plt.xlabel('x')
-plt.ylabel('z');
-plt.show()
-
-#%%
-play(Y[...,5], magnification=2)
-
-#%%
-Y.shape
-shifts = np.hstack((shifts, np.zeros(shifts.shape[0])[:, None]))
-
-Y = Y[..., None]
-Y = Y.astype(np.float32)
-template = bin_median_3d(Y, 30)
-
-#%%
-mc_layer = MotionCorrect(template[:,:,:,None,None], ms_h=4, ms_w=4, ms_d=0)
-data = Y[None, ..., None]
-print(f'data shape: {data.shape}')
-print(f'template shape: {template.shape}')
-import time
-st = time.time()
-times = []
-nccs = []
-shifts_gpu_mc = np.zeros((Y.shape[0], 3))
-for i in range(data.shape[1]):
-    _, ncc = mc_layer(data[:,i:i+1])
-    coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
-    shifts_gpu_mc[i] = coords
-    #shifts_all.append(mc_layer.shifts)
-    times.append(time.time()-st)
-    
-#%%
-batch = 16
-shifts_gpu_mc = np.zeros((Y.shape[0], 3))
-for i in range(data.shape[1]//batch):
-    _, ncc = mc_layer(data[:,batch*i:batch*(i+1)])
-    coords = np.array([ncc[0],ncc[1],ncc[2]]).T
-    shifts_gpu_mc[batch*i:batch*(i+1)] = coords
-    #shifts_all.append(mc_layer.shifts)
-    times.append(time.time()-st)
-
-
-
-#%%
-plt.figure(figsize=(12,3))
-for i, s in enumerate((-shifts_gpu_mc +shifts_gpu_mc.mean(0), shifts - shifts.mean(0))):
-    plt.subplot(1,2,i+1)
-    for k in (0,1,2):
-        plt.plot(np.array(s)[:,k], label=('x','y','z')[k])
-    plt.legend()
-    plt.title(('inferred shifts', 'true shifts')[i])
-    plt.xlabel('frames')
-    plt.ylabel('pixels')
-    plt.ylim(-4, 4)
-    plt.xlim(0, 300)
-
-#print(f'shifts: {shifts[1]}')
-
-#%%
-for i in range(3):
-    print(f'{["x","y","z"][i]}: {np.corrcoef(-shifts_gpu_mc[:, i], shifts[:, i])}')
-
-#%%
-tensor = self.ncc.numpy()
-
-flat_tensor = np.reshape(tensor, (1, tensor.shape[-4]*tensor.shape[-3]*tensor.shape[-2], 1))
-
-argmax= np.argmax(flat_tensor, axis=1)
-# convert indexes into 3D coordinates
-shp = tensor.shape
-
-yz_flat = shp[2]*shp[3]
-argmax_z = argmax // xy_flat 
-argmax_y = (argmax % xy_flat) // shp[1]
-argmax_x = argmax - argmax_z*xy_flat - shp[1]*argmax_y
-
-
-#%%
-def gen_data(D=3, noise=.5, T=300, framerate=30, firerate=2.):
-    N = 4                                                              # number of neurons
-    dims = [(20, 30), (12, 14, 16)][D - 2]                             # size of image
-    sig = (2, 2, 2)[:D]                                                # neurons size
-    bkgrd = 10                                                         # fluorescence baseline
-    gamma = .9                                                         # calcium decay time constant
-    np.random.seed(5)
-    centers = np.asarray([[np.random.randint(4, x - 4) for x in dims] for i in range(N)])
-    trueA = np.zeros(dims + (N,), dtype=np.float32)
-    trueS = np.random.rand(N, T) < firerate / float(framerate)
-    trueS[:, 0] = 0
-    trueC = trueS.astype(np.float32)
-    for i in range(1, T):
-        trueC[:, i] += gamma * trueC[:, i - 1]
-    for i in range(N):
-        trueA[tuple(centers[i]) + (i,)] = 1.
-    tmp = np.zeros(dims)
-    tmp[tuple(d // 2 for d in dims)] = 1.
-    z = np.linalg.norm(gaussian_filter(tmp, sig).ravel())
-    trueA = 10 * gaussian_filter(trueA, sig + (0,)) / z
-    Yr = bkgrd + noise * np.random.randn(*(np.prod(dims), T)) + \
-        trueA.reshape((-1, 4), order='F').dot(trueC)
-    return Yr, trueC, trueS, trueA, centers, dims
-
