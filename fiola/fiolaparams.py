@@ -12,7 +12,7 @@ import numpy as np
 class fiolaparams(object):
     def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
                  border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
-                 hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=True,
+                 hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=False,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
                  center_dims=None, initialize_with_gpu=False, 
                  window = 10000, step = 5000, detrend=True, flip=True, 
@@ -25,7 +25,7 @@ class fiolaparams(object):
         params_dict when initializing the fiolaparams object.
         """
         self.data = {
-            'fnames': fnames, # name of the movie, only memory map file for spike detection
+            'fnames': fnames, # name of the movie
             'fr': fr, # sample rate of the movie
             'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'num_frames_init': num_frames_init, # number of frames used for initialization
@@ -54,12 +54,12 @@ class fiolaparams(object):
             'flip': flip, # whether to flip signal to find spikes    
             'detrend': detrend, # whether to remove photobleaching
             'do_scale': do_scale, # whether to scale the input trace or not
-            'template_window':template_window,
+            'template_window':template_window, # half window size of the template; will not perform template matching if window size equals 0
             'robust_std':robust_std, # whether to use robust way to estimate noise
             'freq': freq, # frequency for removing subthreshold activity
             'adaptive_threshold': adaptive_threshold, #whether to use adaptive threshold method for deciding threshold level
             'thresh_range':thresh_range, # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
-            'minimal_thresh':minimal_thresh,
+            'minimal_thresh':minimal_thresh, # minimal of the threshold 
             'mfp': mfp, #  Maximum estimated false positive. An upper bound for estimated false positive rate based on noise
             'online_filter_method': online_filter_method,
             'filt_window': filt_window, # window size for removing the subthreshold activities 

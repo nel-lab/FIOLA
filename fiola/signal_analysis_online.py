@@ -168,7 +168,7 @@ class SignalAnalysisOnlineZ(object):
                 self.update_thresh(idx)
                 #print(f'change threshold: {n}')        
         """
-        
+
         # Detrend, normalize 
         if self.flip:
             self.trace[:, n:(n + 1)] = - trace_in.copy()

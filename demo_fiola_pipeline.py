@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 16 10:48:17 2020
@@ -20,15 +20,8 @@ from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
 
 #%% load movie and masks
-movie_folder = ['/home/nellab/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/multiple_neurons',
-                    '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data'][3]
-    
-movie_lists = ['demo_voltage_imaging_mc.hdf5', 
-               'FOV4_50um_mc.hdf5', 
-               '06152017Fish1-2_portion.hdf5']
-name = movie_lists[0]
+movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data'][0]
+name = 'demo_voltage_imaging_mc.hdf5'
 if '.hdf5' in name:
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
         mov = np.array(h5['mov'])
@@ -40,48 +33,59 @@ with h5py.File(os.path.join(movie_folder, name[:-8]+'_ROIs.hdf5'),'r') as h5:
   
 #%% setting params
 # dataset dependent parameters
-fnames = ''
-fr = 400
-ROIs = mask
+fnames = ''                     # name of the movie, we don't put a name here as movie is already loaded above
+fr = 400                        # sample rate of the movie
+ROIs = mask                     # a 3D matrix contains all region of interests
 
-border_to_0 = 2
-flip = True
-num_frames_init = 10000
-num_frames_total = 20000
-thresh_range = [3, 4]
-erosion = 0 
-update_bg = True
-use_spikes = False 
-initialize_with_gpu = False
-adaptive_threshold = True
-filt_window = 15
+num_frames_init = 10000         # number of frames used for initialization
+num_frames_total = 20000        # estimated total number of frames for processing, this is used for generating matrix to store data
+flip = True                     # whether to flip signal to find spikes   
+thresh_range= [2.8, 5.0]        # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
+use_rank_one_nmf=False          # whether to use rank-1 nmf, if False the algorithm will use initial masks and average signals as initialization for the HALS
+hals_movie='hp_thresh'          # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); original movie (orig)
+update_bg = True                # update background components for spatial footprints
+use_batch=True                  # whether to process a batch of frames (greater or equal to 1) at the same time. set use batch always as True
+batch_size=100                  # number of frames processing at the same time using gpu 
+initialize_with_gpu=True        # whether to use gpu for performing nnls during initialization
+do_scale = False                # whether to scale the input trace or not
+adaptive_threshold=True         # whether to use adaptive threshold method for deciding threshold level
+filt_window=15                  # window size for removing the subthreshold activities 
+minimal_thresh=3                # minimal of the threshold 
+step=2500                       # step for updating statistics
+template_window=2               # half window size of the template; will not perform template matching if window size equals 0
     
-opts_dict = {
+options = {
     'fnames': fnames,
     'fr': fr,
     'ROIs': ROIs,
-    'border_to_0': border_to_0,
     'flip': flip,
-    'num_frames_total': num_frames_total, 
+    'num_frames_init': num_frames_init, 
+    'num_frames_total':num_frames_total,
     'thresh_range': thresh_range,
-    'erosion':erosion, 
+    'use_rank_one_nmf': use_rank_one_nmf,
+    'hals_movie': hals_movie,
     'update_bg': update_bg,
-    'use_spikes':use_spikes, 
+    'use_batch':use_batch,
+    'batch_size':batch_size,
     'initialize_with_gpu':initialize_with_gpu,
+    'do_scale': do_scale,
     'adaptive_threshold': adaptive_threshold,
-    'filt_window': filt_window}
-
-opts = fiolaparams(params_dict=opts_dict)
+    'filt_window': filt_window,
+    'minimal_thresh': minimal_thresh,
+    'step': step, 
+    'template_window':template_window}
 
 #%% process offline for initialization
-params = fiolaparams(params_dict=opts_dict)
+params = fiolaparams(params_dict=options)
 fio = FIOLA(params=params)
 fio.fit(mov[:num_frames_init])
 plt.plot(fio.pipeline.saoz.t_s[0])
 
 #%% process online
 scope = [num_frames_init, num_frames_total]
-fio.pipeline.load_frame_thread = Thread(target=fio.pipeline.load_frame, daemon=True, args=(mov[scope[0]:scope[1], :, :],))
+fio.pipeline.load_frame_thread = Thread(target=fio.pipeline.load_frame, 
+                                        daemon=True, 
+                                        args=(mov[scope[0]:scope[1], :, :],))
 fio.pipeline.load_frame_thread.start()
 
 start = time()
@@ -93,17 +97,27 @@ print(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
 #%% compute the result in fio.estimates object
 fio.compute_estimates()
 
-#%% visualize the result
+#%% visualize the result, the last component is the background
 for i in range(fio.H.shape[1]):
-    if i == 1:
+    if i == 8:
         plt.figure()
         plt.imshow(mov[0], cmap='gray')
         plt.imshow(fio.H.reshape((mov.shape[1], mov.shape[2], fio.H.shape[1]), order='F')[:,:,i], alpha=0.3)
+        plt.title(f'Spatial footprint of neuron {i}')
         plt.figure()
         plt.plot(fio.pipeline.saoz.trace[i][:scope[1]])
+        plt.title(f'Temporal trace of neuron {i} before processing')
+        plt.figure()
+        plt.plot(normalize(fio.pipeline.saoz.t_s[i][:scope[1]]))
+        spikes = np.delete(fio.pipeline.saoz.index[i], fio.pipeline.saoz.index[i]==0)
+        h_min = normalize(fio.pipeline.saoz.t_s[i][:scope[1]]).max()
+        plt.vlines(spikes, h_min, h_min + 1, color='black')
+        plt.legend('trace', 'detected spikes')
+        plt.title(f'Temporal trace of neuron {i} after processing')
+        
         
 #%% save the result
-save_name = f'fiola_result_init_{num_frames_init}_bg_{update_bg}'
+save_name = f'{os.path.join(movie_folder, name)[:-5]}_fiola_result'
 np.save(os.path.join(movie_folder, save_name), fio.estimates)
 
 #%%

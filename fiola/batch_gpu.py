@@ -177,13 +177,15 @@ class Pipeline_overall_batch(object):
             
     def detect(self):
         self.flag=0 # note the first batch is for initialization, it should not be passed to spike extraction
+
         while True:
             traces_input = self.sao_input_q.get()
+            if traces_input.ndim == 1:
+                traces_input = traces_input[None, :]   # make sure dimension is timepoints * # of neurons
 
             if self.flag > 0:
                 for i in range(len(traces_input)):
                     if self.batch_size == 1:
-                        traces_input = traces_input[None, :]
                         self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
                     else:
                         self.saoz.fit_next(traces_input[i:i+1].T, self.n)
@@ -195,7 +197,6 @@ class Pipeline_overall_batch(object):
         
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-#            print(i.keys())
             self.signal_q.put(i)
     
     def load_estimator(self):
@@ -244,7 +245,7 @@ class Pipeline_overall_batch(object):
         return time
         """
         while self.frame_input_q.qsize() > 0:
-            out = self.signal_q.get().copy()       
+            out = self.signal_q.get().copy()    
             self.spike_input_q.put((out["nnls"], out["nnls_1"]))
             traces_input = np.array(out["nnls_1"]).squeeze().T
             self.sao_input_q.put(traces_input)
@@ -322,9 +323,7 @@ class MotionCorrect(keras.layers.Layer):
     @tf.function
     def call(self, X):
         # takes as input a tensorflow batch tensor (batch x width x height x channel)
-        print(X.shape)
         X = X[0]
-        print(X.shape)
 
         X_center = X[:, self.c_shp_x:(self.shp_x-self.c_shp_x), self.c_shp_y:(self.shp_y-self.c_shp_y), :]
 
