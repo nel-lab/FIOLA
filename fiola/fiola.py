@@ -159,7 +159,7 @@ class FIOLA(object):
                 Atb = Ab.T@b
                 n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
                 theta_2 = (Atb/n_AtA).astype(np.float32)
-                model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)
+                model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)  # todo
                 model_batch.compile(optimizer = 'rmsprop',loss='mse')
                 mc0 = mov[0:batch_size, :, :, None][None, :]
                 x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])  

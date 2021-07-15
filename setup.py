@@ -22,5 +22,5 @@ setup(
         'Topic :: Fluorescence Imaging :: Analysis Tools',
         'Intended Audience :: Researchers', 
     ],
-    python_requires='>=3.8',
+    python_requires='>=3.7',
 )
