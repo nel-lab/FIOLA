@@ -17,7 +17,12 @@ import timeit
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR) 
 os.environ["TF_XLA_FLAGS"]="--tf_xla_enable_xla_devices" 
-from fiola.image_warp_3d import trilinear_interpolate_tf,  dense_image_warp_3D     
+#from fiola.image_warp_3d import trilinear_interpolate_tf,  dense_image_warp_3D     
+
+from scipy.ndimage.filters import gaussian_filter
+from fiola.utilities import apply_shifts_dft, local_correlations_movie, play, bin_median_3d
+from tifffile.tifffile import imsave
+from skimage.io import imread
 
 #%%
 class MotionCorrect(keras.layers.Layer):
@@ -56,13 +61,15 @@ class MotionCorrect(keras.layers.Layer):
         print(f'fr: {fr.shape}')
         imgs_zm, imgs_var = self.normalize_image(fr, self.shp, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)
-        denominator = tf.sqrt(self.template_var * imgs_var)[...,0]
+        denominator = tf.sqrt(tf.cast(self.template_var, tf.float32) * imgs_var)[...,0]
         self.imgs_zm = imgs_zm
         self.denominator = denominator
         fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,:,0], tf.complex128)) # batch *x*y*z
         self.fr_freq = fr_freq
         img_product = fr_freq *  tf.math.conj(self.target_freq)
         self.img_product = img_product
+        #import pdb
+        #pdb.set_trace()
         cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)
         
         self.corr = cross_correlation
@@ -291,12 +298,6 @@ if __name__ == "__main__":
     #plt.imshow(self.denominator.numpy()[0, ii, :, :])
     
     
-    
-    #%%
-    from scipy.ndimage.filters import gaussian_filter
-    from fiola.utilities import apply_shifts_dft, local_correlations_movie, play, bin_median_3d
-    from tifffile.tifffile import imsave
-    from skimage.io import imread
     
     #%%
     def gen_data(p=1, D=3, dims=(70,50,10), sig=(4,4,2), bkgrd=10, N=20, noise=.5, T=256, 

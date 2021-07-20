@@ -257,7 +257,6 @@ def apply_shifts_dft(src_freq, shifts, diffphase, is_freq=True, border_nan=True)
         shifts: shifts to apply
         diffphase: comes from the register_translation output
     """
-
     is3D = len(src_freq.shape) == 3
     if not is_freq:
         if is3D:
