@@ -33,7 +33,9 @@ save_name = 'rotation_10_512_512.hdf5'
 with h5py.File(os.path.join(save_folder, save_name), 'r') as hf:
     data = hf['mov'][:]
 data = data[:, 50:500, 100:500]    
-templ = data[0].copy()
+templ = data[0]
+#data = np.array([templ] * 10)
+#templ = np.median(data, axis=0)
 
 template = templ.copy()
 #template = tf.convert_to_tensor(templ, dtype=tf.float32)
@@ -41,6 +43,24 @@ strides = (96, 96) #
 overlaps = (32, 32) #
 batch_size = 10
 ms_h = 5; ms_w = 5; ms_d = 0
+
+#%%
+sig = [10, 10]
+T = 20
+np.random.seed(3)
+shifts = np.transpose([np.convolve(np.random.randn(T-10)*4, np.ones(11)/11*s) for s in sig])
+shifts = shifts[:10]
+shifts.astype(np.int16)
+plt.figure()
+shifts = shifts.astype(np.int32)
+plt.plot(shifts)
+new_data = []
+for idx, d in enumerate(data):
+    new_data.append(np.roll(d, shifts[idx], axis=(0,1)))
+data = np.array(new_data)
+
+#data = tfa.image.translate(data[..., None].astype(np.float32), shifts.astype(np.float32), interpolation="bilinear")[:, :, :, 0].numpy()
+play(data, fr=2)    
 
 #%%
 mc_layer = MotionCorrect(template[:,:,None,None,None], ms_h=5, ms_w=5, ms_d=0)
@@ -98,11 +118,15 @@ class MotionCorrect_non_rigid_2d(keras.layers.Layer):
         print(f'input data shape: {data.shape}')
         self.data = data
         self.batch_size = data.shape[0]
-        _, rigid_shifts = self.rigid_mc_layer(data[None,..., None, None])
+        # rigid motion correction
+        data_corrected_rigid, rigid_shifts = self.rigid_mc_layer(data[None,..., None, None])
+        data_corrected_rigid = data_corrected_rigid[..., 0]
         self.rigid_shifts = np.array([rigid_shifts[0],rigid_shifts[1],rigid_shifts[2]]).T
         
-        # non-rigid motion correction
-        if self.max_deviation_rigid is not None:
+        if self.max_deviation_rigid is None:
+            return data_corrected_rigid, self.rigid_shifts
+        else:
+            # non-rigid motion correction
             # divide the input movie into patches
             imgs = []
             for img in data:
@@ -115,10 +139,13 @@ class MotionCorrect_non_rigid_2d(keras.layers.Layer):
             product = imgs_fr *  tf.math.conj(self.templates_fr)
             correlation = tf.cast(tf.math.abs(ifft2d(product)), tf.float32)
 
-            self.rigid_shts = self.rigid_shifts[:, :2][:, ::-1] 
+            #import pdb
+            #pdb.set_trace()
+            self.rigid_shts = -self.rigid_shifts[:, :2]#[:, ::-1] 
+            #self.rigid_shts = self.rigid_shifts[:, :2]#[:, ::-1] 
             self.rigid_shts = np.repeat(self.rigid_shts, self.num_tiles, axis=0)
             #rigid_shts = np.array([0.01, 0.01] * (self.batch_size * self.num_tiles)).reshape((self.num_tiles * self.batch_size, -1))
-            #rigid_shts = rigid_shts + np.random.rand(rigid_shts.shape[0], rigid_shts.shape[1]) / 3 
+            #self.rigid_shts = rigid_shts + np.random.rand(rigid_shts.shape[0], rigid_shts.shape[1]) / 3 
 
             # compute the maximum shifts for each patch
             self.lb_shifts = tf.cast(tf.math.floor(tf.subtract(
@@ -139,26 +166,24 @@ class MotionCorrect_non_rigid_2d(keras.layers.Layer):
             
             # extract fractional shifts for each patch
             sh_x_n, sh_y_n = self.extract_fractional_shifts(shifts_int, ncc)
+            self.shift_img_x = -np.reshape(sh_x_n.numpy(), (self.batch_size, self.dim_grid[0].numpy(), self.dim_grid[1].numpy()))
+            self.shift_img_y = -np.reshape(sh_y_n.numpy(), (self.batch_size, self.dim_grid[0].numpy(), self.dim_grid[1].numpy()))
             
             # estimate the shift for each pixel and apply the estimated shifts
-            data_corrected_tf = self.apply_shifts_tf(sh_x_n, sh_y_n)
+            data_corrected_pw = self.apply_shifts_tf(data, self.shift_img_x, self.shift_img_y)
             
-            return data_corrected_tf
+            return data_corrected_pw, data_corrected_rigid, self.rigid_shifts, [self.shift_img_x, self.shift_img_y]
             
-    def apply_shifts_tf(self, sh_x_n, sh_y_n):
-        shift_img_x = -np.reshape(sh_x_n.numpy(), (self.batch_size, self.dim_grid[0].numpy(), self.dim_grid[1].numpy()))
-        shift_img_y = -np.reshape(sh_y_n.numpy(), (self.batch_size, self.dim_grid[0].numpy(), self.dim_grid[1].numpy()))
+    def apply_shifts_tf(self, data, shift_img_x, shift_img_y):
         y_grid, x_grid = np.meshgrid(np.arange(0., self.dims[1]).astype(
             np.float32), np.arange(0., self.dims[0]).astype(np.float32))
         warp = tf.stack([tf.image.resize(shift_img_y[..., None].astype(np.float32), self.dims)[..., 0] + y_grid, 
                          tf.image.resize(shift_img_x[..., None].astype(np.float32), self.dims)[..., 0] + x_grid], axis=3)
-        data_corrected_tf = (tfa.image.resampler(self.data[..., None], warp))
+        data_corrected_tf = (tfa.image.resampler(tf.cast(data[..., None], tf.float32), warp))
         data_corrected_tf = data_corrected_tf[..., 0]
         return data_corrected_tf
     
     def apply_shifts_cv2(self, sh_x_n, sh_y_n):
-        shift_img_x = -np.reshape(sh_x_n.numpy(), (self.batch_size, self.dim_grid[0].numpy(), self.dim_grid[1].numpy()))
-        shift_img_y = -np.reshape(sh_y_n.numpy(), (self.batch_size, self.dim_grid[0].numpy(), self.dim_grid[1].numpy()))
         y_grid, x_grid = np.meshgrid(np.arange(0., self.dims[1]).astype(
             np.float32), np.arange(0., self.dims[0]).astype(np.float32))
         data_corrected = []
@@ -294,35 +319,35 @@ class MotionCorrect_non_rigid_2d(keras.layers.Layer):
         # convolution data batch * x * y * channel; filter x * y * channel_in * channel_out 
         img_new = tf.nn.conv2d(img_orig[..., None], filters=ker2D[..., None, None], strides=1, padding='SAME',data_format='NHWC')[..., 0]  # todo reflector padding
         return img_new      
-    
-    
-
-
-#%%
-sig = [2, 2]
-T = 20
-np.random.seed(2)
-shifts = np.transpose([np.convolve(np.random.randn(T-10)*4, np.ones(11)/11*s) for s in sig])
-shifts = shifts[:10]
-plt.plot(shifts)
-data = tfa.image.translate(data[..., None].astype(np.float32), shifts.astype(np.float32), interpolation="bilinear")[:, :, :, 0]
-     
-#play(data[..., 0].numpy(), fr=2)    
-
-
-
         
 #%%
 mc_layer = MotionCorrect_non_rigid_2d(template, ms_h=10, ms_w=10, ms_d=0, max_deviation_rigid=[5,5], 
-                 strides=(96, 96), overlaps=(32, 32), padding='SAME')
+                 strides=(96, 96), overlaps=(48,48), padding='SAME')
 batch = 2
-data_corrected = []
+data_corrected_pw = []
+data_corrected_rigid = []
+rigid_shifts = []
+pw_shifts = []
 for i in range(data.shape[0]//batch):
     print(i)
-    data_corrected.append(mc_layer(data[batch*i:batch*(i+1)]))
-data_corrected_tf = np.concatenate(data_corrected, axis=0)       
+    temp = mc_layer(data[batch*i:batch*(i+1)])
+    data_corrected_pw.append(temp[0])
+    data_corrected_rigid.append(temp[1])
+    rigid_shifts.append(temp[2])
+    pw_shifts.append(temp[3])
+data_corrected_rigid = np.concatenate(data_corrected_rigid, axis=0)  
+data_corrected_pw = np.concatenate(data_corrected_pw, axis=0)  
+rigid_shifts = np.concatenate(rigid_shifts, axis=0)     
 
+#%%
+plt.plot(shifts);plt.plot(-rigid_shifts[..., :2])
+#%%
+#rr = np.concatenate([data, data_corrected_rigid[..., 0]], axis=2)
+rr = np.concatenate([data, data_corrected_rigid, data_corrected_pw], axis=2)
+play(rr, fr=1)     
 
+#%%
+play(data_corrected_rigid, fr=1)     
         
          #%%
 #shfts = [sshh[0] for sshh in shfts_et_all]
@@ -345,9 +370,7 @@ plt.imshow(img_new.numpy().mean(0))
 
 #%%
 rr = np.concatenate([data, data_corrected, data_corrected_tf], axis=2)
-rr = np.concatenate([data, data_corrected_tf], axis=2)
-
-play(rr, fr=1)          
+     
         
         
         
