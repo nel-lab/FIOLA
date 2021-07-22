@@ -21,14 +21,14 @@ from fiola.fiola import FIOLA
 
 #%% load movie and masks
 movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data'][0]
-name = 'demo_voltage_imaging_mc.hdf5'
+name = 'demo_voltage_imaging.hdf5'
 if '.hdf5' in name:
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
         mov = np.array(h5['mov'])
 elif '.tif' in name:
     mov = imread(name)
 
-with h5py.File(os.path.join(movie_folder, name[:-8]+'_ROIs.hdf5'),'r') as h5:
+with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
     mask = np.array(h5['mov'])                                               
   
 #%% setting params
@@ -38,14 +38,15 @@ fr = 400                        # sample rate of the movie
 ROIs = mask                     # a 3D matrix contains all region of interests
 
 num_frames_init =  5000         # number of frames used for initialization
-num_frames_total =  5000        # estimated total number of frames for processing, this is used for generating matrix to store data
+num_frames_total =  10000        # estimated total number of frames for processing, this is used for generating matrix to store data
 flip = True                     # whether to flip signal to find spikes   
+ms=[10, 10]                      # maximum shift in x and y axis respectively. Will not perform motion correction if None.
 thresh_range= [2.8, 5.0]        # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
 use_rank_one_nmf=False          # whether to use rank-1 nmf, if False the algorithm will use initial masks and average signals as initialization for the HALS
 hals_movie='hp_thresh'          # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); original movie (orig)
 update_bg = True                # update background components for spatial footprints
 use_batch=True                  # whether to process a batch of frames (greater or equal to 1) at the same time. set use batch always as True
-batch_size=  1                  # number of frames processing at the same time using gpu 
+batch_size= 40                  # number of frames processing at the same time using gpu 
 initialize_with_gpu=True        # whether to use gpu for performing nnls during initialization
 do_scale = False                # whether to scale the input trace or not
 adaptive_threshold=True         # whether to use adaptive threshold method for deciding threshold level
@@ -59,6 +60,7 @@ options = {
     'fr': fr,
     'ROIs': ROIs,
     'flip': flip,
+    'ms': ms,
     'num_frames_init': num_frames_init, 
     'num_frames_total':num_frames_total,
     'thresh_range': thresh_range,
@@ -79,7 +81,6 @@ options = {
 params = fiolaparams(params_dict=options)
 fio = FIOLA(params=params)
 fio.fit(mov[:num_frames_init])
-plt.plot(fio.pipeline.saoz.t_s[0])
 
 #%% process online
 scope = [num_frames_init, num_frames_total]

@@ -322,8 +322,8 @@ class MotionCorrect_non_rigid_2d(keras.layers.Layer):
         
 #%%
 mc_layer = MotionCorrect_non_rigid_2d(template, ms_h=10, ms_w=10, ms_d=0, max_deviation_rigid=[5,5], 
-                 strides=(96, 96), overlaps=(48,48), padding='SAME')
-batch = 2
+                 strides=(48, 48), overlaps=(24,24), padding='SAME')
+batch = 5
 data_corrected_pw = []
 data_corrected_rigid = []
 rigid_shifts = []
@@ -340,7 +340,7 @@ data_corrected_pw = np.concatenate(data_corrected_pw, axis=0)
 rigid_shifts = np.concatenate(rigid_shifts, axis=0)     
 
 #%%
-plt.plot(shifts);plt.plot(-rigid_shifts[..., :2])
+plt.figure(); plt.plot(shifts);plt.plot(-rigid_shifts[..., :2])
 #%%
 #rr = np.concatenate([data, data_corrected_rigid[..., 0]], axis=2)
 rr = np.concatenate([data, data_corrected_rigid, data_corrected_pw], axis=2)

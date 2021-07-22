@@ -11,7 +11,7 @@ import numpy as np
 
 class fiolaparams(object):
     def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
-                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 ms=[10,10], offline_mc_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=False,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
                  center_dims=None, initialize_with_gpu=False, 
@@ -33,6 +33,8 @@ class fiolaparams(object):
         }
 
         self.mc_nnls = {
+            'ms':ms, # maximum shift in x and y axis respectively. Will not perform motion correction if None.
+            'offline_mc_batch_size': offline_mc_batch_size, # number of frames for one batch to perform offline motion correction
             'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
             'freq_detrend': freq_detrend, # high-pass frequency for removing baseline, used for init of spatial footprint
             'do_plot_init': do_plot_init, # plot the spatial mask result for init of spaital footprint

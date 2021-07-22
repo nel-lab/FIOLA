@@ -12,13 +12,15 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.linalg import norm
-from scipy.optimize import nnls    
+from scipy.optimize import nnls  
+import tensorflow as tf
+from fiola.batch_gpu import MotionCorrect
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential
 
 class FIOLA(object):
     def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
-                 border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
+                 ms=[10,10], offline_mc_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=False,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
                  center_dims=None, initialize_with_gpu=False, 
@@ -32,7 +34,34 @@ class FIOLA(object):
         else:
             self.params = params
         
-    def fit(self, mov):
+    def fit(self, mov_raw):
+        self.mov_raw = mov_raw
+        
+        if self.params.mc_nnls['ms'] is None:
+            print('Skip motion correction')
+            mov = self.mov_raw.copy()
+            self.mov = mov
+            self.params.mc_nnls['ms'] = [0,0]
+        else:
+            print('Now start offline motion correction')
+            mov = []
+            template = bin_median(mov_raw, exclude_nans=False)
+            if self.params.mc_nnls['center_dims'] is None:
+                center_dims = (mov_raw.shape[1], mov_raw.shape[2])
+            else:
+                center_dims = self.params.mc_nnls['center_dims'].copy()            
+            mc_offline = MotionCorrect(template=template, center_dims=center_dims, 
+                                            batch_size=self.params.mc_nnls['offline_mc_batch_size'], ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1])        
+            num = mov_raw.shape[0]//self.params.mc_nnls['offline_mc_batch_size']
+            if mov_raw.shape[0] % self.params.mc_nnls['offline_mc_batch_size'] != 0:
+                num += 1                
+            for i in range(num):
+                out = mc_offline(mov_raw[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
+                with tf.compat.v1.Session() as sess:  
+                    ff = out.eval()
+                mov.append(ff.reshape((-1, template.shape[0], template.shape[1]), order='F').copy())
+            mov = np.concatenate(mov, axis=0)
+        
         print('Now start initialization of spatial footprint')
         border = self.params.mc_nnls['border_to_0']
         mask = self.params.data['ROIs']
@@ -119,7 +148,7 @@ class FIOLA(object):
             plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'), 
                                     vmax=np.percentile(H_new.sum(axis=1), 99));
             plt.colorbar();plt.title('Spatial masks after hals');plt.show()
-            plt.figure(); plt.imshow(b.reshape((self.mov.shape[1],self.mov.shape[2]), order='F')); plt.show()
+            plt.figure(); plt.imshow(b.reshape((self.mov.shape[1],self.mov.shape[2]), order='F')); plt.title('Background components');plt.show()
         
         if self.params.mc_nnls['update_bg']:
             H_new = np.hstack((H_new, b))
@@ -146,7 +175,7 @@ class FIOLA(object):
                 n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
                 theta_2 = (Atb/n_AtA)[:, None].astype(np.float32)
                 mc0 = mov[0:1,:,:, None]
-                model = get_model(template, center_dims, Ab, 30, ms_h=0, ms_w=0)
+                model = get_model(template, center_dims, Ab, 30, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1])
                 model.compile(optimizer='rmsprop', loss='mse')
             else:
                 from fiola.batch_gpu import Pipeline, get_model, Pipeline_overall_batch
@@ -159,7 +188,7 @@ class FIOLA(object):
                 Atb = Ab.T@b
                 n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
                 theta_2 = (Atb/n_AtA).astype(np.float32)
-                model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=0, ms_w=0)  # todo
+                model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1]) 
                 model_batch.compile(optimizer = 'rmsprop',loss='mse')
                 mc0 = mov[0:batch_size, :, :, None][None, :]
                 x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])  
@@ -206,6 +235,7 @@ class FIOLA(object):
                 self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
             else:
                 self.pipeline = Pipeline_overall_batch(model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
+
             
         
     def fit_online(self):
