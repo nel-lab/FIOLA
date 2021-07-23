@@ -11,6 +11,7 @@ import matplotlib
 matplotlib.rcParams['pdf.fonttype'] = 42
 matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot as plt
+import numpy as np 
 
 #%% Supplementary figure timing for the algorithm
 tt = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy')
@@ -243,11 +244,11 @@ ax1.set_ylim([0,1])
 #plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1_Fiola&VolPy_non_symm_median_1.pdf'))
 
 #%%
-
 from scipy import stats
 rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
 rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
 stats.ttest_ind(volpy,viola2,  equal_var = False)
+stats.wilcoxon(volpy, viola2)
 #%% Fig5 b
 fig, ax = plt.subplots(1, 1)
 xx = np.arange(0.2, 1.1, 0.01)

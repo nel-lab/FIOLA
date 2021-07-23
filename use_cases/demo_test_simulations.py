@@ -35,7 +35,7 @@ from fiola.utilities import normalize, normalize_piecewise, match_spikes_greedy,
 from use_cases.test_run_fiola import run_fiola # must be in use_cases folder
 
 #%%
-mode = ['overlapping', 'non_overlapping', 'positron'][0]
+mode = ['overlapping', 'non_overlapping', 'positron'][1]
 dropbox_folder = '/home/nel/NEL-LAB Dropbox/'
 #dropbox_folder = '/Users/agiovann/Dropbox/'
 
@@ -354,7 +354,7 @@ for idx, results in enumerate(result_all):
 SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
 plt.savefig(os.path.join(SAVE_FOLDER, f'F1_Viola_vs_VolPy_{t_range[0]}_{t_range[1]}.pdf'))
 
-#%% F1 score
+#%% Fig 4c, F1 score 
 x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
 VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
 viola_files = os.listdir(VIOLA_FOLDER)
@@ -395,8 +395,167 @@ for idx, results in enumerate(result_all):
     ax.xaxis.set_tick_params(length=8)
     ax.yaxis.set_tick_params(length=8)
 
-SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-plt.savefig(os.path.join(SAVE_FOLDER, f'F1_Fiola&VolPy_non_symm_median_{t_range[0]}_{t_range[1]}_1.pdf'))
+#SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#plt.savefig(os.path.join(SAVE_FOLDER, f'F1_Fiola&VolPy_non_symm_median_{t_range[0]}_{t_range[1]}_1.pdf'))
+
+#%% Supplementary figure
+mean = []
+std = []
+f = []
+v = []
+f1 = []
+f2 = []
+for idx, results in enumerate(result_all):
+    mean.append([np.array(result['F1']).sum()/len(result['F1']) for result in results])
+    std.append([np.array(result['F1']).std() for result in results])
+    if idx == 0:
+        f.append([np.array(result['F1']) for result in results])
+    if idx == 1:
+        v.append([np.array(result['F1']) for result in results])
+    if idx == 2:
+        f1.append([np.array(result['F1']) for result in results])
+    if idx == 3:
+        f2.append([np.array(result['F1']) for result in results])
+        
+rr = [f,v,f1,f2]
+
+#%%
+sig = []
+for amp in range(7):
+    temp = np.zeros((4,4))
+    for i in range(4):
+        for j in range(4):
+            if i < j:
+                #temp[i, j] = stats.ttest_ind(rr[i][0][amp], rr[j][0][amp], equal_var=False).pvalue
+                temp[i, j] = stats.wilcoxon(rr[i][0][amp], rr[j][0][amp]).pvalue
+    sig.append(temp)
+#%%   
+mean = np.array(mean)
+std = np.array(std)
+
+labels = [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]
+x = np.arange(len(labels))  # the label locations
+
+fig, ax = plt.subplots()
+width = 0.35  # the width of the bars
+rects1 = ax.bar(x - width/2, mean[0], width, yerr=[[0]*7, std[0]], capsize=5, label=f'FIOLA_25ms')
+rects2 = ax.bar(x + width/2, mean[1], width, yerr=[[0]*7, std[1]], capsize=5, label=f'VolPy')
+#rects3 = ax.bar(x  , mean[2], width/4, yerr=[[0]*7, std[2]], capsize=5, label=f'FIOLA_17.5ms')
+#rects4 = ax.bar(x + width/4, mean[3], width/4, yerr=[[0]*7, std[3]], capsize=5, label=f'FIOLA_12.5ms')
+for i in range (7):
+    temp = sig[i][0,1]
+    if temp > 0.05:
+        string = 'ns'
+    elif temp <=0.001:
+        string = '***'
+    elif temp <= 0.01:
+        string = '**'
+    elif temp <= 0.05:
+        string = '*'
+    barplot_annotate_brackets(0, 1, string, [i-width/2, i+width/2], 
+                              [mean[0,i], mean[1,i]], yerr=[std[0,i], std[1,i]])
+
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+#ax.spines['bottom'].set_visible(False)
+#ax.spines['left'].set_visible(False)
+ax.set_xticks(x)
+ax.set_xticklabels(labels)
+ax.set_xlabel('Spike amplitude')
+ax.set_ylabel('F1 score')
+ax.legend(ncol=2, frameon=False, loc=0)
+#ax.xaxis.set_ticks_position('none') 
+#ax.yaxis.set_ticks_position('none') 
+#ax.set_yticks([])
+#ax.set_ylim([0,1])
+fig.tight_layout()
+plt.show()
+#plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_simulation_f1_significance.png')
+
+#%%
+def barplot_annotate_brackets(num1, num2, data, center, height, yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None):
+    """ 
+    Annotate barplot with p-values.
+
+    :param num1: number of left bar to put bracket over
+    :param num2: number of right bar to put bracket over
+    :param data: string to write or number for generating asterixes
+    :param center: centers of all bars (like plt.bar() input)
+    :param height: heights of all bars (like plt.bar() input)
+    :param yerr: yerrs of all bars (like plt.bar() input)
+    :param dh: height offset over bar / bar + yerr in axes coordinates (0 to 1)
+    :param barh: bar height in axes coordinates (0 to 1)
+    :param fs: font size
+    :param maxasterix: maximum number of asterixes to write (for very small p-values)
+    """
+
+    if type(data) is str:
+        text = data
+    else:
+        # * is p < 0.05
+        # ** is p < 0.005
+        # *** is p < 0.0005
+        # etc.
+        text = ''
+        p = .05
+
+        while data < p:
+            text += '*'
+            p /= 10.
+
+            if maxasterix and len(text) == maxasterix:
+                break
+
+        if len(text) == 0:
+            text = 'n. s.'
+
+    lx, ly = center[num1], height[num1]
+    rx, ry = center[num2], height[num2]
+
+    if yerr:
+        ly += yerr[num1]
+        ry += yerr[num2]
+
+    ax_y0, ax_y1 = plt.gca().get_ylim()
+    dh *= (ax_y1 - ax_y0)
+    barh *= (ax_y1 - ax_y0)
+
+    y = max(ly, ry) + dh
+
+    barx = [lx, lx, rx, rx]
+    bary = [y, y+barh, y+barh, y]
+    mid = ((lx+rx)/2, y+barh)
+
+    plt.plot(barx, bary, c='black')
+
+    kwargs = dict(ha='center', va='bottom')
+    if fs is not None:
+        kwargs['fontsize'] = fs
+
+    plt.text(*mid, text, **kwargs)
+
+
+
+
+#%% 
+
+               
+  
+                
+                
+                
+    
+    
+#%%
+from scipy import stats
+rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
+rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
+stats.ttest_ind(rvs1, rvs2)
+plt.boxplot(rvs1)
+plt.boxplot(rvs2)
+
+#stats.ttest_ind(volpy,viola2,  equal_var = False)
+
 
 
 #%%
