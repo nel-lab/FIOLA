@@ -16,7 +16,8 @@ from scipy.optimize import nnls
 import tensorflow as tf
 from fiola.batch_gpu import MotionCorrect
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
-from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential
+from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential, local_correlations, quick_annotation
+
 
 class FIOLA(object):
     def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
@@ -65,6 +66,19 @@ class FIOLA(object):
         print('Now start initialization of spatial footprint')
         border = self.params.mc_nnls['border_to_0']
         mask = self.params.data['ROIs']
+        
+        self.corr = local_correlations(self.mov_raw, swap_dim=False)
+        if mask is None:
+            flag = 0
+            while flag == 0:
+                mask = quick_annotation(self.corr, min_radius=5, max_radius=10).astype(np.float32)
+                if len(mask) > 0:
+                    flag = 1
+                    print(f'You selected {len(mask)} components')
+                else:
+                    print(f"You didn't select any components, please reselect")
+            
+        self.mask = mask
         
         if len(mask.shape) == 2:
            mask = mask[np.newaxis,:]

@@ -438,7 +438,7 @@ x = np.arange(len(labels))  # the label locations
 
 fig, ax = plt.subplots()
 width = 0.35  # the width of the bars
-rects1 = ax.bar(x - width/2, mean[0], width, yerr=[[0]*7, std[0]], capsize=5, label=f'FIOLA_25ms')
+rects1 = ax.bar(x - width/2, mean[0], width, yerr=[[0]*7, std[0]], capsize=5, label=f'FIOLA')
 rects2 = ax.bar(x + width/2, mean[1], width, yerr=[[0]*7, std[1]], capsize=5, label=f'VolPy')
 #rects3 = ax.bar(x  , mean[2], width/4, yerr=[[0]*7, std[2]], capsize=5, label=f'FIOLA_17.5ms')
 #rects4 = ax.bar(x + width/4, mean[3], width/4, yerr=[[0]*7, std[3]], capsize=5, label=f'FIOLA_12.5ms')
@@ -470,7 +470,7 @@ ax.legend(ncol=2, frameon=False, loc=0)
 #ax.set_ylim([0,1])
 fig.tight_layout()
 plt.show()
-#plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_simulation_f1_significance.png')
+plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_simulation_f1_significance_wilcoxon.png')
 
 #%%
 def barplot_annotate_brackets(num1, num2, data, center, height, yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None):
