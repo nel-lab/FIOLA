@@ -274,6 +274,10 @@ class FIOLA(object):
         
     def fit_online(self):
         self.pipeline.get_spikes()
+
+    def fit_online_frame(self, frame):
+        self.pipeline.load_frame(frame)
+        self.pipeline.get_spikes()
         
     def fit_without_gpu(self, mov):
         border = self.params.mc_nnls['border_to_0']

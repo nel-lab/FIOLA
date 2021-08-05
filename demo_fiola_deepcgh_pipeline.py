@@ -20,7 +20,7 @@ from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
 
 #%% load movie and masks
-movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data'][0]
+movie_folder = ['C:\\Users\\scanimage\\Desktop\\code\\test_data\\demo'][0]
 name = 'demo_voltage_imaging.hdf5'
 if '.hdf5' in name:
     with h5py.File(os.path.join(movie_folder, name),'r') as h5:
@@ -35,7 +35,7 @@ with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
 # dataset dependent parameters
 fnames = ''                     # name of the movie, we don't put a name here as movie is already loaded above
 fr = 400                        # sample rate of the movie
-ROIs = None                     # a 3D matrix contains all region of interests
+ROIs = mask                     # a 3D matrix contains all region of interests
 
 num_frames_init =  5000         # number of frames used for initialization
 num_frames_total =  10000        # estimated total number of frames for processing, this is used for generating matrix to store data
@@ -85,18 +85,10 @@ fio.fit(mov[:num_frames_init])
 #%% process online
 scope = [num_frames_init, num_frames_total]
 start = time()
+
 for idx in range(scope[0], scope[1]):
-    fio.pipeline.load_frame(mov[idx:idx+1, :, :])
-    fio.fit_online()
+    fio.fit_online_frame(mov[idx:idx+1])
     
-"""
-fio.pipeline.load_frame_thread = Thread(target=fio.pipeline.load_frame, 
-                                    daemon=True, 
-                                    args=(mov[scope[0]:scope[1], :, :],))
-fio.pipeline.load_frame_thread.start()
-fio.fit_online()
-sleep(10)
-"""
 sleep(3) # wait finish
 print(f'total time online: {time()-start}')
 print(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
@@ -106,7 +98,7 @@ fio.compute_estimates()
 
 #%% visualize the result, the last component is the background
 for i in range(fio.H.shape[1]):
-    if i == 0:
+    if i == 8:
         plt.figure()
         plt.imshow(mov[0], cmap='gray')
         plt.imshow(fio.H.reshape((mov.shape[1], mov.shape[2], fio.H.shape[1]), order='F')[:,:,i], alpha=0.3)
