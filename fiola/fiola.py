@@ -20,7 +20,7 @@ from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, norma
 
 
 class FIOLA(object):
-    def __init__(self, fnames=None, fr=None, ROIs=None, num_frames_init=10000, num_frames_total=20000, 
+    def __init__(self, fnames=None, fr=None, ROIs=None, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
                  ms=[10,10], offline_mc_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=False,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
@@ -37,6 +37,7 @@ class FIOLA(object):
         
     def fit(self, mov_raw):
         self.mov_raw = mov_raw
+        mov_raw = mov_raw.astype(np.float32) - mov_raw.min()
         
         if self.params.mc_nnls['ms'] is None:
             print('Skip motion correction')
@@ -57,7 +58,12 @@ class FIOLA(object):
             if mov_raw.shape[0] % self.params.mc_nnls['offline_mc_batch_size'] != 0:
                 num += 1                
             for i in range(num):
-                out = mc_offline(mov_raw[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
+                print(f'Now processing {i}')
+                try:
+                    out = mc_offline(mov_raw[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
+                except:
+                    import pdb
+                    pdb.set_trace()
                 with tf.compat.v1.Session() as sess:  
                     ff = out.eval()
                 mov.append(ff.reshape((-1, template.shape[0], template.shape[1]), order='F').copy())
@@ -129,43 +135,52 @@ class FIOLA(object):
         elif hals_movie=='orig':
             y_input = -y.T
             hals_orig = True
+        elif hals_movie == None:
+            pass
         
         mask_2D = to_2D(mask)
-        if self.params.mc_nnls['use_rank_one_nmf']:
-            y_seq = y_filt.copy()
-            std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
-            seq = np.argsort(std)[::-1]
-            self.seq = seq  
-                 
-            print(f'sequence of rank1-nmf: {seq}')        
-            W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
-            nA = np.linalg.norm(H)
-            H = H/nA
-            W = W*nA
+        
+        if hals_movie == None:
+            print('Weighted masks are given, no need to do HALS')
+            H_new = mask_2D.copy().T
         else:
-            nA = np.linalg.norm(mask_2D)
-            H = mask_2D/nA
-            W = (y_input.T@H.T)
-            self.seq = np.array(range(mask_2D.shape[0]))
-
-        if self.params.mc_nnls['do_plot_init']:
-            plt.figure();plt.imshow(H.sum(axis=0).reshape(mov.shape[1:], order='F'));
-            plt.colorbar();plt.title('Spatial masks before hals')
-        
-        print(f'HALS')
-        H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1))/y_filt.shape[1],
-                         np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, semi_nmf=self.params.mc_nnls['semi_nmf'],
-                         update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'],
-                         hals_orig=hals_orig, fr=self.params.data['fr'])
-       
-        if self.params.mc_nnls['do_plot_init']:
-            plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'), 
-                                    vmax=np.percentile(H_new.sum(axis=1), 99));
-            plt.colorbar();plt.title('Spatial masks after hals');plt.show()
-            plt.figure(); plt.imshow(b.reshape((self.mov.shape[1],self.mov.shape[2]), order='F')); plt.title('Background components');plt.show()
-        
-        if self.params.mc_nnls['update_bg']:
-            H_new = np.hstack((H_new, b))
+            print('Do HALS to optimize masks')
+            if self.params.mc_nnls['use_rank_one_nmf']:
+                y_seq = y_filt.copy()
+                std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
+                seq = np.argsort(std)[::-1]
+                self.seq = seq  
+                     
+                print(f'sequence of rank1-nmf: {seq}')        
+                W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
+                nA = np.linalg.norm(H)
+                H = H/nA
+                W = W*nA
+            else:
+                nA = np.linalg.norm(mask_2D)
+                H = mask_2D/nA
+                W = (y_input.T@H.T)
+                self.seq = np.array(range(mask_2D.shape[0]))
+    
+            if self.params.mc_nnls['do_plot_init']:
+                plt.figure();plt.imshow(H.sum(axis=0).reshape(mov.shape[1:], order='F'));
+                plt.colorbar();plt.title('Spatial masks before hals')
+            
+            print(f'HALS')
+            H_new,W_new,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],1))/y_filt.shape[1],
+                             np.random.rand(1,mov.shape[0]), bSiz=None, maxIter=3, semi_nmf=self.params.mc_nnls['semi_nmf'],
+                             update_bg=self.params.mc_nnls['update_bg'], use_spikes=self.params.mc_nnls['use_spikes'],
+                             hals_orig=hals_orig, fr=self.params.data['fr'])
+           
+            if self.params.mc_nnls['do_plot_init']:
+                plt.figure();plt.imshow(H_new.sum(axis=1).reshape(mov.shape[1:], order='F'), 
+                                        vmax=np.percentile(H_new.sum(axis=1), 99));
+                plt.colorbar();plt.title('Spatial masks after hals');plt.show()
+                plt.figure(); plt.imshow(b.reshape((self.mov.shape[1],self.mov.shape[2]), order='F')); plt.title('Background components');plt.show()
+            
+            if self.params.mc_nnls['update_bg']:
+                H_new = np.hstack((H_new, b))
+                
         H_new = H_new / norm(H_new, axis=0)
         self.H = H_new
  
@@ -194,6 +209,7 @@ class FIOLA(object):
             else:
                 from fiola.batch_gpu import Pipeline, get_model, Pipeline_overall_batch
                 b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
+         
                 x0=[]
                 for i in range(batch_size):
                     x0.append(nnls(Ab,b[:,i])[0])
@@ -234,21 +250,25 @@ class FIOLA(object):
             if np.ndim(trace) == 1:
                 trace = trace[None, :]
             print('Extract spikes for initialization')
-            saoz = SignalAnalysisOnlineZ(window=self.params.spike['window'], step=self.params.spike['step'],
-                                         detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
-                                         do_scale=self.params.spike['do_scale'], template_window=self.params.spike['template_window'], 
-                                         robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
-                                         frate=self.params.data['fr'], freq=self.params.spike['freq'],
-                                         thresh_range=self.params.spike['thresh_range'], minimal_thresh=self.params.spike['minimal_thresh'],
-                                         mfp=self.params.spike['mfp'], online_filter_method = self.params.spike['online_filter_method'],                                        
-                                         filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
-            
-            saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
+            if self.params.data['mode'] == 'voltage':
+                saoz = SignalAnalysisOnlineZ(window=self.params.spike['window'], step=self.params.spike['step'],
+                                             detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
+                                             do_scale=self.params.spike['do_scale'], template_window=self.params.spike['template_window'], 
+                                             robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
+                                             frate=self.params.data['fr'], freq=self.params.spike['freq'],
+                                             thresh_range=self.params.spike['thresh_range'], minimal_thresh=self.params.spike['minimal_thresh'],
+                                             mfp=self.params.spike['mfp'], online_filter_method = self.params.spike['online_filter_method'],                                        
+                                             filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
+                
+                saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
+            elif self.params.data['mode'] == 'calcium':
+                saoz = np.zeros((self.mask.shape[0], self.params.data['num_frames_total']))
+                saoz[:, :self.params.data['num_frames_init']] = trace
             
             if not self.params.mc_nnls['use_batch']:
                 self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
             else:
-                self.pipeline = Pipeline_overall_batch(model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
+                self.pipeline = Pipeline_overall_batch(self.params.data['mode'], model_batch, x0[None, :], x0[None, :], mc0, theta_2, mov, num_components, batch_size, saoz, len(mov))
 
             
         

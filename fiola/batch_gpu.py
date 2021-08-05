@@ -136,12 +136,12 @@ class Pipeline(object):
 
 #%%    
 class Pipeline_overall_batch(object):    
-    def __init__(self, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size, saoz, n):
+    def __init__(self, mode, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size, saoz, n):
         """
         Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
         To run, after initializing, run self.get_spikes()
         """
-        self.model, self.mc0, self.y0, self.x0, self.tht2, self.saoz, self.num_frames_init = model, mc_0, y_0, x_0, tht2, saoz, n
+        self.mode, self.model, self.mc0, self.y0, self.x0, self.tht2, self.saoz, self.num_frames_init = mode, model, mc_0, y_0, x_0, tht2, saoz, n
         self.n = self.num_frames_init
         self.batch_size = batch_size
         self.num_components = num_components
@@ -184,15 +184,22 @@ class Pipeline_overall_batch(object):
                 traces_input = traces_input[None, :]   # make sure dimension is timepoints * # of neurons
 
             if self.flag > 0:
-                for i in range(len(traces_input)):
-                    #if self.batch_size == 1:
-                    #    self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
-                    #else:
-                    self.saoz.fit_next(traces_input[i:i+1].T, self.n)
-                            
-                    if self.n % 1000 == 0:
-                        print(f'{self.n} frames processed ####DETECT##### ')
-                    self.n += 1
+                if self.mode == 'voltage':
+                    for i in range(len(traces_input)):
+                        #if self.batch_size == 1:
+                        #    self.saoz.fit_next(traces_input[i:i+1][:, None], self.n)
+                        #else:
+                        self.saoz.fit_next(traces_input[i:i+1].T, self.n)
+                                
+                        if self.n % 1000 == 0:
+                            print(f'{self.n} frames processed ####DETECT##### ')
+                        self.n += 1
+                elif self.mode == 'calcium':
+                    for i in range(len(traces_input)):
+                        self.saoz[:, self.n:(self.n+1)] = traces_input[i:i+1].T                                
+                        if self.n % 1000 == 0:
+                            print(f'{self.n} frames processed ####DETECT##### ')
+                        self.n += 1                    
             self.flag = self.flag + 1
         
     def extract(self):
