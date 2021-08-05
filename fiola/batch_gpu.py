@@ -191,14 +191,14 @@ class Pipeline_overall_batch(object):
                         #else:
                         self.saoz.fit_next(traces_input[i:i+1].T, self.n)
                                 
-                        if self.n % 1000 == 0:
-                            print(f'{self.n} frames processed ####DETECT##### ')
+                        if (self.n + 1) % 1000 == 0:
+                            print(f'{self.n+1} frames processed ####DETECT##### ')
                         self.n += 1
                 elif self.mode == 'calcium':
                     for i in range(len(traces_input)):
                         self.saoz[:, self.n:(self.n+1)] = traces_input[i:i+1].T                                
-                        if self.n % 1000 == 0:
-                            print(f'{self.n} frames processed ####DETECT##### ')
+                        if (self.n + 1) % 1000 == 0:
+                            print(f'{self.n+1} frames processed ####DETECT##### ')
                         self.n += 1                    
             self.flag = self.flag + 1
         

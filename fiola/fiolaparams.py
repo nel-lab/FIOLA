@@ -40,7 +40,7 @@ class fiolaparams(object):
             'freq_detrend': freq_detrend, # high-pass frequency for removing baseline, used for init of spatial footprint
             'do_plot_init': do_plot_init, # plot the spatial mask result for init of spaital footprint
             'erosion': erosion, # number of pixels to erode the input masks before performing rank-1 NMF
-            'hals_movie': hals_movie, # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); original movie (orig)
+            'hals_movie': hals_movie, # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); original movie (orig); no HALS needed if the input is from CaImAn (None)
             'use_rank_one_nmf': use_rank_one_nmf, # whether to use rank-1 nmf, if False the algorithm will use initial masks and average signals as initialization for the HALS
             'semi_nmf': semi_nmf, # whether use semi-nmf (with no constraint in temporal components) instead of normal NMF
             'update_bg': update_bg, # update background components for spatial footprints

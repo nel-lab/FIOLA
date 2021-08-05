@@ -37,7 +37,6 @@ class FIOLA(object):
         
     def fit(self, mov_raw):
         self.mov_raw = mov_raw
-        mov_raw = mov_raw.astype(np.float32) - mov_raw.min()
         
         if self.params.mc_nnls['ms'] is None:
             print('Skip motion correction')
@@ -58,12 +57,7 @@ class FIOLA(object):
             if mov_raw.shape[0] % self.params.mc_nnls['offline_mc_batch_size'] != 0:
                 num += 1                
             for i in range(num):
-                print(f'Now processing {i}')
-                try:
-                    out = mc_offline(mov_raw[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
-                except:
-                    import pdb
-                    pdb.set_trace()
+                out = mc_offline(mov_raw[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
                 with tf.compat.v1.Session() as sess:  
                     ff = out.eval()
                 mov.append(ff.reshape((-1, template.shape[0], template.shape[1]), order='F').copy())
@@ -142,8 +136,10 @@ class FIOLA(object):
         
         if hals_movie == None:
             print('Weighted masks are given, no need to do HALS')
-            H_new = mask_2D.copy().T
+            mask_2D = mask.transpose([1,2,0]).reshape((-1, mask.shape[0]))
+            H_new = mask_2D.copy()
         else:
+            mask_2D = to_2D(mask)
             print('Do HALS to optimize masks')
             if self.params.mc_nnls['use_rank_one_nmf']:
                 y_seq = y_filt.copy()
@@ -324,7 +320,7 @@ class FIOLA(object):
     def compute_estimates(self):
         self.estimates = self.pipeline.saoz
         #self.estimates = self.saoz
-        self.estimates.seq = self.seq
+        #self.estimates.seq = self.seq
         self.estimates.H = self.H
         self.estimates.params = self.params
 
