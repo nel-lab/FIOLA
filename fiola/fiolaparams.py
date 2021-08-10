@@ -10,7 +10,7 @@ import logging
 import numpy as np
 
 class fiolaparams(object):
-    def __init__(self, fnames=None, fr=None, ROIs=None, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
+    def __init__(self, fnames=None, fr=None, ROIs=None, mode='voltage', init_method='masks', num_frames_init=10000, num_frames_total=20000, 
                  ms=[10,10], offline_mc_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=False,
                  update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
@@ -29,6 +29,7 @@ class fiolaparams(object):
             'fr': fr, # sample rate of the movie
             'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'mode': mode, # 'voltage' or 'calcium 'fluorescence indicator
+            'init_method': init_method, # initialization method 'caiman' or 'masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
             'num_frames_init': num_frames_init, # number of frames used for initialization
             'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
         }
