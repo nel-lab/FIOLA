@@ -104,6 +104,19 @@ sleep(3) # wait finish
 print(f'total time online: {time()-start}')
 print(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
 
+#%% process online
+scope = [num_frames_init, num_frames_total]
+fio.pipeline.load_frame_thread = Thread(target=fio.pipeline.load_frame, 
+                                        daemon=True, 
+                                        args=(mov[scope[0]:scope[1], :, :],))
+fio.pipeline.load_frame_thread.start()
+
+start = time()
+fio.fit_online()
+sleep(0.1) # wait finish
+print(f'total time online: {time()-start}')
+print(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
+
 #%% compute the result in fio.estimates object
 #fio.compute_estimates()
 

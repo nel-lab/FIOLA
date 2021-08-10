@@ -88,6 +88,7 @@ start = time()
 
 for idx in range(scope[0], scope[1]):
     fio.fit_online_frame(mov[idx:idx+1])
+        
     
 sleep(3) # wait finish
 print(f'total time online: {time()-start}')
