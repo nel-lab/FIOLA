@@ -37,9 +37,6 @@ elif '.tif' in name:
 mask = np.load(os.path.join(movie_folder, 'masks_caiman.npy'))
 mov = mov.astype(np.float32) - mov.min()
 dims = mov.shape[1:]
-#img_norm = np.std(mov, axis=0)
-#img_norm += np.median(img_norm)
-#mov = mov/img_norm[None, :, :]
  
 #%% setting params
 # FIOLA params
@@ -48,7 +45,7 @@ fr = 30                         # sample rate of the movie
 ROIs = mask                     # a 3D matrix contains all region of interests
 mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
 init_method = 'caiman'          # initialization method 'caiman' or 'masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
-num_frames_init =  1000         # number of frames used for initialization
+num_frames_init =  1500         # number of frames used for initialization
 num_frames_total =  3000        # estimated total number of frames for processing, this is used for generating matrix to store data
 flip = False                    # whether to flip signal to find spikes   
 ms=[5, 5]                       # maximum shift in x and y axis respectively. Will not perform motion correction if None.
@@ -178,8 +175,8 @@ params = fiolaparams(params_dict=options)
 fio = FIOLA(params=params)
 
 if init_method == 'caiman':
-    from caiman.source_extraction.cnmf import cnmf 
-    estimates = cnmf.load_CNMF('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/demo_K53/memmap__d1_512_d2_512_d3_1_order_C_frames_1000_.hdf5').estimates
+    #from caiman.source_extraction.cnmf import cnmf 
+    #estimates = cnmf.load_CNMF('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/demo_K53/memmap__d1_512_d2_512_d3_1_order_C_frames_1000_.hdf5').estimates
     estimates = run_caiman_init(mov[:num_frames_init], init_file_name, mc_dict, opts_dict, quality_dict)
     estimates.plot_contours(img=estimates.Cn)
     mask = np.hstack((estimates.A.toarray(), estimates.b)).reshape([dims[0], dims[1], -1]).transpose([2, 0, 1])
@@ -188,7 +185,7 @@ if init_method == 'caiman':
     mov_init = cm.load(estimates.fname_new)
     fio.fit(mov_init, trace=trace_init)
 else:
-    fio.fit(mov[:num_frames_init])
+    fio.fit(mov[:num_frames_init]) # need to provide masks
 
 #%% process online
 scope = [num_frames_init, num_frames_total]
@@ -206,6 +203,7 @@ print(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
 
 #%% visualize the result, the last component is the background
 for i in range(10):
+    i = i+10
     plt.figure()
     #plt.imshow(mov[0], cmap='gray')
     plt.imshow(fio.H.reshape((mov.shape[1], mov.shape[2], fio.H.shape[1]), order='F')[:,:,i])#, alpha=0.7)
