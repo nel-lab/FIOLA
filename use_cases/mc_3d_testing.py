@@ -486,11 +486,104 @@ if __name__ == "__main__":
     #print(f'shifts: {shifts[1]}')
     
     
+    #%%
+    from skimage.io import imread
+    folder = '/media/nel/DATA/Panos/fun_x_4/movie_100_4_100/'
+    Y = imread(os.path.join(folder, 'movie_730.tiff'))
+    Y = Y.astype(np.float32)
+    templ = bin_median_3d(Y, 30)
+    ms_h = 4; ms_w = 2; ms_d = 4
+    Y_new = []
+    for idx, yy in enumerate(Y):
+        print(idx)
+        Y_new.append(high_pass_filter_space(yy, (3,3,3)))
+    template = high_pass_filter_space(templ, (3,3,3))
+    Y_new = np.array(Y_new)
     
+    #%%
+    templ = bin_median_3d(mov_corr, 30)
+    template = high_pass_filter_space(templ, (3,3,3))
     
+    #%%
+    mc_layer = MotionCorrect(template[:,:,:,None,None], ms_h=ms_h, ms_w=ms_w, ms_d=ms_d)
+    data = Y_new[None, ..., None]
+    print(f'data shape: {data.shape}')
+    print(f'template shape: {template.shape}')
+    import time
+    st = time.time()
+    times = []
+    nccs = []
+    shifts_gpu_mc = np.zeros((Y.shape[0], 3))
+    mov_corr = np.zeros(Y.shape)
+    for i in range(data.shape[1]):
+        fr_corrected, ncc = mc_layer(data[:,i:i+1])
+        coords = np.array([ncc[0],ncc[1],ncc[2]]).flatten()
+        shifts_gpu_mc[i] = coords
+        mov_corr[i] = fr_corrected
+        #shifts_all.append(mc_layer.shifts)
+        times.append(time.time()-st)
+        
+plt.plot(shifts_gpu_mc)
     
-    
-    
+#%%
+from skimage.io import imsave
+imsave(os.path.join(folder, 'fiola_mc.tif'), mov_corr)
+#%%    
+
+import cv2
+def high_pass_filter_space(img_orig, gSig_filt=None, freq=None, order=None):
+   """
+   Function for high passing the image(s) with centered Gaussian if gSig_filt
+   is specified or Butterworth filter if freq and order are specified
+
+   Args:
+       img_orig: 2-d or 3-d array
+           input image/movie
+
+       gSig_filt:
+           size of the Gaussian filter 
+
+       freq: float
+           cutoff frequency of the Butterworth filter
+
+       order: int
+           order of the Butterworth filter
+
+   Returns:
+       img: 2-d array or 3-d movie
+           image/movie after filtering            
+   """
+   if freq is None or order is None:  # Gaussian
+       ksize = tuple([(3 * i) // 2 * 2 + 1 for i in gSig_filt])
+       ker = cv2.getGaussianKernel(ksize[0], gSig_filt[0])
+               
+       if len(ksize) <= 2:
+           ker2D = ker.dot(ker.T)
+           nz = np.nonzero(ker2D >= ker2D[:, 0].max())
+           zz = np.nonzero(ker2D < ker2D[:, 0].max())
+           ker2D[nz] -= ker2D[nz].mean()
+           ker2D[zz] = 0
+           if img_orig.ndim == 2:  # image
+               return cv2.filter2D(np.array(img_orig, dtype=np.float32),
+                                   -1, ker2D, borderType=cv2.BORDER_REFLECT)
+           else:  # movie
+               mm = cm.movie(np.array([cv2.filter2D(np.array(img, dtype=np.float32),
+                                   -1, ker2D, borderType=cv2.BORDER_REFLECT) for img in img_orig]))     
+               return mm
+       else:
+           ker3D = (ker[:,None,None] * ker[None,:,None] * ker[None,None,:])[:,:,:,0]
+           nz = np.nonzero(ker3D >= ker3D[:, :, 0].max())
+           zz = np.nonzero(ker3D < ker3D[:, :, 0].max())
+           ker3D[nz] -= ker3D[nz].mean()
+           ker3D[zz] = 0
+           #from scipy.ndimage import gaussian_filter
+           from scipy.ndimage import convolve
+           #try:
+           mm = convolve(img_orig, ker3D)
+           #except:
+           #    import pdb
+           #    pdb.set_trace()
+           return mm   
     
     
     
