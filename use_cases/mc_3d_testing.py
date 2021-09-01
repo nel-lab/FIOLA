@@ -341,8 +341,7 @@ if __name__ == "__main__":
                 shifts = np.hstack((shifts, np.zeros(shifts.shape[0])[:, None]))
                 Y = Y[..., None]
             
-            Y = np.array([apply_shifts_dft(img, tuple(sh), 0,
-                                                                         is_freq=False, border_nan='copy')
+            Y = np.array([apply_shifts_dft(img, tuple(sh), 0,                                                   is_freq=False, border_nan='copy')
                                    for img, sh in zip(Y, shifts)])
             #Y = Y[:, 2*sig[0]:-2*sig[0], 2*sig[1]:-2*sig[1], 2*sig[2]:-2*sig[2]]
             Y = Y[(slice(None),) + tuple([(slice(2*si, -2*si, 1)) for si in sig])]

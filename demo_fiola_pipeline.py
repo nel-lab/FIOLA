@@ -30,17 +30,34 @@ elif '.tif' in name:
 
 with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
     mask = np.array(h5['mov'])                                               
-  
+
+#%%
+movie_folder = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data', 
+                '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/demo_K53'][1]
+name = ['demo_voltage_imaging.hdf5', 'k53.tif'][1]
+if '.hdf5' in name:
+    with h5py.File(os.path.join(movie_folder, name),'r') as h5:
+        mov = np.array(h5['mov'])
+elif '.tif' in name:
+    mov = imread(os.path.join(movie_folder, name))
+
+#with h5py.File(os.path.join(movie_folder, name[:-5]+'_ROIs.hdf5'),'r') as h5:
+#    mask = np.array(h5['mov'])                                               
+
+mask = np.load(os.path.join(movie_folder, 'masks_caiman.npy'))
+mov = mov.astype(np.float32) - mov.min()
+dims = mov.shape[1:]
+
 #%% setting params
 # dataset dependent parameters
 fnames = ''                     # name of the movie, we don't put a name here as movie is already loaded above
 fr = 400                        # sample rate of the movie
 ROIs = mask                     # a 3D matrix contains all region of interests
 
-num_frames_init =  5000         # number of frames used for initialization
-num_frames_total =  10000        # estimated total number of frames for processing, this is used for generating matrix to store data
+num_frames_init =  20000         # number of frames used for initialization
+num_frames_total =  30000        # estimated total number of frames for processing, this is used for generating matrix to store data
 flip = True                     # whether to flip signal to find spikes   
-ms=[10, 10]                      # maximum shift in x and y axis respectively. Will not perform motion correction if None.
+ms=[5, 5]                      # maximum shift in x and y axis respectively. Will not perform motion correction if None.
 thresh_range= [2.8, 5.0]        # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
 use_rank_one_nmf=False          # whether to use rank-1 nmf, if False the algorithm will use initial masks and average signals as initialization for the HALS
 hals_movie='hp_thresh'          # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); original movie (orig)

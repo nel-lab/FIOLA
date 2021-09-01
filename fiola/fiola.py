@@ -9,12 +9,14 @@ Please check violaparams.py for the explanation of parameters.
 """
 import cv2
 import logging
+logging.disable(logging.WARNING) 
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.linalg import norm
 from scipy.optimize import nnls  
 import tensorflow as tf
-from fiola.batch_gpu import MotionCorrect
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential, local_correlations, quick_annotation
 
@@ -37,6 +39,7 @@ class FIOLA(object):
         
     def fit(self, mov_input, trace=None):
         self.mov_input = mov_input
+        self.shifts_offline = []
         if self.params.data['init_method'] == 'caiman':
             mov = mov_input
             self.mov = mov
@@ -56,22 +59,34 @@ class FIOLA(object):
             else:
                 print('Now start offline motion correction')
                 mov = []
+                shifts = []
                 template = bin_median(mov_input, exclude_nans=False)
-                if self.params.mc_nnls['center_dims'] is None:
-                    center_dims = (mov_input.shape[1], mov_input.shape[2])
-                else:
-                    center_dims = self.params.mc_nnls['center_dims'].copy()            
-                mc_offline = MotionCorrect(template=template, center_dims=center_dims, 
-                                                batch_size=self.params.mc_nnls['offline_mc_batch_size'], ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1])        
+                center_dims = self.params.mc_nnls['center_dims']
+                from fiola.motion_correction_offline import MotionCorrectBatch
+                mc_offline = MotionCorrectBatch(template=template, batch_size=self.params.mc_nnls['offline_mc_batch_size'],
+                                           ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1],
+                                           center_dims=center_dims, use_fft=False)        
                 num = mov_input.shape[0]//self.params.mc_nnls['offline_mc_batch_size']
                 if mov_input.shape[0] % self.params.mc_nnls['offline_mc_batch_size'] != 0:
-                    num += 1                
+                    num += 1        
                 for i in range(num):
-                    out = mc_offline(mov_input[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
+                    print(f'finish {i} out of {num}')
+                    from time import time
+                    a = time()
+                    out1 = mc_offline(mov_input[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
+                    b = time()
                     with tf.compat.v1.Session() as sess:  
-                        ff = out.eval()
+                        ff = out1.eval()
                     mov.append(ff.reshape((-1, template.shape[0], template.shape[1]), order='F').copy())
+                    c = time()
+                    print(f'mc: {b-a}')
+                    print(f'eval: {c-b}')
+                    #shifts.append([out2[0].eval(), out2[1].eval()])
+                    #self.shifts_offline.append([xs, ys])
                 mov = np.concatenate(mov, axis=0)
+                self.mov = mov
+                self.shifts = shifts
+                
             
             print('Now start initialization of spatial footprint')
             border = self.params.mc_nnls['border_to_0']
@@ -196,10 +211,10 @@ class FIOLA(object):
             Ab = H_new.astype(np.float32)
             num_components = Ab.shape[-1]
             template = bin_median(mov, exclude_nans=False)
-            if self.params.mc_nnls['center_dims'] is None:
-                center_dims = (mov.shape[1], mov.shape[2])
-            else:
-                center_dims = self.params.mc_nnls['center_dims'].copy()
+            #if self.params.mc_nnls['center_dims'] is None:
+            #    center_dims = (mov.shape[1], mov.shape[2])
+            #else:
+            #    center_dims = self.params.mc_nnls['center_dims'].copy()
     
             if not self.params.mc_nnls['use_batch']:
                 from fiola.pipeline_gpu import get_model, Pipeline_overall, Pipeline
@@ -213,9 +228,8 @@ class FIOLA(object):
                 model = get_model(template, center_dims, Ab, 30, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1])
                 model.compile(optimizer='rmsprop', loss='mse')
             else:
-                from fiola.batch_gpu import Pipeline, get_model, Pipeline_overall_batch
-                b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')
-         
+                from fiola.gpu_mc_nnls import Pipeline, get_model, Pipeline_overall_batch
+                b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')         
                 x0=[]
                 for i in range(batch_size):
                     x0.append(nnls(Ab,b[:,i])[0])
@@ -224,7 +238,9 @@ class FIOLA(object):
                 Atb = Ab.T@b
                 n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
                 theta_2 = (Atb/n_AtA).astype(np.float32)
-                model_batch = get_model(template, center_dims, Ab, num_components, batch_size, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1]) 
+                model_batch = get_model(template, Ab=Ab, num_components=num_components, batch_size=batch_size, 
+                                        ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], 
+                                        center_dims= self.params.mc_nnls['center_dims']) 
                 model_batch.compile(optimizer = 'rmsprop',loss='mse')
                 mc0 = mov[0:batch_size, :, :, None][None, :]
                 x_old, y_old = np.array(x0[None,:]), np.array(x0[None,:])  
@@ -276,6 +292,7 @@ class FIOLA(object):
             saoz = np.zeros((self.mask.shape[0], self.params.data['num_frames_total']))
             saoz[:, :self.params.data['num_frames_init']] = trace
         
+    
         if not self.params.mc_nnls['use_batch']:
             self.pipeline = Pipeline_overall(model, x0[None, :], x0[None, :], mc0, theta_2, saoz, len(mov))
         else:

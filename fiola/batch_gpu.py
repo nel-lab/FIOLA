@@ -8,7 +8,7 @@ Created on Sat May 30 13:26:40 2020
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
+#tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
 from threading import Thread
 import tensorflow_addons as tfa
@@ -348,10 +348,11 @@ class MotionCorrect(keras.layers.Layer):
         # Remove any NaN in final output
         tensor_ncc = tf.where(tf.math.is_nan(tensor_ncc), tf.zeros_like(tensor_ncc), tensor_ncc)
         xs, ys = self.extract_fractional_peak(tensor_ncc, ms_h=self.ms_h, ms_w=self.ms_w)
+        self.shifts = [xs, ys]
         X_corrected = tfa.image.translate(X, tf.squeeze(tf.stack([ys, xs], axis=1)), 
                                             interpolation="BILINEAR")
 
-        return tf.reshape(tf.transpose(tf.squeeze(X_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_x*self.shp_y))
+        return tf.reshape(tf.transpose(tf.squeeze(X_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_x*self.shp_y)), self.shifts
 
 
     def get_config(self):
