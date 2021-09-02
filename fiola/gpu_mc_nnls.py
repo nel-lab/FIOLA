@@ -23,8 +23,8 @@ from time import time
 #%%
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, batch_size=1, ms_h=5, ms_w=5, 
-                 strides=[1,1,1,1], padding='VALID',center_dims=None, use_fft=True, 
-                 normalize_cc=True, epsilon=0.00000001, **kwargs):
+                 strides=[1,1,1,1], padding='VALID',use_fft=True, 
+                 normalize_cc=True, epsilon=0.00000001, center_dims=None, return_shifts=False, **kwargs):
         """
         Class for GPU motion correction        
 
@@ -42,40 +42,42 @@ class MotionCorrect(keras.layers.Layer):
             stride for convolution. The default is [1,1,1,1].
         padding : str
             padding for convolution. The default is 'VALID'.
-        center_dims : tuple
-            size of center crops of template for motion correction. If None, it will not crop. The default is None.
         use_fft : bool
             use FFT for convolution or not. Will use tf.nn.conv2D if False. The default is True.
         normalize_cc : bool
             whether to normalize the cross correlations coefficients or not. The default is True.
         epsilon : float
             epsilon to avoid deviding by zero. The default is 0.00000001.
-        **kwargs : TYPE
-            DESCRIPTION.
-
+        center_dims : tuple
+            size of center crops of template for motion correction. If None, it will not crop. The default is None.
+        return_shifts: bool
+            if True, return both motion corrected movie and shifts. If False, return only motion corrected movie
+        
         Returns
         -------
-        motion corrected frames
+        motion corrected frames and/or shifts (depending on return_shifts)
         """        
+        super().__init__(**kwargs)   
         
-        super().__init__(**kwargs)        
         for name, value in locals().items():
             if name != 'self':
                 setattr(self, name, value)
                 print(f'{name}, {value}')
         
-        self.shp_0  = template.shape   
-        self.template_0 = template.copy()
+        self.template_0 = template
+        self.shp_0 = self.template_0.shape
+        
         self.xmin, self.ymin = self.shp_0[0]-2*ms_w, self.shp_0[1]-2*ms_h
         if self.xmin < 10 or self.ymin < 10:
             raise ValueError("The frame dimensions you entered are too small. Please provide a larger field of view or resize your movie.") 
         
         if self.center_dims is not None:
+            if self.center_dims[0] >= self.shp_0[0] or self.center_dims[1] >= self.shp_0[1]:
+                raise ValueError("center_dims can not be larger than movie shape")
             self.shp_c_x, self.shp_c_y = (self.shp_0[0] - center_dims[0])//2, (self.shp_0[1] - center_dims[1])//2
             self.template = self.template_0[self.shp_c_x:-self.shp_c_x, self.shp_c_y:-self.shp_c_y]
         else:
             self.shp_c_x, self.shp_c_y = (0, 0)
- 
         if self.use_fft == False:
             self.template = self.template_0[(ms_w+self.shp_c_x):-(ms_w+self.shp_c_x),(ms_h+self.shp_c_y):-(ms_h+self.shp_c_y)]
         # else:
@@ -83,7 +85,6 @@ class MotionCorrect(keras.layers.Layer):
         #     self.template[:, :ms_h] = 0
         #     self.template[-ms_w:] = 0
         #     self.template[:, -ms_h:] = 0
-            
         self.template_zm, self.template_var = self.normalize_template(self.template[:,:,None,None], epsilon=self.epsilon)
         self.shp = self.template.shape
         self.shp_m_x, self.shp_m_y = self.shp[0]//2, self.shp[1]//2
@@ -92,22 +93,17 @@ class MotionCorrect(keras.layers.Layer):
      
     @tf.function
     def call(self, fr):
-        print(self.center_dims)
         if self.center_dims is None:
             fr_center = fr[0]
         else:      
             fr_center = fr[0,:, self.shp_c_x:(self.shp_0[0]-self.shp_c_x), self.shp_c_y:(self.shp_0[1]-self.shp_c_y)]
 
-        print(fr_center.shape)
         imgs_zm, imgs_var = self.normalize_image(fr_center, strides=self.strides,
                                             padding=self.padding, epsilon=self.epsilon)
         denominator = tf.sqrt(self.template_var * imgs_var)
 
         if self.use_fft:
             fr_freq = tf.signal.fft3d(tf.cast(imgs_zm[:,:,:,0], tf.complex128))
-            
-            print(fr_freq.shape)
-            print(self.target_freq.shape)
             img_product = fr_freq *  tf.math.conj(self.target_freq)
             cross_correlation = tf.cast(tf.math.abs(tf.signal.ifft3d(img_product)), tf.float32)
             rolled_cc =  tf.roll(cross_correlation,(self.batch_size, self.shp_m_x,self.shp_m_y), axis=(0,1,2))
@@ -126,7 +122,10 @@ class MotionCorrect(keras.layers.Layer):
         self.shifts = [sh_x, sh_y]
         fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
                                             interpolation="bilinear")
-        return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), self.shifts
+        if self.return_shifts:
+            return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), self.shifts
+        else:
+            return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1]))
     
     def normalize_template(self, template, epsilon=0.00000001):
         # remove mean and divide by std
@@ -192,9 +191,9 @@ class MotionCorrect(keras.layers.Layer):
         
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config, "template": self.template,"strides": self.strides, "batch_size":self.batch_size,
-                "padding": self.padding, "epsilon": self.epsilon, 
-                                        "ms_h": self.ms_h,"ms_w": self.ms_w }
+        return {**base_config, "template": self.template_0,"strides": self.strides, "batch_size":self.batch_size,
+                "padding": self.padding, "epsilon": self.epsilon, "ms_h": self.ms_h,"ms_w": self.ms_w, 
+                "use_fft":self.use_fft, "normalize_cc":self.normalize_cc, "center_dims":self.center_dims, "return_shifts":self.return_shifts}
     
 class NNLS(keras.layers.Layer):
     def __init__(self, theta_1, name="NNLS",**kwargs):
@@ -209,8 +208,7 @@ class NNLS(keras.layers.Layer):
             theta_1: ndarray
                 theta_1 = (np.eye(A.shape[-1]) - AtA/n_AtA)
             theta_2: ndarray
-                theta_2 = (Atb/n_AtA)[:,None]  
-          
+                theta_2 = (Atb/n_AtA)[:,None]            
         
         Returns:
             x regressed values
@@ -250,106 +248,87 @@ class compute_theta2(keras.layers.Layer):
     def get_config(self):
         base_config = super().get_config().copy()
         return {**base_config, "A":self.A, "n_AtA":self.n_AtA}
+    
+class Empty(keras.layers.Layer):
+    def call(self,  fr):
+        fr = fr[0, ..., 0]
+        return tf.reshape(tf.transpose(fr, perm=[0, 2, 1]), (fr.shape[0], -1))
 
-def get_mc_model(template, batch_size=1, ms_h=10, ms_w=10, center_dims=None):
+def get_mc_model(template, batch_size, **kwargs):
     """
-    takes as input a template (median) of the movie, A_sp object, and b object from caiman.
-    outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
+    build gpu motion correction model
     """
-    #dimensions of the movie
+    # dimensions of the movie
     shp_x, shp_y = template.shape[0], template.shape[1] 
     template = template.astype(np.float32)
-
-    #Input layer for one frame of the movie
+    
+    # input layer for one frame of the movie
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m")  
 
-    #Initialization of the motion correction layer, initialized with the template
-    mc_layer = MotionCorrect(template=template, center_dims=center_dims, batch_size=batch_size, ms_h=ms_h, ms_w=ms_w)   
-    print(f'center_dims:{mc_layer.center_dims}')
-    mc, shifts = mc_layer(fr_in)
-    
+    # initialization of the motion correction layer, initialized with the template
+    mc_layer = MotionCorrect(template, batch_size, **kwargs)   
+    mc, shifts = mc_layer(fr_in)    
 
-    #create final model, returns it and the first weight
+    # create final model, returns it and the first weight
     model = keras.Model(inputs=[fr_in], outputs=[mc, shifts])   
     return model
 
-#from fiola.nnls_gpu import NNLS, compute_theta2
-def get_nnls_model(template, Ab, num_layers=30, ms_h=10, ms_w=10):
+def get_nnls_model(dims, Ab, batch_size, num_layers=10):
     """
-    takes as input a template (median) of the movie, A_sp object, and b object from caiman.
-    outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
+    build gpu nnls model
     """
-    shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+    shp_x, shp_y = dims[0], dims[1] 
     Ab = Ab.astype(np.float32)
-    template = template.astype(np.float32)
     num_components = Ab.shape[-1]
 
-    y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="y") # Input Layer for components
-    x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, 1]), name="x") # Input layer for components
-    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
+    y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
+    x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
+    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
     k_in = tf.keras.layers.Input(shape=(1,), name="k") #Input layer for the counter within the NNLS layers
  
-    #Calculations to initialize Motion Correction
+    # calculations to initialize NNLS
     AtA = Ab.T@Ab
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
 
-    #Initialization of the motion correction layer, initialized with the template
+    # empty motion correction layer
     mc_layer = Empty()
     mc = mc_layer(fr_in)
-    shifts = [0.0, 0.0]
-    #Chains motion correction layer to weight-calculation layer
+    
+    # chains motion correction layer to weight-calculation layer
     c_th2 = compute_theta2(Ab, n_AtA)
-    (th2, shifts) = c_th2(mc, shifts)
-    #Connects weights, calculated from the motion correction, to the NNLS layer
+    th2 = c_th2(mc)
+    
+    # connects weights, to the NNLS layer
     nnls = NNLS(theta_1)
-    x_kk = nnls([y_in, x_in, k_in, th2, shifts])
-    #stacks NNLS 9 times
+    x_kk = nnls([y_in, x_in, k_in, th2])
+    
+    # stacks NNLS 
     for j in range(1, num_layers):
         x_kk = nnls(x_kk)
    
-    #create final model, returns it and the first weight
+    #create final model
     model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
     return model  
 
-def get_model(template, Ab, num_components, batch_size=1, ms_h=5, ms_w=5, center_dims=None):
+def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
     """
-    Takes as input a template (median) of the movie, A_sp object, and b object from caiman.
-    
-    Parameters
-    ----------
-    template : ndarray
-        The template used for motion correction
-    Ab : ndarray
-        spatial footprints of neurons and background.
-    num_components : int
-        number of components
-    batch_size : int
-        number of frames used for motion correction each time. The default is 1.
-    ms_h : int
-        maximum shift horizontal. The default is 5.
-    ms_w : int
-        maximum shift vertical. The default is 5.
-    center_dims : tuple
-        size of center crops of template for motion correction. If None, it will not crop. The default is None.
-    Returns
-    -------
-    motion correction - nnls model
-
+    build full gpu mc-nnls model
     """
     shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+    num_components = Ab.shape[-1]
     y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
     x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
     k_in = tf.keras.layers.Input(shape=(1,), name="k")
 
-    # calculations to initialize Motion Correction
+    # calculations to initialize 
     AtA = Ab.T@Ab
     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
 
     # initialization of the motion correction layer, initialized with the template   
-    mc_layer = MotionCorrect(template, batch_size=batch_size, ms_h=ms_h, ms_w=ms_w, center_dims=center_dims)   
+    mc_layer = MotionCorrect(template, batch_size, **kwargs)   
     mc = mc_layer(fr_in)
 
     # chains motion correction layer to weight-calculation layer
@@ -359,16 +338,325 @@ def get_model(template, Ab, num_components, batch_size=1, ms_h=5, ms_w=5, center
     # connects weights, calculated from the motion correction, to the NNLS layer
     nnls = NNLS(theta_1)
     x_kk = nnls([y_in, x_in, k_in, th2])
-    #stacks NNLS 9 times
-    for j in range(1, 10):
+    # stacks NNLS 
+    for j in range(1, num_layers):
         x_kk = nnls(x_kk)
    
     # create final model, returns it and the first weight
-    mod = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
-    return mod
+    model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
+    return model
+
+def run_gpu_motion_correction(mov, template, batch_size, **kwargs):
+    """
+    Run GPU motion correction
+
+    Parameters
+    ----------
+    mov : ndarray
+        input movie
+    template : ndarray
+        the template used for motion correction
+    batch_size : int
+        number of frames used for motion correction each time. The default is 1.
+    **kwargs : 
+        other parameters for motion correction, see MotionCorrect class for more detail
+
+    Returns
+    -------
+    mc_mov: ndarray
+        motion corrected movie
+    shifts: ndarray
+        shifts in x and y respectively
+    times: list
+        time consumption for processing each batch
+    """
+    
+    def generator():
+        if len(mov) % batch_size != 0 :
+            raise ValueError('batch_size needs to be a factor of frames of the movie')
+        for idx in range(len(mov) // batch_size):
+            yield{"m":mov[None, idx*batch_size:(idx+1)*batch_size,...,None]}
+                 
+    def get_frs():
+        dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32}, 
+                                                 output_shapes={"m":(1, batch_size, dims[0], dims[1], 1)})
+        return dataset
+    
+    if kwargs['return_shifts'] == False:
+        raise ValueError('return shifts should be True')
+
+    times = []
+    out = []
+    flag = 500
+    index = 0
+    dims = mov.shape[1:]
+    mc_model = get_mc_model(template, batch_size, **kwargs)
+    mc_model.compile(optimizer='rmsprop', loss='mse')   
+    estimator = tf.keras.estimator.model_to_estimator(mc_model)
+    
+    print('now start motion correction')
+    start = timeit.default_timer()
+    for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        out.append(i)
+        times.append(timeit.default_timer()-start)
+        index += 1    
+        if index * batch_size >= flag:
+            print(f'processed {flag} frames')
+            flag += 500            
+    
+    print('finish motion correction')
+    print(f'total timing:{times[-1]}')
+    print(f'average timing per frame:{times[-1] / len(mov)}')
+    mc_mov = []; x_sh = []; y_sh = []
+    for ou in out:
+        keys = list(ou.keys())
+        mc_mov.append(ou[keys[0]])
+        x_sh.append(ou[keys[1]])
+        y_sh.append(ou[keys[2]])
+        
+    mc_mov = np.vstack(mc_mov)
+    mc_mov = mc_mov.reshape((-1, template.shape[0], template.shape[1]), order='F')
+    shifts = np.vstack([np.array(x_sh).flatten(), np.array(y_sh).flatten()])
+    
+    return mc_mov, shifts, times
+
+def run_gpu_nnls(mov, Ab, batch_size=1, num_layers=10):
+    """
+    Run GPU NNLS for source extraction
+
+    Parameters
+    ----------
+    mov: ndarray
+        motion corrected movie
+    Ab: ndarray (number of pixels * number of spatial footprints)
+        spatial footprints for neurons and background        
+    batch_size: int
+        number of frames used for motion correction each time. The default is 1.
+    num_layers: int
+        number of iterations for performing nnls
+    
+    Returns
+    -------
+    trace: ndarray
+        extracted temporal traces 
+    """
+    
+    def generator():
+        if len(mov) % batch_size != 0 :
+            raise ValueError('batch_size needs to be a factor of frames of the movie')
+        for idx in range(len(mov) // batch_size):
+            yield {"m":mov[None, idx*batch_size:(idx+1)*batch_size,...,None], 
+                   "y":y, "x":x, "k":[[0.0]]}
+            
+    def get_frs():
+        dataset = tf.data.Dataset.from_generator(generator, 
+                                                 output_types={"m": tf.float32,
+                                                               "y": tf.float32,
+                                                               "x": tf.float32,
+                                                               "k": tf.float32}, 
+                                                 output_shapes={"m":(1, batch_size, dims[0], dims[1], 1),
+                                                                "y":(1, num_components, batch_size),
+                                                                "x":(1, num_components, batch_size),
+                                                                "k":(1, 1)})
+        return dataset
+    
+    times = []
+    out = []
+    flag = 500
+    index = 0
+    dims = mov.shape[1:]
+    
+    b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')         
+    x0 = np.array([nnls(Ab,b[:,i])[0] for i in range(batch_size)]).T
+    x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
+    num_components = Ab.shape[-1]
+    
+    nnls_model = get_nnls_model(dims, Ab, batch_size, num_layers)
+    nnls_model.compile(optimizer='rmsprop', loss='mse')   
+    estimator = tf.keras.estimator.model_to_estimator(nnls_model)
+    
+    print('now start source extraction')
+    start = timeit.default_timer()
+    for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        out.append(i)
+        times.append(timeit.default_timer()-start)
+        index += 1    
+        if index * batch_size >= flag:
+            print(f'processed {flag} frames')
+            flag += 500            
+    
+    print('finish source extraction')
+    print(f'total timing:{times[-1]}')
+    print(f'average timing per frame:{times[-1] / len(mov)}')
+    
+    trace = []; 
+    for ou in out:
+        keys = list(ou.keys())
+        trace.append(ou[keys[0]][0])        
+    trace = np.hstack(trace)
+    
+    return trace
+
+def run_gpu_motion_correction_nnls(mov, template, batch_size, Ab, **kwargs):
+    """
+    Run GPU motion correction and source extraction
+
+    Parameters
+    ----------
+    mov: ndarray
+        motion corrected movie
+    template : ndarray
+        the template used for motion correction
+    batch_size: int
+        number of frames used for motion correction each time. The default is 1.
+    Ab: ndarray (number of pixels * number of spatial footprints)
+        spatial footprints for neurons and background        
+    
+    Returns
+    -------
+    trace: ndarray
+        extracted temporal traces 
+    """
+    
+    def generator():
+        if len(mov) % batch_size != 0 :
+            raise ValueError('batch_size needs to be a factor of frames of the movie')
+        for idx in range(len(mov) // batch_size):
+            yield {"m":mov[None, idx*batch_size:(idx+1)*batch_size,...,None], 
+                   "y":y, "x":x, "k":[[0.0]]}
+            
+    def get_frs():
+        dataset = tf.data.Dataset.from_generator(generator, 
+                                                 output_types={"m": tf.float32,
+                                                               "y": tf.float32,
+                                                               "x": tf.float32,
+                                                               "k": tf.float32}, 
+                                                 output_shapes={"m":(1, batch_size, dims[0], dims[1], 1),
+                                                                "y":(1, num_components, batch_size),
+                                                                "x":(1, num_components, batch_size),
+                                                                "k":(1, 1)})
+        return dataset
+    
+    if kwargs['return_shifts'] == True:
+        raise ValueError('return shifts should be False in the full model')
+    
+    times = []
+    out = []
+    flag = 500
+    index = 0
+    dims = mov.shape[1:]
+    
+    b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')         
+    x0 = np.array([nnls(Ab,b[:,i])[0] for i in range(batch_size)]).T
+    x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
+    num_components = Ab.shape[-1]
+    
+    model = get_model(template, Ab=Ab, batch_size=batch_size, **kwargs)
+    model.compile(optimizer='rmsprop', loss='mse')   
+    estimator = tf.keras.estimator.model_to_estimator(model)
+    
+    print('now start motion correction and source extraction')
+    start = timeit.default_timer()
+    for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        out.append(i)
+        times.append(timeit.default_timer()-start)
+        index += 1    
+        if index * batch_size >= flag:
+            print(f'processed {flag} frames')
+            flag += 500            
+    
+    print('finish motion correction and source extraction')
+    print(f'total timing:{times[-1]}')
+    print(f'average timing per frame:{times[-1] / len(mov)}')
+    
+    trace = []; 
+    for ou in out:
+        keys = list(ou.keys())
+        trace.append(ou[keys[0]][0])        
+    trace = np.hstack(trace)
+    
+    return trace
 
 #%%    
 class Pipeline(object):    
+    def __init__(self, template, batch_size, Ab, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size):
+        """
+        Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
+        To run, after initializing, run self.get_spikes()
+        """
+        self.model, self.mc0, self.y0, self.x0, self.tht2 = model, mc_0, y_0, x_0, tht2
+        self.batch_size = batch_size
+        self.num_components = num_components
+        self.tot = tot
+        self.dim_x, self.dim_y = self.mc0.shape[2], self.mc0.shape[3]
+        self.zero_tensor = [[0.0]]
+        
+        self.frame_input_q = Queue()
+        self.spike_input_q = Queue()
+        self.output_q = Queue()
+        
+        #load estimator from the keras model
+        self.estimator = self.load_estimator()
+        
+        #seed the queues
+        self.frame_input_q.put(mc_0)
+        self.spike_input_q.put((y_0, x_0))
+
+        #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
+            #pull from the generator.
+        self.extraction_thread = Thread(target=self.extract, daemon=True)
+        self.extraction_thread.start()
+        
+    def extract(self):
+        for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
+            self.output_q.put(i)
+    
+    def load_estimator(self):
+        return tf.keras.estimator.model_to_estimator(keras_model = self.model)
+
+    def get_dataset(self):
+        dataset = tf.data.Dataset.from_generator(self.generator, 
+                                                 output_types={"m": tf.float32,
+                                                               "y": tf.float32,
+                                                               "x": tf.float32,
+                                                               "k": tf.float32}, 
+                                                 output_shapes={"m":(1, self.batch_size, self.dim_x, self.dim_y, 1),
+                                                                "y":(1, self.num_components, self.batch_size),
+                                                                "x":(1, self.num_components, self.batch_size),
+                                                                "k":(1, 1)})
+        return dataset
+    
+    def generator(self):
+        #generator waits until data has been enqueued, then yields the data to the dataset
+        while True:
+            fr = self.frame_input_q.get()
+            out = self.spike_input_q.get()
+            (y, x) = out
+            yield {"m":fr, "y":y, "x":x, "k":self.zero_tensor}
+
+    def get_traces(self, bound):
+        #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
+        length = bound//self.batch_size
+        output = [0]*length
+        times = [0]*length
+        start = timeit.default_timer()
+        for idx in range(self.batch_size, bound, self.batch_size):
+            out = self.output_q.get()
+            # import pdb; pdb.set_trace()
+            i = (idx-1)//self.batch_size
+            output[i] = out["nnls_1"]
+            self.frame_input_q.put(self.tot[idx:idx+self.batch_size, :, :, None][None, :])
+            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            times[i]  = timeit.default_timer()-start
+#            output.append(timeit.default_timer()-st)
+        output[-1] = self.output_q.get()["nnls_1"]
+        times[-1] = timeit.default_timer() - start
+        print(timeit.default_timer()-start)
+        return output
+    
+    
+#%%
+class Pipeline_old(object):    
     def __init__(self, model, y_0, x_0, mc_0, tht2, tot, num_components, batch_size):
         """
         Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)

@@ -39,7 +39,6 @@ class FIOLA(object):
         
     def fit(self, mov_input, trace=None):
         self.mov_input = mov_input
-        self.shifts_offline = []
         if self.params.data['init_method'] == 'caiman':
             mov = mov_input
             self.mov = mov
@@ -58,35 +57,12 @@ class FIOLA(object):
                 self.params.mc_nnls['ms'] = [0,0]
             else:
                 print('Now start offline motion correction')
-                mov = []
-                shifts = []
                 template = bin_median(mov_input, exclude_nans=False)
                 center_dims = self.params.mc_nnls['center_dims']
-                from fiola.motion_correction_offline import MotionCorrectBatch
-                mc_offline = MotionCorrectBatch(template=template, batch_size=self.params.mc_nnls['offline_mc_batch_size'],
-                                           ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1],
-                                           center_dims=center_dims, use_fft=False)        
-                num = mov_input.shape[0]//self.params.mc_nnls['offline_mc_batch_size']
-                if mov_input.shape[0] % self.params.mc_nnls['offline_mc_batch_size'] != 0:
-                    num += 1        
-                for i in range(num):
-                    print(f'finish {i} out of {num}')
-                    from time import time
-                    a = time()
-                    out1 = mc_offline(mov_input[None, self.params.mc_nnls['offline_mc_batch_size']*i:self.params.mc_nnls['offline_mc_batch_size']*(i+1), ..., None])
-                    b = time()
-                    with tf.compat.v1.Session() as sess:  
-                        ff = out1.eval()
-                    mov.append(ff.reshape((-1, template.shape[0], template.shape[1]), order='F').copy())
-                    c = time()
-                    print(f'mc: {b-a}')
-                    print(f'eval: {c-b}')
-                    #shifts.append([out2[0].eval(), out2[1].eval()])
-                    #self.shifts_offline.append([xs, ys])
-                mov = np.concatenate(mov, axis=0)
-                self.mov = mov
-                self.shifts = shifts
-                
+                from fiola.gpu_mc_nnls import run_gpu_motion_correction
+                mov, self.shifts_offline, _ = run_gpu_motion_correction(self.mov_input, template, self.params.mc_nnls['offline_mc_batch_size'], 
+                                                                  ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], 
+                                                                  use_fft=True, normalize_cc=True, center_dims=center_dims, return_shifts=True)
             
             print('Now start initialization of spatial footprint')
             border = self.params.mc_nnls['border_to_0']
@@ -103,8 +79,6 @@ class FIOLA(object):
                     else:
                         print(f"You didn't select any components, please reselect")
                 
-            self.mask = mask
-            
             if len(mask.shape) == 2:
                mask = mask[np.newaxis,:]
             if border > 0:
@@ -112,8 +86,8 @@ class FIOLA(object):
                 mov[:, -border:, :] = mov[:, -border-1:-border, :]
                 mov[:, :, :border] = mov[:, :, border:border + 1]
                 mov[:, :, -border:] = mov[:, :, -border-1:-border]
-            self.mov = mov
             self.mask = mask
+            self.mov = mov
             
             if not np.all(mov.shape[1:] == mask.shape[1:]):
                 raise Exception(f'Movie shape {mov.shape} does not match with masks shape {mask.shape}')
@@ -276,6 +250,7 @@ class FIOLA(object):
                 trace = trace[None, :]
             print('Extract spikes for initialization')
         
+        self.trace_init = trace
         if self.params.data['mode'] == 'voltage':
             saoz = SignalAnalysisOnlineZ(window=self.params.spike['window'], step=self.params.spike['step'],
                                          detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
