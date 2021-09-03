@@ -8,7 +8,8 @@ SignalAnalysisOnine object analyze signal based on two threshold: one based on
 peak height distribution, the other based on subthreshold height.
 @author: @caichangjia @andrea.giovannucci
 """
-#%%
+
+import logging
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,15 +17,16 @@ from scipy.ndimage import median_filter
 from scipy import signal
 from time import time
 
-#%%
 class SignalAnalysisOnlineZ(object):
-    def __init__(self, window = 10000, step = 5000, detrend=True, flip=True, 
+    def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, frate=400, freq=15, 
                  thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
+            mode: str
+                voltage or calcium fluorescence indicator. Note that calcium deconvolution is not implemented here.
             window: int
                 window over which to compute the running statistics
             step: int
@@ -60,11 +62,10 @@ class SignalAnalysisOnlineZ(object):
                 Whether to plot or not.
                 
         '''
-        print(locals())
         for name, value in locals().items():
             if name != 'self':
                 setattr(self, name, value)
-                print(f'{name}, {value}')
+                logging.debug(f'{name}, {value}')
         self.t_detect = []
         #self.filt = OnlineFilter(freq, frate, order=1, mode='low')
         
@@ -81,49 +82,55 @@ class SignalAnalysisOnlineZ(object):
         nn, tm = trace_in.shape # number of neurons and time steps for initialization
         self.nn = nn
         self.frames_init = tm
-        # contains all the extracted fluorescence traces
-        self.trace, self.t_d, self.t0, self.t, self.t_s, self.t_sub = (np.zeros((nn, num_frames), dtype=np.float32) for _ in range(6))
         
-        # contains running statistics
-        self.median, self.scale, self.thresh, self.median2, self.std = (np.zeros((nn,1), dtype=np.float32) for _ in range(5))
-
-        # contains spike time
-        self.index = np.zeros((nn, num_frames), dtype=np.int32)
-        self.index_track = np.zeros((nn), dtype=np.int32)        
-        self.peak_to_std = np.zeros((nn, num_frames), dtype=np.float32)
-        self.SNR, self.thresh_factor, self.peak_level = (np.zeros((nn, 1), dtype=np.float32) for _ in range(3))
-        if self.template_window > 0:
-            self.PTA = np.zeros((nn, 2*self.template_window+1), dtype=np.float32)
-        else:
-            self.PTA = np.zeros((nn, 5), dtype=np.float32)
-        
-        t_start = time()
-        # initialize for each neuron: @todo parallelize
-        if self.flip:
-            self.trace[:, :tm] =  - trace_in.copy()
-        else:
-            self.trace[:, :tm] = trace_in.copy()
-       
-        if self.detrend:
-            for tp in range(trace_in.shape[1]):
-                if tp > 0:
-                    self.t_d[:, tp] = self.trace[:, tp] - self.trace[:, tp - 1] + 0.995 * self.t_d[:, tp - 1]
-        else:
-            self.t_d = self.trace.copy()
-        
-        for idx, tr in enumerate(self.t_d[:, :tm]):  
-            print(idx)
-            output_list = find_spikes_tm(tr, self.freq, self.frate, self.do_scale, self.filt_window, self.template_window,
-                                         self.robust_std, self.adaptive_threshold, self.thresh_range, self.minimal_thresh,
-                                         self.mfp, self.do_plot)
-            self.index_track[idx] = output_list[0].shape[0]
-            self.index[idx, :self.index_track[idx]], self.thresh[idx], self.PTA[idx], self.t0[idx, :tm], \
-                self.t[idx, :tm], self.t_s[idx, :tm], self.t_sub[idx, :tm], self.median[idx], self.scale[idx], \
-                    self.thresh_factor[idx], self.median2[idx], self.std[idx], \
-                        self.peak_to_std[idx, :self.index_track[idx]], self.peak_level[idx] = output_list
-                                
-        #self.filt.fit(self.t0[:, :tm])
-        self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1]         
+        if self.mode == 'voltage':
+            # contains all the extracted fluorescence traces
+            self.trace, self.t_d, self.t0, self.t, self.t_s, self.t_sub = (np.zeros((nn, num_frames), dtype=np.float32) for _ in range(6))
+            
+            # contains running statistics
+            self.median, self.scale, self.thresh, self.median2, self.std = (np.zeros((nn,1), dtype=np.float32) for _ in range(5))
+    
+            # contains spike time
+            self.index = np.zeros((nn, num_frames), dtype=np.int32)
+            self.index_track = np.zeros((nn), dtype=np.int32)        
+            self.peak_to_std = np.zeros((nn, num_frames), dtype=np.float32)
+            self.SNR, self.thresh_factor, self.peak_level = (np.zeros((nn, 1), dtype=np.float32) for _ in range(3))
+            if self.template_window > 0:
+                self.PTA = np.zeros((nn, 2*self.template_window+1), dtype=np.float32)
+            else:
+                self.PTA = np.zeros((nn, 5), dtype=np.float32)
+            
+            t_start = time()
+            # initialize for each neuron: @todo parallelize
+            if self.flip:
+                self.trace[:, :tm] =  - trace_in.copy()
+            else:
+                self.trace[:, :tm] = trace_in.copy()
+           
+            if self.detrend:
+                for tp in range(trace_in.shape[1]):
+                    if tp > 0:
+                        self.t_d[:, tp] = self.trace[:, tp] - self.trace[:, tp - 1] + 0.995 * self.t_d[:, tp - 1]
+            else:
+                self.t_d = self.trace.copy()
+            
+            for idx, tr in enumerate(self.t_d[:, :tm]):  
+                output_list = find_spikes_tm(tr, self.freq, self.frate, self.do_scale, self.filt_window, self.template_window,
+                                             self.robust_std, self.adaptive_threshold, self.thresh_range, self.minimal_thresh,
+                                             self.mfp, self.do_plot)
+                self.index_track[idx] = output_list[0].shape[0]
+                self.index[idx, :self.index_track[idx]], self.thresh[idx], self.PTA[idx], self.t0[idx, :tm], \
+                    self.t[idx, :tm], self.t_s[idx, :tm], self.t_sub[idx, :tm], self.median[idx], self.scale[idx], \
+                        self.thresh_factor[idx], self.median2[idx], self.std[idx], \
+                            self.peak_to_std[idx, :self.index_track[idx]], self.peak_level[idx] = output_list
+                                    
+            #self.filt.fit(self.t0[:, :tm])
+            self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1]         
+        elif self.mode == 'calcium':
+            self.trace = np.zeros((nn, num_frames), dtype=np.float32)
+            self.trace[:, :tm] = trace_in.copy()      
+            # todo: add calcium deconvolution
+            
         return self
 
     def fit_next(self, trace_in, n):
@@ -135,8 +142,6 @@ class SignalAnalysisOnlineZ(object):
             n: time step    
         '''        
         self.n = n
-        #if self.n % self.step ==0:
-        #    print(self.n)            
         t_start = time()                                  
         
         # Update running statistics
@@ -151,23 +156,6 @@ class SignalAnalysisOnlineZ(object):
                     self.update_scale(idx)
             elif temp == 2:
                 self.update_thresh(idx)
-                #print(f'change threshold: {n}')
-        
-        """
-        res = n % self.step        
-        interval = int(self.step / self.nn) - 1
-        if ((n > 3.0 * self.window) and (res < interval * self.nn)):
-            idx = int(res / interval)
-            temp = res - interval * idx
-            if temp == 0:
-                self.update_median(idx)
-            elif temp == 1:
-                if self.do_scale:
-                    self.update_scale(idx)
-            elif temp == 2:
-                self.update_thresh(idx)
-                #print(f'change threshold: {n}')        
-        """
 
         # Detrend, normalize 
         if self.flip:
@@ -229,26 +217,6 @@ class SignalAnalysisOnlineZ(object):
                 self.peak_to_std[idx_list, self.index_track[idx_list]] = self.t_s[idx_list, sub_index - self.template_window - 1] /self.std[idx_list, -1]
                 self.index_track[idx_list] +=1
          
-        """
-        if self.online_filter_method == 'butter':
-            self.t_sub[:, n] = self.filt.fit_next(self.t0[:, n])
-            self.t[:, n:(n + 1)] = self.t0[:, n:(n + 1)] - self.t_sub[:, n:(n + 1)]  # time n remove subthreshold
-            
-            # Template matching
-            if self.n > self.frames_init + 1:                                      
-                temp = self.t[:, self.n - 4 : self.n + 1]                          # time n-2 do template matching 
-                self.t_s[:, self.n - 2] = (temp * self.PTA).sum(axis=1)
-                self.t_s[:, self.n - 2] = self.t_s[:, self.n - 2] - self.median2[:, -1]
-            
-            # Find spikes above threshold
-            if self.n > self.frames_init +2:                                        # time n-3 confirm spikes
-                temp = self.t_s[:, self.n - 4: self.n -1].copy()
-                idx_list = np.where((temp[:, 1] > temp[:, 0]) * (temp[:, 1] > temp[:, 2]) * (temp[:, 1] > self.thresh[:, -1]))[0]
-                if idx_list.size > 0:
-                    self.index[idx_list, self.index_track[idx_list]] = self.n - 3
-                    self.index_track[idx_list] +=1
-        """
-                
         self.t_detect.append(time() - t_start)
         return self
         
@@ -280,9 +248,7 @@ class SignalAnalysisOnlineZ(object):
         else:
             temp = self.peak_to_std[idx, np.where(self.index[idx, :]>300)[0][0]: self.index_track[idx]]
         peak_level = np.percentile(temp, 95)
-        #print(f'peak_level:{peak_level}')
         thresh_factor = self.thresh_factor[idx, 0] * peak_level / self.peak_level[idx, -1]
-        #print(f'thresh_factor:{thresh_factor}')
         
         if thresh_factor >= self.minimal_thresh:
             if thresh_factor <= self.thresh_factor[idx, -1]:
@@ -412,7 +378,7 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
         t_s = np.convolve(data, np.flipud(PTA), 'same')
         data = t_s.copy()
     else:
-        print('skip template matching')
+        logging.info('skip template matching')
         data = t.copy()
         t_s = t.copy()
 
@@ -433,11 +399,11 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
             thresh2, falsePosRate, detectionRate, low_spikes = adaptive_thresh(pks2, clip=0, pnorm=0.5, min_spikes=10)  # clip=0 means no clipping
             thresh_factor = thresh2 / std
             if thresh_factor < minimal_thresh:
-                print(f'Adaptive threshold factor is lower than minimal theshold: {minimal_thresh}, choose thresh factor to be {minimal_thresh}')
+                logging.info(f'Adaptive threshold factor is lower than minimal theshold: {minimal_thresh}, choose thresh factor to be {minimal_thresh}')
                 thresh_factor = minimal_thresh
             thresh2 = thresh_factor * std
         except:
-            print('Adaptive threshold fails, automatically choose thresh factor to be 3')
+            logging.info('Adaptive threshold fails, automatically choose thresh factor to be 3')
             thresh_factor = 3
             thresh2 = thresh_factor * std
     else:
@@ -455,10 +421,8 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
             if thresh_factor == thresh_list[-1]:
                 thresh2 = thresh_temp
     index = signal.find_peaks(data, height=thresh2)[0]
-    print(f'###final threshhold equals: {thresh2/std}###')
+    logging.info(f'final threshhold equals: {thresh2/std}')
                 
-    #import pdb
-    #pdb.set_trace()
     # plot signal, threshold, template and peak distribution
     if do_plot:
         plt.figure()
