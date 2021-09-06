@@ -1,27 +1,24 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Thu May 21 12:12:44 2020
 Fiola currently using SignalAnalysisOnlineZ object for spike extraction
 SignalAnalysisOnlineZ object is based on template matching method 
-SignalAnalysisOnine object analyze signal based on two threshold: one based on 
-peak height distribution, the other based on subthreshold height.
 @author: @caichangjia @andrea.giovannucci
 """
-
 import logging
-from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.ndimage import median_filter
 from scipy import signal
 from time import time
 
+from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
+
 class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
-                 do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, frate=400, freq=15, 
-                 thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
-                 filt_window = 15, do_plot=False):
+                 do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
+                 minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -38,26 +35,28 @@ class SignalAnalysisOnlineZ(object):
                 True for voltron indicator. False for others
             do_scale: bool
                 whether to scale the input trace or not
+            template_window: int
+                half window size for template matching. Will not perform template matching
+                if 0.                
             robust_std: bool
                 whether to use robust way to estimate noise
-            frate: float
+            adaptive_threshold: bool
+                whether to use adaptive threshold method for deciding threshold level.
+                Currently it should always be True.
+            fr: float
                 movie frame rate
             freq: float
                 frequency for removing subthreshold activity
-            adaptive_threshold: bool
-                whether to use adaptive threshold method for deciding threshold level
-            thresh_range: list
-                Range of threshold factor. Real threshold is threshold factor 
-                multiply by the estimated noise level. The default is [3.5,5.0].
-            mfp : float
-                Maximum estimated false positive. An upper bound for estimated false 
-                positive rate based on noise. Higher value means more FP and less FN. 
-                The default is 0.2.
+            minimal_thresh: float
+                minimal threshold allowed for adaptive threshold. Threshold lower than minimal_thresh
+                will be adjusted to minimal_thresh.
             online_filter_method: str
-                Use 'median_filter' or 'butter' for doing online filter. 'median filter'
+                Use 'median_filter' or 'median_filter_no_lag' for doing online filter. 'median filter'
                 is more accurate but also introduce more lags
-            filt_window: int
-                window size for the median filter                
+            filt_window: int or list
+                window size for the median filter. The median filter is not symmetric when the two values 
+                in the list is not the same(for example [8, 4] means using 8 past frames and 4 future frames for 
+                                            removing the median of the current frame)                 
             do_plot: bool
                 Whether to plot or not.
                 
@@ -67,7 +66,7 @@ class SignalAnalysisOnlineZ(object):
                 setattr(self, name, value)
                 logging.debug(f'{name}, {value}')
         self.t_detect = []
-        #self.filt = OnlineFilter(freq, frate, order=1, mode='low')
+        #self.filt = OnlineFilter(freq, fr, order=1, mode='low')
         
         
     def fit(self, trace_in, num_frames):
@@ -115,9 +114,8 @@ class SignalAnalysisOnlineZ(object):
                 self.t_d = self.trace.copy()
             
             for idx, tr in enumerate(self.t_d[:, :tm]):  
-                output_list = find_spikes_tm(tr, self.freq, self.frate, self.do_scale, self.filt_window, self.template_window,
-                                             self.robust_std, self.adaptive_threshold, self.thresh_range, self.minimal_thresh,
-                                             self.mfp, self.do_plot)
+                output_list = find_spikes_tm(tr, self.freq, self.fr, self.do_scale, self.filt_window, self.template_window,
+                                             self.robust_std, self.adaptive_threshold, self.minimal_thresh, self.do_plot)
                 self.index_track[idx] = output_list[0].shape[0]
                 self.index[idx, :self.index_track[idx]], self.thresh[idx], self.PTA[idx], self.t0[idx, :tm], \
                     self.t[idx, :tm], self.t_s[idx, :tm], self.t_sub[idx, :tm], self.median[idx], self.scale[idx], \
@@ -284,36 +282,42 @@ class SignalAnalysisOnlineZ(object):
                 
     def reconstruct_movie(self, A, shape, scope):
         self.A = A.reshape((shape[0], shape[1], -1), order='F')
-        self.C = self.t_rec[:, 0:1000]
+        self.C = self.t_rec[:, scope[0]:scope[1]]
         self.mov_rec = np.dot(self.A, self.C).transpose((2,0,1))    
         return self
 
-def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_window=2, robust_std=False, 
-                   adaptive_threshold=True, thresh_range=[3.5,5.0], minimal_thresh=3.0, mfp=0.2, do_plot=False):
+def find_spikes_tm(img, freq, fr, do_scale=False, filt_window=15, template_window=2, robust_std=False, 
+                   adaptive_threshold=True, minimal_thresh=3.0, do_plot=False):
     """
+    Offline template matching methods to find peaks, decide threshold
     Parameters
     ----------
     img : ndarray
         Input one dimensional detrended signal.
     freq : float
         Frequency for subthreshold extraction.
-    frate : float
+    fr : float
         Movie frame rate
     do_scale : bool, optional
         Whether scale the signal or not. The default is False.
-    robust_std : bool, optional
-        Whether to use robust way to estimate noise. The default is False.
-    thresh_range : list, optional
-        Range of threshold factor. Real threshold is threshold factor 
-        multiply by the estimated noise level. The default is [3.5,5.0].
-    minimal_thresh :
-    mfp : float, optional
-        Maximum estimated false positive. An upper bound for estimated false 
-        positive rate based on noise. Higher value means more FP and less FN. 
-        The default is 0.2.
-    do_plot: bool, optional
+    filt_window: int or list
+        window size for the median filter. The median filter is not symmetric when the two values 
+        in the list is not the same(for example [8, 4] means using 8 past frames and 4 future frames for 
+                                    removing the median of the current frame)                 
+    template_window: int
+        half window size for template matching. Will not perform template matching
+        if 0.                
+    robust_std: bool
+        whether to use robust way to estimate noise
+    adaptive_threshold: bool
+        whether to use adaptive threshold method for deciding threshold level.
+        Currently it should always be True.
+    minimal_thresh: float
+        minimal threshold allowed for adaptive threshold. Threshold lower than minimal_thresh
+        will be adjusted to minimal_thresh.
+    do_plot: bool
         Whether to plot or not.
-
+    
     Returns
     -------
     index : ndarray
@@ -338,6 +342,13 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
         A value determine the threshold level.
     median2 : float
         Median of the trace after template matching. 
+    std: float
+        Estimated standard deviation
+    peak_to_std: float
+        Spike height devided by std
+    peak_level: float
+        95 percentile of the peak_to_std. 
+        It is updated to compensate for the photobleaching effect.
     """
     # Normalize and remove subthreshold
     median = np.median(img)
@@ -347,7 +358,7 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
     else:
         t0 = img.copy() - median
     
-    #sub = signal_filter(t0, freq, frate, order=1, mode='low')
+    #sub = signal_filter(t0, freq, fr, order=1, mode='low')
     #filt_window=15
     if type(filt_window) is list:
         sub = non_symm_median_filter(t0, filt_window)                
@@ -390,8 +401,7 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
         ff1 = -data * (data < 0)
         Ns = np.sum(ff1 > 0)
         std = np.sqrt(np.divide(np.sum(ff1**2), Ns)) 
-    thresh_list = np.arange(thresh_range[0], thresh_range[1], 0.1)    
-
+        
     # Select best threshold based on estimated false positive rate
     if adaptive_threshold:
         pks2 = t_s[signal.find_peaks(t_s, height=None)[0]]
@@ -407,19 +417,8 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
             thresh_factor = 3
             thresh2 = thresh_factor * std
     else:
-        for thresh_factor in thresh_list:
-            thresh_temp = thresh_factor * std
-            n_peaks = len(signal.find_peaks(data, height=thresh_temp)[0])    
-            n_false = len(signal.find_peaks(ff1, height=thresh_temp)[0])
-            if n_peaks == 0:
-                thresh_factor = 3.5
-                thresh2 = thresh_factor * std
-                break
-            if n_false / n_peaks < mfp:
-                thresh2 = thresh_temp
-                break
-            if thresh_factor == thresh_list[-1]:
-                thresh2 = thresh_temp
+        raise ValueError('other methods are not implemented yet')
+
     index = signal.find_peaks(data, height=thresh2)[0]
     logging.info(f'final threshhold equals: {thresh2/std}')
                 
@@ -453,7 +452,10 @@ def find_spikes_tm(img, freq, frate, do_scale=False, filt_window=15, template_wi
         plt.pause(5)
         
     peak_to_std = data[index] / std    
-    peak_level = data[index[index>300]] / std
+    try:
+        peak_level = data[index[index>300]] / std # remove peaks in first three hundred frames to improve robustness
+    except:
+        peak_level = data[index] / std 
     peak_level = np.percentile(peak_level, 95)
 
     return index, thresh2, PTA, t0, t, t_s, sub, median, scale, thresh_factor, median2, std, peak_to_std, peak_level 

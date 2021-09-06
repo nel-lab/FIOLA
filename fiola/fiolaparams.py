@@ -5,7 +5,6 @@ Created on Tue Jun 16 10:30:42 2020
 Parameters for online analysis of fluorescence (calcium/voltage) imaging data.
 @author: @agiovann, @caichangjia, @cynthia
 """
-
 import logging
 import numpy as np
 
@@ -17,7 +16,7 @@ class fiolaparams(object):
                  center_dims=None, num_layers=10, initialize_with_gpu=True, 
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
+                 minimal_thresh=3.0, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, params_dict={}):
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
@@ -49,7 +48,7 @@ class fiolaparams(object):
             'ms':ms, # maximum shift in x and y axis respectively. Will not perform motion correction if None.
             'offline_batch_size': offline_batch_size, # number of frames for one batch to perform offline analysis
             'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
-            'batch_size':batch_size, # number of frames processing at the same time using gpu 
+            'batch_size':batch_size, # number of frames processing each time using gpu 
             'use_fft' : use_fft, # use FFT for convolution or not. Will use tf.nn.conv2D if False. The default is True.
             'normalize_cc' : normalize_cc, # whether to normalize the cross correlations coefficients or not. The default is True.        
             'center_dims':center_dims, # template dimensions for motion correction. If None, the input will the the shape of the FOV
@@ -67,12 +66,10 @@ class fiolaparams(object):
             'robust_std':robust_std, # whether to use robust way to estimate noise
             'freq': freq, # frequency for removing subthreshold activity
             'adaptive_threshold': adaptive_threshold, #whether to use adaptive threshold method for deciding threshold level
-            'thresh_range':thresh_range, # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
             'minimal_thresh':minimal_thresh, # minimal of the threshold 
-            'mfp': mfp, #  Maximum estimated false positive. An upper bound for estimated false positive rate based on noise
-            'online_filter_method': online_filter_method,
+            'online_filter_method': online_filter_method, #use 'median_filter' or 'median_filter_no_lag' for doing online filter.
             'filt_window': filt_window, # window size for removing the subthreshold activities 
-            'do_plot': do_plot # Whether to plot or not
+            'do_plot': do_plot # whether to plot or not
         }
 
         self.change_params(params_dict)

@@ -1,20 +1,22 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 16 10:23:20 2020
 FIOLA object for online analysis of fluorescence imaging data. Including offline 
-initialization of spatial masks and online analysis of voltage imaging data.
-Please check violaparams.py for the explanation of parameters.
+initialization and online analysis of voltage/calcium imaging data.
+Please check fiolaparams.py for the explanation of parameters.
 @author: @agiovann, @caichangjia, @cynthia
 """
 import cv2
 import logging
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider
 import numpy as np
 from numpy.linalg import norm
 from scipy.optimize import nnls  
 import tensorflow as tf
 import timeit
+
 from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential, local_correlations, quick_annotation
@@ -27,9 +29,9 @@ class FIOLA(object):
                  center_dims=None, num_layers=10, initialize_with_gpu=True, 
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15, adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
+                 minimal_thresh=3.0, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, params={}):
-        # for documentation of parameters for class FIOLA, please check fiolaparams.py
+        # please check fiolaparams.py for detailed documentation of parameters in class FIOLA
         if params is None:
             logging.warning("Parameters are not set from fiolaparams")
             raise Exception('Parameters are not set')
@@ -37,7 +39,22 @@ class FIOLA(object):
             self.params = params
         
     def fit(self, mov_input, trace=None):
+        """
+        Offline method for doing motion correction, source extraction and spike detection(if needed).
+        Prepare objects and parameters for the online analysis.
+
+        Parameters
+        ----------
+        mov_input : ndarray
+            input raw movie
+        trace : ndarray
+            input calcium traces when using CaImAn as initialization
+        """
         self.mov_input = mov_input
+        #self.min_mov = mov_input.min()
+        self.min_mov = -569
+        self.dims = mov_input.shape[1:]
+        mov = self.mov_input.copy() - self.min_mov
         mask = self.params.data['ROIs']
         self.mask = mask
         
@@ -56,17 +73,17 @@ class FIOLA(object):
             # perform motion correction before optimizing spatial footprints
             if self.params.mc_nnls['ms'] is None:
                 logging.info('Skip motion correction')
-                mov = self.mov_input.copy()
                 self.params.mc_nnls['ms'] = [0,0]
             else:
                 logging.info('Now start offline motion correction')
-                template = bin_median(mov_input, exclude_nans=False)
-                mov, self.shifts_offline, _ = self.fit_gpu_motion_correction(self.mov_input, template, self.params.mc_nnls['offline_batch_size'])
+                template = bin_median(mov, exclude_nans=False)
+                # here we don't remove min_mov as it is removed before
+                mov, self.shifts_offline, _ = self.fit_gpu_motion_correction(mov, template, self.params.mc_nnls['offline_batch_size'], 0) 
             
             logging.info('Now start initialization of spatial footprint')
             
             # quick annotation if no masks are provided
-            self.corr = local_correlations(self.mov_input, swap_dim=False)
+            self.corr = local_correlations(mov, swap_dim=False)
             if mask is None:
                 logging.info('Start quick annotations')
                 flag = 0
@@ -98,7 +115,7 @@ class FIOLA(object):
                 self.fit_hals(mov, mask)
             else:
                 logging.info('Weighted masks are given, no need to do HALS')
-                mask_2D = to_2D(mask)
+                mask_2D = to_2D(mask, order='C')
                 Ab = mask_2D.T
                 Ab = Ab / norm(Ab, axis=0)
                 self.Ab = Ab
@@ -112,8 +129,10 @@ class FIOLA(object):
         else:
             logging.info('Extract traces for initialization')
             if self.params.mc_nnls['initialize_with_gpu']:
+                # here we don't remove min_mov as it is removed before
                 trace = self.fit_gpu_motion_correction_nnls(self.mov, template, 
-                                                            batch_size=self.params.mc_nnls['offline_batch_size'], Ab=self.Ab)                
+                                                            batch_size=self.params.mc_nnls['offline_batch_size'], 
+                                                            min_mov=0, Ab=self.Ab)                
             else:
                 logging.warning('Initialization without GPU')
                 fe = slice(0,None)
@@ -121,41 +140,69 @@ class FIOLA(object):
                 trace = trace_nnls.T.copy() 
     
             if np.ndim(trace) == 1:
-                trace = trace[None, :]
-        
+                trace = trace[None, :]        
         self.trace_init = trace
-        
+
         logging.info('Extract spikes for initialization')
-        saoz = SignalAnalysisOnlineZ(mode=self.params.data['mode'], window=self.params.spike['window'], step=self.params.spike['step'],
-                                     detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
-                                     do_scale=self.params.spike['do_scale'], template_window=self.params.spike['template_window'], 
-                                     robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
-                                     frate=self.params.data['fr'], freq=self.params.spike['freq'],
-                                     thresh_range=self.params.spike['thresh_range'], minimal_thresh=self.params.spike['minimal_thresh'],
-                                     mfp=self.params.spike['mfp'], online_filter_method = self.params.spike['online_filter_method'],                                        
-                                     filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
-        saoz.fit(trace, num_frames=self.params.data['num_frames_total'])              
+        saoz = self.fit_spike_extraction(trace)
     
         self.pipeline = Pipeline(self.params.data['mode'], self.mov, template, self.params.mc_nnls['batch_size'], self.Ab, saoz, 
-                                 ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], 
+                                 ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=self.min_mov,
                                  use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                                  center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
                                  num_layers=self.params.mc_nnls['num_layers'])
+        
+        return self
                                  
     def fit_online(self):
+        """
+        process online
+        """
         self.pipeline.get_spikes()
+        return self
 
     def fit_online_frame(self, frame):
+        """
+        process the single input frame        
+
+        Parameters
+        ----------
+        frame : ndarray
+            input frame
+        """
         self.pipeline.load_frame(frame)
         self.pipeline.get_spikes()
+        return self
         
     def compute_estimates(self):
-        self.estimates = self.pipeline.saoz
+        """
+        put computed results into estimates 
+        """
+        try:
+            self.estimates = self.pipeline.saoz
+        except:
+            logging.warning('not using pipeline object; directly using saoz instead')
+            self.estimates = self.saoz
         self.estimates.Ab = self.Ab
         if hasattr(self, 'seq'):
             self.estimates.seq = self.seq
+        if self.params.data['mode'] == 'voltage':
+            self.estimates.reconstruct_signal()
+            
+        return self
             
     def fit_hals(self, mov, mask):
+        """
+        optimize binary masks to be weighted masks using HALS algorithm
+
+        Parameters
+        ----------
+        mov : ndarray
+            input movie
+        mask : ndarray (binary)
+            masks for each neuron
+
+        """
         if self.params.spike['flip'] == True:
             logging.info('Flip movie for initialization')
             y = to_2D(-mov).copy() 
@@ -183,11 +230,11 @@ class FIOLA(object):
             #     logging.info('can not erode the mask')
         
         hals_orig = False
-        if hals_movie=='hp_thresh':
+        if self.params.hals['hals_movie']=='hp_thresh':
             y_input = np.maximum(y_filt, 0).T
-        elif hals_movie=='hp':
+        elif self.params.hals['hals_movie']=='hp':
             y_input = y_filt.T
-        elif hals_movie=='orig':
+        elif self.params.hals['hals_movie']=='orig':
             y_input = -y.T
             hals_orig = True
     
@@ -230,7 +277,7 @@ class FIOLA(object):
         self.Ab = Ab        
         return self
         
-    def fit_gpu_motion_correction(self, mov, template, batch_size):
+    def fit_gpu_motion_correction(self, mov, template, batch_size, min_mov):
         """
         Run GPU motion correction
     
@@ -242,6 +289,8 @@ class FIOLA(object):
             the template used for motion correction
         batch_size : int
             number of frames used for motion correction each time. The default is 1.
+        min_mov: float
+            minimum of the movie will be removed. The default is 0.
         
         Returns
         -------
@@ -269,7 +318,7 @@ class FIOLA(object):
         flag = 1000
         index = 0
         dims = mov.shape[1:]
-        mc_model = get_mc_model(template, batch_size, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], 
+        mc_model = get_mc_model(template, batch_size, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
                                 use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                                 center_dims=self.params.mc_nnls['center_dims'], return_shifts=True)
         mc_model.compile(optimizer='rmsprop', loss='mse')   
@@ -348,7 +397,7 @@ class FIOLA(object):
         dims = mov.shape[1:]
         
         b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')         
-        x0 = np.array([nnls(Ab,b[:,i])[0] for i in range(batch_size)]).T
+        x0 = np.array([nnls(Ab,b[:,i])[0] for i in range(batch_size)]).T # this step is slow when FOV & num of neurons are large
         x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
         num_components = Ab.shape[-1]
         
@@ -378,7 +427,7 @@ class FIOLA(object):
         
         return trace
 
-    def fit_gpu_motion_correction_nnls(self, mov, template, batch_size, Ab):
+    def fit_gpu_motion_correction_nnls(self, mov, template, batch_size, min_mov, Ab):
         """
         Run GPU motion correction and source extraction
     
@@ -391,7 +440,9 @@ class FIOLA(object):
         batch_size: int
             number of frames used for motion correction each time. The default is 1.
         Ab: ndarray (number of pixels * number of spatial footprints)
-            spatial footprints for neurons and background        
+            spatial footprints for neurons and background  
+        min_mov: float
+            minimum of the movie will be removed. The default is 0.
         
         Returns
         -------
@@ -430,7 +481,7 @@ class FIOLA(object):
         num_components = Ab.shape[-1]
         
         model = get_model(template, Ab, batch_size, 
-                          ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1],
+                          ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
                           use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                           center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
                           num_layers=self.params.mc_nnls['num_layers'])
@@ -459,23 +510,119 @@ class FIOLA(object):
         
         return trace
     
-    
-            
-            
-        
-        
+    def fit_spike_extraction(self, trace):
+        """
+        run spike extraction on input traces (spike extraction is only available for voltage movie)
 
-        
-        
-        
-        
-        
+        Parameters
+        ----------
+        trace : ndarray
+            input traces
 
-            
-            
-        
-        
-        
-        
-        
+        Returns
+        -------
+        saoz : instance
+            object encapsulating online spike extraction
+
+        """
+        times = []
+        start = timeit.default_timer()
+        logging.info('now start spike extraction')
+        saoz = SignalAnalysisOnlineZ(mode=self.params.data['mode'], window=self.params.spike['window'], step=self.params.spike['step'],
+                                     detrend=self.params.spike['detrend'], flip=self.params.spike['flip'],                         
+                                     do_scale=self.params.spike['do_scale'], template_window=self.params.spike['template_window'], 
+                                     robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
+                                     fr=self.params.data['fr'], freq=self.params.spike['freq'],
+                                     minimal_thresh=self.params.spike['minimal_thresh'], online_filter_method = self.params.spike['online_filter_method'],                                        
+                                     filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
+        saoz.fit(trace, num_frames=self.params.data['num_frames_total'])    
+        times.append(timeit.default_timer()-start)
+        logging.info('finish spike extraction')
+        logging.info(f'total timing:{times[-1]}')
+        logging.info(f'average timing per neuron:{times[-1] / len(trace)}')
+                  
+        return saoz      
     
+    def view_components(self, img, idx=None, cnm_estimates=None):
+        """ View spatial and temporal components interactively
+        Args:
+            estimates: dict
+                estimates dictionary contain results of VolPy
+
+            idx: list
+                index of selected neurons
+        """
+        if idx is None:
+            idx = np.arange(len(self.estimates.Ab.T))
+            #idx = np.arange(415)
+
+        n = len(idx) 
+        fig = plt.figure(figsize=(10, 10))
+        
+        dims = self.dims
+        
+        spatial = self.estimates.Ab.T.reshape([-1, dims[0], dims[1]], order='F')
+    
+        axcomp = plt.axes([0.05, 0.05, 0.9, 0.03])
+        ax1 = plt.axes([0.05, 0.55, 0.4, 0.4])
+        ax3 = plt.axes([0.55, 0.55, 0.4, 0.4])
+        ax2 = plt.axes([0.05, 0.1, 0.9, 0.4])    
+        s_comp = Slider(axcomp, 'Component', 0, n, valinit=0)
+        vmax = np.percentile(img, 98)
+        
+        def arrow_key_image_control(event):
+    
+            if event.key == 'left':
+                new_val = np.round(s_comp.val - 1)
+                if new_val < 0:
+                    new_val = 0
+                s_comp.set_val(new_val)
+    
+            elif event.key == 'right':
+                new_val = np.round(s_comp.val + 1)
+                if new_val > n :
+                    new_val = n  
+                s_comp.set_val(new_val)
+            
+        def update(val):
+            i = np.int(np.round(s_comp.val))
+            print(f'Component:{i}')
+    
+            if i < n:
+                
+                ax1.cla()
+                imgtmp = spatial[idx][i]
+                ax1.imshow(imgtmp, interpolation='None', cmap=plt.cm.gray, vmax=np.max(imgtmp)*0.5, vmin=0)
+                ax1.set_title(f'Spatial component {i+1}')
+                ax1.axis('off')
+                
+                ax2.cla()
+                if self.params.data['mode'] == 'calcium':
+                    ax2.plot(self.estimates.trace[idx][i], alpha=0.8, label='extracted traces')
+                    if cnm_estimates is not None:
+                        ax2.plot(np.vstack((cnm_estimates.C, cnm_estimates.f))[idx][i], label='caiman result')                        
+                        #ax2.plot((cnm_estimates.C+cnm_estimates.YrA)[idx][i], label='caiman result')                        
+                    ax2.legend()
+                    ax2.set_title(f'Signal {i+1}')
+                else:
+                    ax2.plot(normalize(self.estimates.t_s[idx][i]))            
+                    spikes = np.delete(self.estimates.index[i], self.estimates.index[i]==0)
+                    h_min = normalize(self.estimates.t_s[idx][i]).max()
+                    ax2.vlines(spikes, h_min, h_min + 1, color='black')
+                    ax2.legend(labels=['trace', 'spikes'])
+                    ax2.set_title(f'Signal and spike times {i+1}')
+                
+                ax3.cla()
+                ax3.imshow(img, interpolation='None', cmap=plt.cm.gray, vmax=vmax)
+                imgtmp2 = imgtmp.copy()
+                imgtmp2[imgtmp2 == 0] = np.nan
+                ax3.imshow(imgtmp2, interpolation='None',
+                           alpha=0.5, cmap=plt.cm.hot)
+                ax3.axis('off')
+                
+        s_comp.on_changed(update)
+        s_comp.set_val(0)
+        fig.canvas.mpl_connect('key_release_event', arrow_key_image_control)
+        plt.show()
+        
+ 

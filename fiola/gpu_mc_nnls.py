@@ -1,28 +1,29 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Mon Aug 30 11:01:52 2021
-
-@author: nel
+files that include class for gpu motion correction, source extraction(NNLS) and
+pipeline which process motion correction, source extraction, spike detection-frame
+by-frame.
+@author: @caichangjia, @cynthia, @agiovann
 """
-#%%
 import logging
+import numpy as np
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+from queue import Queue
 from scipy.optimize import nnls  
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
 from threading import Thread
 import tensorflow_addons as tfa
-import numpy as np
-from queue import Queue
 import timeit
 from time import time
 
 class MotionCorrect(keras.layers.Layer):
-    def __init__(self, template, batch_size=1, ms_h=5, ms_w=5, 
+    def __init__(self, template, batch_size=1, ms_h=5, ms_w=5, min_mov=0, 
                  strides=[1,1,1,1], padding='VALID',use_fft=True, 
                  normalize_cc=True, epsilon=0.00000001, center_dims=None, return_shifts=False, **kwargs):
         """
@@ -38,6 +39,8 @@ class MotionCorrect(keras.layers.Layer):
             maximum shift horizontal. The default is 5.
         ms_w : int
             maximum shift vertical. The default is 5.
+        min_mov: float
+            minimum of the movie will be removed. The default is 0.
         strides : list
             stride for convolution. The default is [1,1,1,1].
         padding : str
@@ -93,6 +96,8 @@ class MotionCorrect(keras.layers.Layer):
      
     @tf.function
     def call(self, fr):
+        if self.min_mov != 0:
+            fr = fr - self.min_mov
         if self.center_dims is None:
             fr_center = fr[0]
         else:      
@@ -191,8 +196,8 @@ class MotionCorrect(keras.layers.Layer):
         
     def get_config(self):
         base_config = super().get_config().copy()
-        return {**base_config, "template": self.template_0,"strides": self.strides, "batch_size":self.batch_size,
-                "padding": self.padding, "epsilon": self.epsilon, "ms_h": self.ms_h,"ms_w": self.ms_w, 
+        return {**base_config, "template": self.template_0, "batch_size":self.batch_size, "ms_h": self.ms_h,"ms_w": self.ms_w, 
+                "min_mov": self.min_mov, "strides": self.strides, "padding": self.padding, "epsilon": self.epsilon, 
                 "use_fft":self.use_fft, "normalize_cc":self.normalize_cc, "center_dims":self.center_dims, "return_shifts":self.return_shifts}
     
 class NNLS(keras.layers.Layer):
@@ -350,8 +355,19 @@ def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
 class Pipeline_mc_nnls(object):    
     def __init__(self, mov, template, batch_size, Ab, **kwargs):
         """
-        Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
-        To run, after initializing, run self.get_spikes()
+        class for processing motion correction, source extraction frame
+        by-frame (or batch).
+
+        Parameters
+        ----------
+        mov : ndarray
+            input movie
+        template : ndarray
+            the template used for motion correction
+        batch_size : int
+            number of frames processing each time using gpu 
+        Ab : ndarray
+            spatial footprints for neurons and background 
         """
         for name, value in locals().items():
             if name != 'self':
@@ -372,12 +388,12 @@ class Pipeline_mc_nnls(object):
         
         # set up queues
         self.frame_input_q = Queue()
-        self.spike_input_q = Queue()
-        self.output_q = Queue()
+        self.nnls_input_q = Queue()
+        self.nnls_output_q = Queue()
         
         # seed the queues
         self.frame_input_q.put(self.mc_0)
-        self.spike_input_q.put((self.y_0, self.x_0))
+        self.nnls_input_q.put((self.y_0, self.x_0))
 
         # start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
             #pull from the generator.
@@ -388,7 +404,7 @@ class Pipeline_mc_nnls(object):
         #generator waits until data has been enqueued, then yields the data to the dataset
         while True:
             fr = self.frame_input_q.get()
-            out = self.spike_input_q.get()
+            out = self.nnls_input_q.get()
             (y, x) = out
             yield {"m":fr, "y":y, "x":x, "k":[[0.0]]}
     
@@ -406,7 +422,7 @@ class Pipeline_mc_nnls(object):
             
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-            self.output_q.put(i)    
+            self.nnls_output_q.put(i)    
 
     def get_traces(self, bound):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
@@ -415,14 +431,14 @@ class Pipeline_mc_nnls(object):
         times = [0]*length
         start = timeit.default_timer()
         for idx in range(self.batch_size, bound, self.batch_size):
-            out = self.output_q.get()
+            out = self.nnls_output_q.get()
             i = (idx-1)//self.batch_size
             output[i] = out["nnls_1"]
             self.frame_input_q.put(self.mov[idx:idx+self.batch_size, :, :, None][None, :])
-            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            self.nnls_input_q.put((out["nnls"], out["nnls_1"]))
             times[i]  = timeit.default_timer()-start
 #            output.append(timeit.default_timer()-st)
-        output[-1] = self.output_q.get()["nnls_1"]
+        output[-1] = self.nnls_output_q.get()["nnls_1"]
         times[-1] = timeit.default_timer() - start
         logging.info(timeit.default_timer()-start)
         return output
@@ -430,8 +446,25 @@ class Pipeline_mc_nnls(object):
 class Pipeline(object):    
     def __init__(self, mode, mov, template, batch_size, Ab, saoz, **kwargs):
         """
-        Inputs: the model from get_model, and the initial input values as numpy arrays (y_0, x_0, mc_0, tht2)
-        To run, after initializing, run self.get_spikes()
+        class for processing motion correction, source extraction, spike detection frame
+        by-frame (or batch). It has four queues: frame_input_q gets the frame from the raw movie;
+        nnls_input_q gets necessary input for nnls algorithm; nnls_output_q stores extracted traces; 
+        saoz_input_q gets extracted traces as input for further online processing         
+
+        Parameters
+        ----------
+        mode : str
+            'voltage' or 'calcium 'fluorescence indicator
+        mov : ndarray
+            input movie
+        template : ndarray
+            the template used for motion correction
+        batch_size : int
+            number of frames processing each time using gpu 
+        Ab : ndarray
+            spatial footprints for neurons and background 
+        saoz : TYPE
+            object encapsulating online spike extraction 
         """
         for name, value in locals().items():
             if name != 'self':
@@ -453,13 +486,13 @@ class Pipeline(object):
         
         # set up queues
         self.frame_input_q = Queue()
-        self.spike_input_q = Queue()
-        self.signal_q = Queue()
-        self.sao_input_q = Queue()
+        self.nnls_input_q = Queue()
+        self.nnls_output_q = Queue()
+        self.saoz_input_q = Queue()
         
         #seed the queues
         self.frame_input_q.put(self.mc_0)
-        self.spike_input_q.put((self.y_0, self.x_0))
+        self.nnls_input_q.put((self.y_0, self.x_0))
 
         #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
             #pull from the generator.
@@ -472,7 +505,7 @@ class Pipeline(object):
         #generator waits until data has been enqueued, then yields the data to the dataset
         while True:
             fr = self.frame_input_q.get()
-            out = self.spike_input_q.get()
+            out = self.nnls_input_q.get()
             (y, x) = out
             yield {"m":fr, "y":y, "x":x, "k":[[0.0]]}
     
@@ -499,7 +532,7 @@ class Pipeline(object):
         self.flag=0 # note the first batch is for initialization, it should not be passed to spike extraction
 
         while True:
-            traces_input = self.sao_input_q.get()
+            traces_input = self.saoz_input_q.get()
             if traces_input.ndim == 1:
                 traces_input = traces_input[None, :]   # make sure dimension is timepoints * # of neurons
 
@@ -522,13 +555,13 @@ class Pipeline(object):
         
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
-            self.signal_q.put(i)
+            self.nnls_output_q.put(i)
 
     def get_spikes(self):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
         while self.frame_input_q.qsize() > 0:
-            out = self.signal_q.get().copy()    
-            self.spike_input_q.put((out["nnls"], out["nnls_1"]))
+            out = self.nnls_output_q.get().copy()    
+            self.nnls_input_q.put((out["nnls"], out["nnls_1"]))
             traces_input = np.array(out["nnls_1"]).squeeze().T
-            self.sao_input_q.put(traces_input)
+            self.saoz_input_q.put(traces_input)
 

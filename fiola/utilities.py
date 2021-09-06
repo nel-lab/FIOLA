@@ -1,15 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 29 16:42:18 2021
-
-@author: nel
+functions used in FIOLA
+@author: @caichangjia
 """
 import cv2
-
 from functools import partial
 import logging
-
 from matplotlib import path as mpl_path
 import matplotlib.cm as mpl_cm
 import matplotlib.patches as mpatches
@@ -17,10 +15,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.fft import ifftshift
 from numpy.fft import fftn, ifftn
-
 from past.utils import old_div
 import random
-
 import scipy
 from scipy import signal
 from scipy import stats    
@@ -32,13 +28,10 @@ from scipy.optimize import linear_sum_assignment
 import scipy.ndimage as nd
 import scipy.sparse as spr
 from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi
-
-
 from skimage.morphology import dilation
 from skimage.morphology import disk
 from sklearn.linear_model import Ridge
 from sklearn.decomposition import NMF
-
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
