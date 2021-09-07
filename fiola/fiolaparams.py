@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 16 10:30:42 2020
-Parameters for online analysis of fluorescence (calcium/voltage) imaging data.
+This file includes parameters for online analysis of fluorescence (calcium/voltage) imaging data.
 @author: @agiovann, @caichangjia, @cynthia
 """
 import logging

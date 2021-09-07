@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Jun 29 16:42:18 2021
-functions used in FIOLA
+Relevant functions used in FIOLA
 @author: @caichangjia
 """
 import cv2

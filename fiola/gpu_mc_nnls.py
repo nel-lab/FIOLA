@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Aug 30 11:01:52 2021
-files that include class for gpu motion correction, source extraction(NNLS) and
-pipeline which process motion correction, source extraction, spike detection-frame
+This file includes class for gpu motion correction, source extraction(NNLS) and
+pipeline which process motion correction, source extraction, spike detection frame
 by-frame.
 @author: @caichangjia, @cynthia, @agiovann
 """

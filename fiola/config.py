@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Mon Sep  6 15:30:43 2021
-Config file for load parameters for FIOLA and CaImAn objects
+Config.py file is used to load parameters for FIOLA and CaImAn objects
 @author: @caichangjia
 """
 

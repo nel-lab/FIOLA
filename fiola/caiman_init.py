@@ -1,23 +1,9 @@
 #!/usr/bin/env python
-
 """
-Complete demo pipeline for processing two photon calcium imaging data using the
-CaImAn batch algorithm. The processing pipeline included motion correction,
-source extraction and deconvolution. The demo shows how to construct the
-params, MotionCorrect and cnmf objects and call the relevant functions. You
-can also run a large part of the pipeline with a single method (cnmf.fit_file)
-See inside for details.
-
-Demo is also available as a jupyter notebook (see demo_pipeline.ipynb)
-Dataset couresy of Sue Ann Koay and David Tank (Princeton University)
-
-This demo pertains to two photon data. For a complete analysis pipeline for
-one photon microendoscopic data see demo_pipeline_cnmfE.py
-
-copyright GNU General Public License v2.0
-authors: @agiovann and @epnev
+This file is used for performing offline initialization to provide spatial footprints
+for FIOLA online analysis.
+@author: @caichangjia
 """
-
 import cv2
 import glob
 import logging

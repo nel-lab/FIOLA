@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on Thu May 21 12:12:44 2020
-Fiola currently using SignalAnalysisOnlineZ object for spike extraction
-SignalAnalysisOnlineZ object is based on template matching method 
+Fiola uses SignalAnalysisOnlineZ object for online spike extraction which
+is based on template matching method 
 @author: @caichangjia @andrea.giovannucci
 """
 import logging
