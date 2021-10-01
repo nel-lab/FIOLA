@@ -30,3 +30,18 @@ Python demo: demo_fiola_pipeline.py. Data for demo can be found downloaded at th
 
 The output is online extracted of voltage traces from the demo movie
 
+## License
+COPYRIGHT AND PERMISSION NOTICE
+UNC Software FIOLA
+Copyright (C) 2021 The University of North Carolina at Chapel Hill
+All rights reserved. 
+
+The University of North Carolina at Chapel Hill (“UNC”) and the developers of the FIOLA software (“Software”) give recipient (“Recipient”) permission to download a single copy of the Software in executable form and use for non-commercial purposes only provided that the following conditions are met:
+1. Recipient may use the Software for any purpose, EXCEPT for commercial benefit.
+2. Recipient will not copy the Software.
+3. Recipient will not sell the Software.
+4. Recipient will not give the Software to any third party.
+5. Any party desiring a license to use the Software for commercial purposes shall contact:
+The Office of Technology Commercialization at UNC at otc@unc.edu or 919-966-3929.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS, CONTRIBUTORS, AND THE UNIVERSITY OF NORTH CAROLINA AT CHAPEL HILL "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER, CONTRIBUTORS OR THE UNIVERSITY OF NORTH CAROLINA AT CHAPEL HILL BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
