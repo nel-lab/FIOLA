@@ -7,6 +7,7 @@ with open("README.md") as file:
 setup(
     name="fiola",
     version="0.1",
+    license="Proprietary",
     author="Changjia Cai, Cynthia Dong, Andrea Giovannucci",
     author_email="changjia@live.unc.edu",
     description="Real-time analysis of fluorescence imaging data",
@@ -16,7 +17,7 @@ setup(
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
-        'License :: OSI Approved :: GPL-2 License',
+        'License :: Other/Proprietary License',
         "Operating System :: Linux",
         'Intended Audience :: Researchers',
         'Topic :: Fluorescence Imaging :: Analysis Tools',
