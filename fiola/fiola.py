@@ -21,13 +21,6 @@ from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential, local_correlations, quick_annotation, HALS4activity
 
-try:
-    from fiola.caiman_init import run_caiman_init
-except:
-    logging.warning('can not use CaImAn initialization')
-        
-    
-
 class FIOLA(object):
     def __init__(self, fnames=None, fr=400, ROIs=None, mode='voltage', init_method='binary_masks', num_frames_init=10000, num_frames_total=20000, 
                  ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
@@ -233,6 +226,7 @@ class FIOLA(object):
             spatial footprints
 
         """
+        from fiola.caiman_init import run_caiman_init
         if save_movie == True:
             init_name = self.params.mc_dict['fnames'].split('.')[0] + f'_{mov.shape[0]}.tif'
         else:
