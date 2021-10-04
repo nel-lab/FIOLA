@@ -24,7 +24,7 @@ from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, norma
 try:
     from fiola.caiman_init import run_caiman_init
 except:
-    logging.error('can not use CaImAn initialization')
+    logging.warning('can not use CaImAn initialization')
         
     
 
