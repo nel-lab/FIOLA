@@ -1,10 +1,9 @@
 future
 ipython
 tensorflow==2.4.1
-tensorflow-addons==0.12.1
 opencv-python
 scikit-image
 scikit-learn
 matplotlib
 peakutils
-spyder
+

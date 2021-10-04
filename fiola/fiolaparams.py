@@ -1,23 +1,21 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
 Created on Tue Jun 16 10:30:42 2020
-Parameters for online analysis of fluorescence (calcium/voltage) imaging data.
+This file includes parameters for online analysis of fluorescence (calcium/voltage) imaging data.
 @author: @agiovann, @caichangjia, @cynthia
 """
-
 import logging
 import numpy as np
 
 class fiolaparams(object):
-    def __init__(self, fnames=None, fr=None, ROIs=None, mode='voltage', init_method='masks', num_frames_init=10000, num_frames_total=20000, 
-                 ms=[10,10], offline_mc_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=True, erosion=0, 
-                 hals_movie='hp_thresh', use_rank_one_nmf=True, semi_nmf=False,
-                 update_bg=False, use_spikes=False, use_batch=True, batch_size=1, 
-                 center_dims=None, initialize_with_gpu=False, 
+    def __init__(self, fnames=None, fr=400, ROIs=None, mode='voltage', init_method='binary_masks', num_frames_init=10000, num_frames_total=20000, 
+                 ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
+                 hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
+                 update_bg=True, use_spikes=False, batch_size=1, use_fft=True, normalize_cc=True,
+                 center_dims=None, num_layers=10, initialize_with_gpu=True, 
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
-                 thresh_range=[3.5, 5], minimal_thresh=3.0, mfp=0.2, online_filter_method = 'median_filter',
+                 minimal_thresh=3.0, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, params_dict={}):
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
@@ -29,15 +27,12 @@ class fiolaparams(object):
             'fr': fr, # sample rate of the movie
             'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'mode': mode, # 'voltage' or 'calcium 'fluorescence indicator
-            'init_method': init_method, # initialization method 'caiman' or 'masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+            'init_method': init_method, # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
             'num_frames_init': num_frames_init, # number of frames used for initialization
             'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
         }
-
-        self.mc_nnls = {
-            'ms':ms, # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-            'offline_mc_batch_size': offline_mc_batch_size, # number of frames for one batch to perform offline motion correction
-            'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
+        
+        self.hals = {
             'freq_detrend': freq_detrend, # high-pass frequency for removing baseline, used for init of spatial footprint
             'do_plot_init': do_plot_init, # plot the spatial mask result for init of spaital footprint
             'erosion': erosion, # number of pixels to erode the input masks before performing rank-1 NMF
@@ -46,9 +41,17 @@ class fiolaparams(object):
             'semi_nmf': semi_nmf, # whether use semi-nmf (with no constraint in temporal components) instead of normal NMF
             'update_bg': update_bg, # update background components for spatial footprints
             'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
-            'use_batch':use_batch, # whether to process a batch of frames (greater or equal to 1) at the same time. Process one frame a time if False 
-            'batch_size':batch_size, # number of frames processing at the same time using gpu 
+            }
+        
+        self.mc_nnls = {
+            'ms':ms, # maximum shift in x and y axis respectively. Will not perform motion correction if None.
+            'offline_batch_size': offline_batch_size, # number of frames for one batch to perform offline analysis
+            'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
+            'batch_size':batch_size, # number of frames processing each time using gpu 
+            'use_fft' : use_fft, # use FFT for convolution or not. Will use tf.nn.conv2D if False. The default is True.
+            'normalize_cc' : normalize_cc, # whether to normalize the cross correlations coefficients or not. The default is True.        
             'center_dims':center_dims, # template dimensions for motion correction. If None, the input will the the shape of the FOV
+            'num_layers': num_layers, # number of iterations performed for nnls
             'initialize_with_gpu': initialize_with_gpu # whether to use gpu for performing nnls during initialization 
         }
 
@@ -62,12 +65,10 @@ class fiolaparams(object):
             'robust_std':robust_std, # whether to use robust way to estimate noise
             'freq': freq, # frequency for removing subthreshold activity
             'adaptive_threshold': adaptive_threshold, #whether to use adaptive threshold method for deciding threshold level
-            'thresh_range':thresh_range, # range of threshold factor. Real threshold is threshold factor multiply by the estimated noise level
             'minimal_thresh':minimal_thresh, # minimal of the threshold 
-            'mfp': mfp, #  Maximum estimated false positive. An upper bound for estimated false positive rate based on noise
-            'online_filter_method': online_filter_method,
+            'online_filter_method': online_filter_method, #use 'median_filter' or 'median_filter_no_lag' for doing online filter.
             'filt_window': filt_window, # window size for removing the subthreshold activities 
-            'do_plot': do_plot # Whether to plot or not
+            'do_plot': do_plot # whether to plot or not
         }
 
         self.change_params(params_dict)
@@ -83,18 +84,18 @@ class fiolaparams(object):
         """
 
         if not hasattr(self, group):
-            raise KeyError('No group in CNMFParams named {0}'.format(group))
+            raise KeyError(f'No group in params named {group}')
 
         d = getattr(self, group)
         for k, v in val_dict.items():
             if k not in d and not set_if_not_exists:
                 if verbose:
                     logging.warning(
-                        "NOT setting value of key {0} in group {1}, because no prior key existed...".format(k, group))
+                        f"NOT setting value of key {k} in group {group}, because no prior key existed...")
             else:
                 if np.any(d[k] != v):
                     logging.warning(
-                        "Changing key {0} in group {1} from {2} to {3}".format(k, group, d[k], v))
+                        f"Changing key {k} in group {group} from {d[k]} to {v}")
                 d[k] = v
 
     def get(self, group, key):
@@ -108,11 +109,11 @@ class fiolaparams(object):
         """
 
         if not hasattr(self, group):
-            raise KeyError('No group in CNMFParams named {0}'.format(group))
+            raise KeyError(f'No group in params named {group}')
 
         d = getattr(self, group)
         if key not in d:
-            raise KeyError('No key {0} in group {1}'.format(key, group))
+            raise KeyError(f'No key {key} in group {group}')
 
         return d[key]
 
@@ -124,7 +125,7 @@ class fiolaparams(object):
         """
 
         if not hasattr(self, group):
-            raise KeyError('No group in CNMFParams named {0}'.format(group))
+            raise KeyError(f'No group in params named {group}')
 
         return getattr(self, group)
 
@@ -138,5 +139,5 @@ class fiolaparams(object):
                 if k in d:
                     flag = False
             if flag:
-                logging.warning('No parameter {0} found!'.format(k))
+                logging.warning(f'No parameter {k} found!')
         return self

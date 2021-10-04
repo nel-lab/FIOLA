@@ -16,6 +16,7 @@ from tensorflow_addons.utils import types
 from typing import Optional
 import tensorflow_probability as tfp
 import pylab as plt
+from fiola.utilities import apply_shifts_dft
 #%%
 shape = np.array([500,300,100])
 shifts = np.array([0.25,2.65,-4.85], dtype=np.float32)
@@ -77,7 +78,7 @@ def apply_shifts_dft_tf(img, shifts, diffphase=tf.cast([0],dtype=tf.complex64)):
 
     return new_img[None,:,:,:,None]
 #%%
-at_t_3D= apply_shifts_dft(a, -shifts)
+at_t_3D= apply_shifts_dft(a, -shifts, diffphase=0)
 img = image[0,:,:,:,0]
 print(np.unravel_index(np.argmax(a), shape=shape))
 print(np.unravel_index(np.argmax(at_t_3D), shape=shape))
@@ -86,11 +87,11 @@ print(np.max(at))
 print(np.max(at_t_3D))
 plt.figure()
 plt.subplot(3,1,1)
-plt.imshow(at_t_3D[0,i,:,:,0])    
+plt.imshow(at_t_3D[i,:,:])    
 plt.subplot(3,1,2)
-plt.imshow(at_t_3D[0,:,j,:,0])
+plt.imshow(at_t_3D[:,j,:])
 plt.subplot(3,1,3)
-plt.imshow(at_t_3D[0,:,:,k,0],vmin=mn, vmax = mx)
+plt.imshow(at_t_3D[:,:,k],vmin=mn, vmax = mx)
 #%%"
 at_t_3D = apply_shifts_dft_tf(tf.cast(a,dtype=tf.float32), -shifts)
 print(np.unravel_index(np.argmax(a), shape=shape))

@@ -1,15 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python
 """
-Created on Tue Jun 29 16:42:18 2021
-
-@author: nel
+Relevant functions used in FIOLA. Many of these functions are from CaImAn.
+@author: @caichangjia
 """
 import cv2
-
 from functools import partial
+import h5py
 import logging
-
 from matplotlib import path as mpl_path
 import matplotlib.cm as mpl_cm
 import matplotlib.patches as mpatches
@@ -17,34 +14,59 @@ import matplotlib.pyplot as plt
 import numpy as np
 from numpy.fft import ifftshift
 from numpy.fft import fftn, ifftn
-
+import os
 from past.utils import old_div
-import random
-
+import requests
 import scipy
 from scipy import signal
 from scipy import stats    
-from scipy.ndimage.filters import gaussian_filter1d
-from scipy.sparse.linalg import svds
-from scipy import signal
-from scipy import stats  
 from scipy.optimize import linear_sum_assignment
 import scipy.ndimage as nd
 import scipy.sparse as spr
 from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi
-
-
-from skimage.morphology import dilation
-from skimage.morphology import disk
-from sklearn.linear_model import Ridge
+from skimage.io import imread
 from sklearn.decomposition import NMF
-
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from fiola.external.cell_magic_wand import cell_magic_wand_single_point
 
-#%% Below are functions for 3D motion correction
+
+def download_demo(folder, name):
+    file_dict = {'demo_voltage_imaging.hdf5': 'https://www.dropbox.com/s/0giota4b1dmpo1m/demo_voltage_imaging.hdf5?dl=0', 
+             'demo_voltage_imaging_ROIs.hdf5':'https://www.dropbox.com/s/hizj9kvv09jkxg4/demo_voltage_imaging_ROIs.hdf5?dl=0', 
+             'k53.tif':'https://www.dropbox.com/s/5mqauy6li6mwb4p/k53.tif?dl=0', 
+             'k53_ROIs.hdf5': 'https://www.dropbox.com/s/bpsjw2vahvjkcdu/k53_ROIs.hdf5?dl=0'}    
+    if name not in file_dict.keys():
+        raise Exception('files can not be downloaded')
+
+    path_movie = os.path.join(folder, name)
+    if not os.path.exists(path_movie):
+        url = file_dict[name]
+        logging.info(f"downloading {name} with urllib")
+        headers = {'user-agent': 'Wget/1.16 (linux-gnu)'}
+        r = requests.get(url, stream=True, headers=headers)
+        with open(path_movie, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=1024): 
+                if chunk:
+                    f.write(chunk)
+        logging.info(f"finish downloading {name} with urllib")
+    else:
+        logging.info("file " + str(name) + " already downloaded")    
+        
+    return path_movie
+
+def load(fnames):
+    if '.hdf5' in fnames:
+        with h5py.File(fnames,'r') as h5:
+            mov = np.array(h5['mov'])
+    elif '.tif' in fnames:
+        mov = imread(fnames)
+    else:
+        raise Exception('can not load this format')
+    return mov
+
+# Below are functions for 3D motion correction
 def local_correlations_movie(self,
                        eight_neighbours: bool = False,
                        swap_dim: bool = False,
@@ -347,7 +369,7 @@ def apply_shifts_dft(src_freq, shifts, diffphase, is_freq=True, border_nan=True)
                     new_img[:, :, min_d:] = new_img[:, :, min_d-1, np.newaxis]
 
     return new_img
-#%% Below are functions for computing metrics for Marton's data
+# Below are functions for computing metrics for Marton's data
 def distance_spikes(s1, s2, max_dist):
     """ Define distance matrix between two spike train.
     Distance greater than maximum distance is assigned one.
@@ -554,7 +576,7 @@ def compute_spnr(t1, t2, s1, s2, t_range, min_counts=10):
         spnr = [np.nan, np.nan]
     return spnr
 
-#%% Below are functions for running statistics and online filtering
+# Below are functions for running statistics and online filtering
 class OnlineFilter(object):
     def __init__(self, freq, fr, order=3, mode='high'):
         '''
@@ -727,7 +749,7 @@ def non_symm_median_filter(t, filt_window):
         if (i > filt_window[0]) and (i < len(t) - filt_window[1]):
             m[i] = np.median(t[i - filt_window[0] : i + filt_window[1] + 1])
     return m
-#%% Below are functions for matching spikes
+# Below are functions for matching spikes
 def compute_distances(s1, s2, max_dist):
     """
     Define a distance matrix of spikes.
@@ -1027,6 +1049,20 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
+
+def HALS4activity(Yr, A, C, iters=2, semi_nmf=False):
+    U = A.T.dot(Yr)
+    V = A.T.dot(A) + np.finfo(A.dtype).eps
+    for _ in range(iters):
+        for m in range(len(U)):  # neurons and background
+            if semi_nmf:
+                print('use semi-nmf')
+                C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
+                           V[m, m], -np.inf, np.inf)
+            else:
+                C[m] = np.clip(C[m] + (U[m] - V[m].dot(C)) /
+                           V[m, m], 0, np.inf)
+    return C
 
 def nmf_sequential(y_seq, mask, seq, small_mask=True):
     """ Use rank-1 nmf to sequentially extract neurons' spatial filters.
@@ -1512,7 +1548,7 @@ def nf_match_neurons_in_binary_masks(masks_gt,
     matches = matches[0]
     costs = costs[0]
 
-    #%% compute precision and recall
+    # compute precision and recall
     TP = np.sum(np.array(costs) < thresh_cost) * 1.
     FN = np.shape(masks_gt)[0] - TP
     FP = np.shape(masks_comp)[0] - TP
@@ -1524,7 +1560,7 @@ def nf_match_neurons_in_binary_masks(masks_gt,
     performance['accuracy'] = old_div((TP + TN), (TP + FP + FN + TN))
     performance['f1_score'] = 2 * TP / (2 * TP + FP + FN)
     logging.debug(performance)
-    #%%
+    #
     idx_tp = np.where(np.array(costs) < thresh_cost)[0]
     idx_tp_ben = matches[0][idx_tp]    # ground truth
     idx_tp_cnmf = matches[1][idx_tp]   # algorithm - comp
