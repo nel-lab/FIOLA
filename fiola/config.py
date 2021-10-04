@@ -1,35 +1,35 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 """
-Created on Mon Sep  6 15:30:43 2021
 Config.py file is used to load parameters for FIOLA and CaImAn objects
 @author: @caichangjia
 """
 
-def load_fiola_config(mode='voltage', mask=None):
+def load_fiola_config(fnames, mode='voltage', mask=None):
     if mode == 'voltage':
         # setting params
         # dataset dependent parameters
-        fnames = ''                     # name of the movie, we don't put a name here as movie is already loaded above
         fr = 400                        # sample rate of the movie
         ROIs = mask                     # a 3D matrix contains all region of interests
 
         mode = 'voltage'                # 'voltage' or 'calcium 'fluorescence indicator
+        init_method = 'binary_masks'    # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
         num_frames_init =  10000        # number of frames used for initialization
         num_frames_total =  20000       # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch_size = 200        # number of frames for one batch to perform offline motion correction
-        batch_size = 40                 # number of frames processing at the same time using gpu 
+        batch_size = 1                  # number of frames processing at the same time using gpu 
         flip = True                     # whether to flip signal to find spikes   
         ms = [10, 10]                   # maximum shift in x and y axis respectively. Will not perform motion correction if None.
         update_bg = True                # update background components for spatial footprints
         filt_window = 15                # window size for removing the subthreshold activities 
-        minimal_thresh = 3              # minimal of the threshold 
+        minimal_thresh = 3.5            # minimal of the threshold 
         template_window = 2             # half window size of the template; will not perform template matching if window size equals 0
 
         options = {
             'fnames': fnames,
             'fr': fr,
             'ROIs': ROIs,
+            'mode': mode,
+            'init_method':init_method,
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
             'offline_batch_size': offline_batch_size,
@@ -42,21 +42,20 @@ def load_fiola_config(mode='voltage', mask=None):
             'template_window':template_window}
         
     elif mode == 'calcium':
-        fnames = ''                     # name of the movie, we don't put a name here as movie is already loaded above
         fr = 30                         # sample rate of the movie
         ROIs = mask                     # a 3D matrix contains all region of interests
 
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-        init_method = 'masks'           # initialization method 'caiman' or 'masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+        init_method = 'weighted_masks'  # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
         num_frames_init =  1500         # number of frames used for initialization
         num_frames_total =  3000        # estimated total number of frames for processing, this is used for generating matrix to store data
-        offline_batch_size = 1          # number of frames for one batch to perform offline motion correction
+        offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
         batch_size= 1                   # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
         ms = [5, 5]                     # maximum shift in x and y axis respectively. Will not perform motion correction if None.
         center_dims = None              # template dimensions for motion correction. If None, the input will the the shape of the FOV
-        hals_movie = None               # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
-                                        # original movie (orig); no HALS needed if the input is from CaImAn (None)
+        hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
+                                        # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
         options = {
             'fnames': fnames,
             'fr': fr,
@@ -70,15 +69,14 @@ def load_fiola_config(mode='voltage', mask=None):
             'flip': flip,
             'ms': ms,
             'hals_movie': hals_movie,
-            'center_dims':center_dims, 
-            'hals_move': hals_movie}
+            'center_dims':center_dims}
     
     else:
-        raise ValueError('mode has to be "calcium" or "voltage"')
+        raise ValueError('mode must be "calcium" or "voltage"')
     
     return options
 
-def load_caiman_config(init_file_name):
+def load_caiman_config(fnames):
     # params for caiman init
     fr = 30             # imaging rate in frames per second
     decay_time = 0.4    # length of a typical transient in seconds
@@ -99,7 +97,7 @@ def load_caiman_config(init_file_name):
     max_deviation_rigid = 3
     
     mc_dict = {
-        'fnames': init_file_name,
+        'fnames': fnames,
         'fr': fr,
         'decay_time': decay_time,
         'dxy': dxy,
@@ -126,7 +124,7 @@ def load_caiman_config(init_file_name):
     n_processes = None
     
     # parameters for component evaluation
-    opts_dict = {'fnames': init_file_name,
+    opts_dict = {'fnames': fnames,
                  'p': p,
                  'fr': fr,
                  'nb': gnb,
@@ -159,5 +157,3 @@ def load_caiman_config(init_file_name):
                     'cnn_lowest': cnn_lowest}
     
     return mc_dict, opts_dict, quality_dict
-    
-    

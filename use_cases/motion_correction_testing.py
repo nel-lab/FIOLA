@@ -14,7 +14,7 @@ import tensorflow as tf
 #tf.compat.v1.disable_eager_execution()
 import tensorflow.keras as keras
 from threading import Thread
-import tensorflow_addons as tfa
+#mport tensorflow_addons as tfa
 import numpy as np
 from queue import Queue
 import timeit
@@ -25,6 +25,7 @@ from fiola.utilities import apply_shifts_dft, local_correlations_movie, play, bi
 from tifffile.tifffile import imsave
 from skimage.io import imread
 import matplotlib.pyplot as plt
+import math
 
 #%%
 class MotionCorrectBatch(keras.layers.Layer):
@@ -96,7 +97,7 @@ class MotionCorrectBatch(keras.layers.Layer):
         self.target_freq = tf.signal.fft3d(tf.cast(self.template_zm[:,:,:,0], tf.complex128))
         self.target_freq = tf.repeat(self.target_freq[None,:,:,0], repeats=[self.batch_size], axis=0)
      
-    @tf.function
+    #@tf.function
     def call(self, fr):
         print(self.center_dims)
         if self.center_dims is None:
@@ -129,10 +130,12 @@ class MotionCorrectBatch(keras.layers.Layer):
         
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
         sh_x, sh_y = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w)
-        self.shifts = [sh_x, sh_y]
-        fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
-                                            interpolation="bilinear")
-        return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), self.shifts
+        shifts = [sh_x, sh_y]
+        print(f'frame shape: {fr[0].shape}')
+        #fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
+        #                                    interpolation="bilinear")
+        fr_corrected = self.apply_shifts_dft_tf(fr[0], [-sh_x, -sh_y])
+        return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), shifts
     
     def normalize_template(self, template, epsilon=0.00000001):
         # remove mean and divide by std
@@ -195,6 +198,32 @@ class MotionCorrectBatch(keras.layers.Layer):
 
         # stack and return 2D coordinates
         return tf.cast(tf.stack((argmax_x, argmax_y), axis=1), tf.float32)
+    
+    def apply_shifts_dft_tf(self, img, shifts, diffphase=tf.cast([0],dtype=tf.complex64)):
+        img = tf.cast(img, dtype=tf.complex64)
+        if len(shifts) == 3:
+            shifts =  (shifts[1], shifts[0], shifts[2]) 
+        elif len(shifts) == 2:
+            shifts = (shifts[1], shifts[0], tf.zeros(shifts[1].shape))
+        src_freq = tf.signal.fft3d(img)
+        nshape = tf.cast(tf.shape(src_freq), dtype=tf.float32)[1:]
+        nc = nshape[0]
+        nr = nshape[1]
+        nd = nshape[2]
+        Nr = tf.signal.ifftshift(tf.range(-tf.experimental.numpy.fix(nr / 2.), tf.math.ceil(nr / 2.)))
+        Nc = tf.signal.ifftshift(tf.range(-tf.experimental.numpy.fix(nc / 2.), tf.math.ceil(nc / 2.)))
+        Nd = tf.signal.ifftshift(tf.range(-tf.experimental.numpy.fix(nd / 2.), tf.math.ceil(nd / 2.)))
+        Nr, Nc, Nd = tf.meshgrid(Nr, Nc, Nd)
+        sh_0 = tf.tensordot(-shifts[0], Nr[None], axes=[[1], [0]]) / nr
+        sh_1 = tf.tensordot(-shifts[1], Nc[None], axes=[[1], [0]]) / nc
+        sh_2 = tf.tensordot(-shifts[2], Nd[None], axes=[[1], [0]]) / nd
+        sh_tot = (sh_0 +  sh_1 + sh_2)
+        Greg = src_freq * tf.math.exp(-1j * 2 * math.pi * tf.cast(sh_tot, dtype=tf.complex64))
+        
+        #todo: check difphase and eventually dot product?
+        Greg = Greg * tf.math.exp(1j * diffphase)
+        new_img = tf.math.real(tf.signal.ifft3d(Greg)) 
+        return new_img
         
     def get_config(self):
         base_config = super().get_config().copy()
@@ -204,17 +233,18 @@ class MotionCorrectBatch(keras.layers.Layer):
     
     #%%
     ms_h = 5; ms_w = 5
-    center_dims = (256, 256)
-    batch = 16    
+    center_dims = None#(256, 256)
+    batch = 1   
     #mov = imread('/media/nel/DATA/Panos/fun_x_4/movie_100_1_100/movie_730.tiff')
     mov = imread('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/demo_K53/k53.tif')
     #with h5py.File('/home/nel/caiman_data/example_movies/volpy/demo_voltage_imaging.hdf5','r') as h5:
     #    mov = np.array(h5['mov'])
     
-    mov = mov.astype(np.float32)
+    mov = mov.astype(np.float32)[:3000]
     template = bin_median(mov)
         
     #%%
+    mc_mov = []
     for normalize_cc in [True]:#, False]:
         for use_fft in [True]:
             #for center_dims in [None]:
@@ -228,7 +258,7 @@ class MotionCorrectBatch(keras.layers.Layer):
             for i in range(data.shape[1]//batch):
                 out, shifts = (mc_layer(data[:,batch*i:batch*(i+1)]))
                 shifts_all.append(shifts)
-                
+                mc_mov.append(out)
             sh_x_all = []
             sh_y_all = []
             #with tf.compat.v1.Session() as sess:  
@@ -249,9 +279,12 @@ class MotionCorrectBatch(keras.layers.Layer):
             plt.plot(sh_x_all, label=f'normalize:{normalize_cc}, fft:{use_fft}, center_dims:{center_dims}'); plt.plot(sh_y_all)
             #plt.title(f'center dims {center_dims}')
             plt.legend()
-    
-    
-    
+    #%%
+    mc_mov = np.array(mc_mov)
+    mc_mov.shape    
+    mm = mc_mov.reshape([-1, 512,512], order='F')   
+    mmm = np.concatenate((mov, mm), axis=2)
+    play(mmm, q_max=99.9)
     #%%
     
     
