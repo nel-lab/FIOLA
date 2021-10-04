@@ -148,11 +148,12 @@ def load_caiman_config(fnames):
     rval_thr = 0.85  # space correlation threshold for accepting a component
     cnn_thr = 0.99  # threshold for CNN based classifier
     cnn_lowest = 0.1 # neurons with cnn probability lower than this value are rejected
+    use_cnn = False # whether to use cnn or not
     
     quality_dict = {'decay_time': decay_time,
                     'min_SNR': min_SNR,
                     'rval_thr': rval_thr,
-                    'use_cnn': True,
+                    'use_cnn': use_cnn,
                     'min_cnn_thr': cnn_thr,
                     'cnn_lowest': cnn_lowest}
     
