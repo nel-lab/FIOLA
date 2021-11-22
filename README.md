@@ -26,9 +26,9 @@ It takes less than 5 mins to run the demo on a normal desktop computer
 
 Google colab demo can be found at the following link: https://colab.research.google.com/drive/1yKoyi1Fz9bzNtOhrjuC8h12_WzWHYIvz?usp=sharing
 
-Python demo: demo_fiola_pipeline.py. Data for demo can be found downloaded at the following link: https://www.dropbox.com/sh/1bhi3l5onoykjya/AACBchSTajeZIrRIGtE2-hqXa?dl=0
+Python demo: demo_fiola_pipeline.py. 
 
-The output is online extracted of voltage traces from the demo movie
+The output is online extracted of traces from the demo movie
 
 ## License
 COPYRIGHT AND PERMISSION NOTICE
