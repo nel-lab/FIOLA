@@ -7,16 +7,16 @@ This file is for timing of spike detection algorithm
 """
 
 #%%
-from caiman_functions import signal_filter
+from fiola.utilities import signal_filter
 import matplotlib.pyplot as plt
 import numpy as np
-from signal_analysis_online import SignalAnalysisOnlineZ
+from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 
 #%%
 frate=400
-img = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/test_data/one_neuron/test_timing.npy')
+img = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron/test_timing.npy')
 trace_all = np.stack([img for i in range(100)])
-saoz = SignalAnalysisOnlineZ(frate=frate, robust_std=False, do_scale=True)
+saoz = SignalAnalysisOnlineZ(fr=frate, robust_std=False, do_scale=True)
 saoz.fit(trace_all[:,:20000], len(img))
 for n in range(20000, trace_all.shape[1]):
     saoz.fit_next(trace_all[:, n:n+1], n)
