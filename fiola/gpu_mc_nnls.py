@@ -88,12 +88,13 @@ class MotionCorrect(keras.layers.Layer):
         self.target_freq = fft3d(tf.cast(self.template_zm[:,:,:,0], tf.complex128))
         self.target_freq = tf.repeat(self.target_freq[None,:,:,0], repeats=[self.batch_size], axis=0)
                 
-        self.Nr = tf.cast(ifftshift(tf.range(-tf.math.floor(self.shp_0[1] / 2.), tf.math.ceil(self.shp_0[1] / 2.))), tf.float32)
-        self.Nc = tf.cast(ifftshift(tf.range(-tf.math.floor(self.shp_0[0] / 2.), tf.math.ceil(self.shp_0[0] / 2.))), tf.float32)
-        self.Nd = tf.cast(ifftshift(tf.range(-tf.math.floor(1 / 2.), tf.math.ceil(1 / 2.))), tf.float32)
+        self.nr = tf.cast(ifftshift(tf.range(-tf.math.floor(self.shp_0[1] / 2.), tf.math.ceil(self.shp_0[1] / 2.))), tf.float32)
+        self.nc = tf.cast(ifftshift(tf.range(-tf.math.floor(self.shp_0[0] / 2.), tf.math.ceil(self.shp_0[0] / 2.))), tf.float32)
+        self.nd = tf.cast(ifftshift(tf.range(-tf.math.floor(1 / 2.), tf.math.ceil(1 / 2.))), tf.float32)
+        
         #self.Nr, self.Nc, self.Nd = tf.meshgrid(self.Nr, self.Nc, self.Nd)        
-        self.Nr = tf.repeat(self.Nr[None], self.Nc.shape[0], axis=0)[..., None]
-        self.Nc = tf.repeat(self.Nc[:, None], self.Nr.shape[0], axis=1)[..., None]
+        self.Nr = tf.repeat(self.nr[None], self.nc.shape[0], axis=0)[..., None]
+        self.Nc = tf.repeat(self.nc[:, None], self.nr.shape[0], axis=1)[..., None]
         self.Nd = tf.zeros((self.shp_0[0], self.shp_0[1], 1))
         
     @tf.function
@@ -127,11 +128,11 @@ class MotionCorrect(keras.layers.Layer):
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
         sh_x, sh_y = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w)
         self.shifts = [sh_x, sh_y]
-        
+                
         #fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
         #                                    interpolation="bilinear")
         fr_corrected = self.apply_shifts_dft_tf(fr[0], [-sh_x, -sh_y])
-        
+               
         if self.return_shifts:
             return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), self.shifts
         else:
@@ -209,7 +210,7 @@ class MotionCorrect(keras.layers.Layer):
         elif len(shifts) == 2:
             shifts = (shifts[1], shifts[0], tf.zeros(shifts[1].shape))
         src_freq = fft3d(img)
-        
+
         sh_0 = tf.tensordot(-shifts[0], self.Nr[None], axes=[[1], [0]]) / self.shp_0[1]
         sh_1 = tf.tensordot(-shifts[1], self.Nc[None], axes=[[1], [0]]) / self.shp_0[0]
         sh_2 = tf.tensordot(-shifts[2], self.Nd[None], axes=[[1], [0]]) / 1
