@@ -1017,8 +1017,10 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         return A
     Ab = np.c_[A, b]
     Cf = np.r_[C, f.reshape(nb, -1)]
-
-    for thr_ in np.linspace(3.5,2.5,maxIter):    
+    count = 0
+    for thr_ in np.linspace(3.5,2.5,maxIter):
+        count += 1
+        logging.info('Hals Iteration activity:' + str(count))
         Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf, semi_nmf=semi_nmf)
         Cf_processed = Cf.copy()
 
@@ -1046,6 +1048,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
                         Cf_processed[i] = Cf_processed[i] + bl  
                     
         Cf = Cf_processed
+        logging.info('Hals Iteration shape:' + str(count))
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
@@ -2208,7 +2211,7 @@ def whitened_matched_filter(data, locs, window):
     return datafilt
 
 
-def signal_filter(sg, freq, fr, order=3, mode='high'):
+def signal_filter(sg, freq, fr, order=3, mode='high', remove_mean=False):
     """
     Function for high/low passing the signal with butterworth filter
     
@@ -2231,7 +2234,14 @@ def signal_filter(sg, freq, fr, order=3, mode='high'):
     """
     normFreq = freq / (fr / 2)
     b, a = signal.butter(order, normFreq, mode)
-    sg = np.single(signal.filtfilt(b, a, sg, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    step = 10000
+    for i in range(0,sg.shape[0],step): # to make it scalable for large datasets
+        logging.info('Filtering pixels up to:'+str(i))  
+        temp_sig = sg[i:i+step]
+        if remove_mean:
+            temp_sig  -= temp_sig.mean(axis=1)[:,None]
+        sg[i:i+step] = np.single(signal.filtfilt(b, a, temp_sig, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    
     return sg
 
 def extract_spikes(traces, threshold):
