@@ -28,25 +28,42 @@ logging.basicConfig(format=
                     level=logging.INFO)
 
 logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.4.1
+# import warnings filter
+from warnings import simplefilter
+# ignore all future warnings
+simplefilter(action='ignore', category=FutureWarning)
 
 #%%
 def main():
     #%% load movie and masks
     folder = ''
-    mode_idx = 0
+    mode_idx = 1
     mode = ['voltage', 'calcium'][mode_idx]
+    estimate_neuron_baseline = True
+    file_id = 1
     
-    if mode_idx == 0:
+    
+    if file_id  == 0:
         fnames = download_demo(folder, 'demo_voltage_imaging.hdf5')
         path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
-    elif mode_idx == 1:
+        mask = load(path_ROIs)
+        
+    elif file_id == 1:
         fnames = download_demo(folder, 'k53.tif')
         path_ROIs = download_demo(folder, 'k53_ROIs.hdf5')
-
-    mov = load(fnames)
-    mask = load(path_ROIs)
+        mask = load(path_ROIs)
         
-    display_images = True
+    elif file_id  == 2:
+        fnames = '/home/nel/software/CaImAn/example_movies/demoMovie.tif'
+        path_ROIs = None
+        mask = None
+        
+        
+    
+    mov = (load(fnames)).astype(np.float32)    
+    num_frames_total =  mov.shape[0]    
+        
+    display_images = False
     if display_images:
         plt.figure()
         plt.imshow(mov.mean(0), vmax=np.percentile(mov.mean(0), 99.9))
@@ -61,13 +78,13 @@ def main():
     # FIOLA separately in an offline manner. 
     # Then in the second part, we will show the full pipeline and its real time frame-by-frame analysis performance
     # Note one needs to installed CaImAn beforehand to perform CaImAn initialization
-    options = load_fiola_config(fnames, mode, mask) 
+    options = load_fiola_config(fnames, num_frames_total, mode, mask) 
     params = fiolaparams(params_dict=options)
     fio = FIOLA(params=params)
     
     #%% offline motion correction
     fio.dims = mov.shape[1:]
-    template = bin_median(mov)
+    template = bin_median(mov) 
     mc_mov, shifts, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], mov.min())
     
     if display_images:
@@ -77,7 +94,8 @@ def main():
         plt.title('shifts')
         plt.show()
         moviehandle = mc_mov.copy().reshape((-1, template.shape[0], template.shape[1]), order='F')
-        play(moviehandle, gain=3, q_min=5, q_max=99.99, fr=400)
+        play(moviehandle, gain=1, q_min=5, q_max=99.99, fr=400)
+    
     
     #%% optimize masks using hals or initialize masks with CaImAn
     if mode == 'voltage':
@@ -85,23 +103,36 @@ def main():
             fio.fit_hals(mc_mov, mask)
     elif mode == 'calcium':
         # we don't need to optimize masks using hals as we are using spatial footprints from CaImAn
-        if fio.params.data['init_method'] == 'weighted_masks':
-            logging.info('use weighted masks from CaImAn')     
+        if fio.params.data['init_method'] == 'weighted_masks':            
+            logging.info('use weighted masks from CaImAn')
+            mask_cm = mask
         elif fio.params.data['init_method'] == 'caiman':
         # if masks are not provided, we can use caiman for initialization
         # we need to set init_method = 'caiman' in the config.py file for caiman initialization
             fio.params.mc_dict, fio.params.opts_dict, fio.params.quality_dict = load_caiman_config(fnames)
-            _, _, mask = fio.fit_caiman_init(mc_mov[:fio.params.data['num_frames_init']], 
+            # fio.params.opts_dict['nb'] = nb
+            _, _, mask_cm = fio.fit_caiman_init(mc_mov[:fio.params.data['num_frames_init']], 
                                              fio.params.mc_dict, fio.params.opts_dict, fio.params.quality_dict)
-       
-        mask_2D = to_2D(mask, order='C')
-        Ab = mask_2D.T
-        fio.Ab = Ab / norm(Ab, axis=0)
             
+        if estimate_neuron_baseline:
+            reorder_mask = np.reshape(to_2D(mask_cm, order='C'), mask_cm.shape, order='F')
+            fio.fit_hals(mc_mov, reorder_mask)
+        else:
+            mask_2D = to_2D(mask, order='C')
+            Ab = mask_2D.T
+            fio.Ab = Ab / norm(Ab, axis=0)
+       
+    #%%
+    t,w,h = mc_mov.shape      
+    plt.imshow(fio.Ab[:,-1].reshape((w,h), order='F'))       
     #%% source extraction (nnls)
     # when FOV and number of neurons is large, use batch_size=1
     trace = fio.fit_gpu_nnls(mc_mov, fio.Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
-    
+    plt.plot(trace[:].T)
+    #%%
+    import caiman as cm
+    bcg = fio.Ab[:,-2:].dot(trace[-2:])
+    cm.movie(np.reshape(bcg,(h,w,t)).transpose([2,1,0])).play(gain=1,fr=30, magnification=4)
     #%% offline spike detection (only available for voltage currently)
     fio.saoz = fio.fit_spike_extraction(trace)
     
@@ -116,7 +147,7 @@ def main():
     #%% Now we start the second part. It uses fit method to perform initialization 
     # which prepare parameters, spatial footprints etc for real-time analysis
     # Then we call fit_online to perform real-time analysis
-    options = load_fiola_config(fnames, mode, mask) 
+    options = load_fiola_config(fnames, num_frames_total, mode, mask) 
     params = fiolaparams(params_dict=options)
     fio = FIOLA(params=params)
     
@@ -126,7 +157,7 @@ def main():
     
     scope = [fio.params.data['num_frames_init'], fio.params.data['num_frames_total']]
     fio.fit(mov[:scope[0]])
-    
+
     #%% fit online frame by frame 
     start = time()
     for idx in range(scope[0], scope[1]):

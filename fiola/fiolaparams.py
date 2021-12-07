@@ -16,7 +16,7 @@ class fiolaparams(object):
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
-                 filt_window = 15, do_plot=False, params_dict={}):
+                 filt_window = 15, do_plot=False, nb=1, params_dict={}):
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -41,6 +41,8 @@ class fiolaparams(object):
             'semi_nmf': semi_nmf, # whether use semi-nmf (with no constraint in temporal components) instead of normal NMF
             'update_bg': update_bg, # update background components for spatial footprints
             'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
+            'estimate_neuron_baseline': True, # whether to use HALS to estimate the baseline of each neuron ater CaImAn (prevents nonnegativity from affecing the signal)
+            'nb': nb                          #number of background components
             }
         
         self.mc_nnls = {
