@@ -13,13 +13,19 @@ git clone https://github.com/nel-lab/FIOLA.git
 
 cd FIOLA
 
+### Pip installation
 conda create --name fiola python==3.8
-
 conda activate fiola
-
 pip install -r requirements.txt
-
 pip install -e.
+
+### mamba installation
+In your base environment install mamba
+``` conda install mamba ```
+
+then proceed to install fiola
+
+``` mamba install caiman -c conda-forge ```
 
 ## Demo
 It takes less than 5 mins to run the demo on a normal desktop computer
