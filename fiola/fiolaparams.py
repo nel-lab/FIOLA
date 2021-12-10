@@ -27,7 +27,7 @@ class fiolaparams(object):
             'fr': fr, # sample rate of the movie
             'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'mode': mode, # 'voltage' or 'calcium 'fluorescence indicator
-            'init_method': init_method, # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+            #'init_method': init_method, # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
             'num_frames_init': num_frames_init, # number of frames used for initialization
             'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
         }

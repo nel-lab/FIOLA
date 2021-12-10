@@ -12,7 +12,7 @@ def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
         ROIs = mask                     # a 3D matrix contains all region of interests
         nb = 1                          # number of background components
         mode = 'voltage'                # 'voltage' or 'calcium 'fluorescence indicator
-        init_method = 'binary_masks'    # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+        #init_method = 'binary_masks'    # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
         num_frames_init =  10000        # number of frames used for initialization
                # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch_size = 200        # number of frames for one batch to perform offline motion correction
@@ -29,7 +29,7 @@ def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
             'fr': fr,
             'ROIs': ROIs,
             'mode': mode,
-            'init_method':init_method,
+#            'init_method':init_method,
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
             'offline_batch_size': offline_batch_size,
@@ -47,10 +47,10 @@ def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
         ROIs = mask                     # a 3D matrix contains all region of interests
 
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-        if ROIs is None:
-            init_method = 'caiman'  
-        else:
-            init_method = 'weighted_masks'  # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+        # if ROIs is None:
+        #     init_method = 'caiman'  
+        # else:
+        # init_method = 'weighted_masks'  # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
         num_frames_init =  1500         # number of frames used for initialization
         # num_frames_total =  3000        # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
@@ -67,7 +67,7 @@ def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
             'mode': mode, 
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
-            'init_method':init_method,
+            # 'init_method':init_method,
             'offline_batch_size': offline_batch_size,
             'batch_size':batch_size,
             'flip': flip,

@@ -38,7 +38,7 @@ class FIOLA(object):
         else:
             self.params = params
         
-    def fit(self, mov_input):
+    def fit(self, mov_input, mode, mask=None):
         """
         Offline method for doing motion correction, source extraction and spike detection(if needed).
         Prepare objects and parameters for the online analysis.
@@ -47,7 +47,13 @@ class FIOLA(object):
         ----------
         mov_input : ndarray
             input raw movie
+        mode: str 
+            ('voltage' or 'calcium')
+        mask: 3D vector:
+            if available a binary or weighted mask (output of CaImAn) can be provided
+            
         """
+
         mov_input = mov_input.astype(np.float32)
         self.mov_input = mov_input
         if mov_input.min() < 0:
@@ -55,34 +61,29 @@ class FIOLA(object):
         else:
             self.min_mov = 0
         self.dims = mov_input.shape[1:]
-        # subtract minimal of the movie
-        mov = self.mov_input.copy() - self.min_mov
+        # subtract minimal of the movie to make nonnegative
+        mov = self.mov_input.copy() - self.min_mov        
         # will perform CaImAn initialization outside the FIOLA object
-        if self.params.data['init_method'] == 'caiman':
-            logging.info('beginning CaImAn initialization')                
-            mov, trace, mask = self.fit_caiman_init(mov, self.params.mc_dict, 
-                                                              self.params.opts_dict, self.params.quality_dict)
-            
-            if self.params.hals['estimate_neuron_baseline']:
-                reorder_mask = np.reshape(to_2D(mask, order='C'), mask.shape, order='F')
-                self.fit_hals(mov, reorder_mask)
-                self.trace_init = self.Cf
-                self.mask = reorder_mask
+        if mode == 'calcium':
+            if mask is None:
+                logging.info('beginning CaImAn initialization')                
+                mov, trace, mask = self.fit_caiman_init(mov, self.params.mc_dict,  
+                                                        self.params.opts_dict, self.params.quality_dict)               
+                logging.info(f'found {mask.shape[0]} neurons')
+                logging.info('CaImAn initialization complete')                               
+                
             else:
-                mask_2D = mask.transpose([1,2,0]).reshape((-1, mask.shape[0]))
-                Ab = mask_2D.copy()
-                Ab = Ab / norm(Ab, axis=0)
-                self.Ab = Ab 
-                self.mask = mask
+                logging.info('beginning offline motion correction')
+                template = bin_median(mov)
+                # here we don't remove min_mov as it is removed before
+                mov, self.shifts_offline, _ = self.fit_gpu_motion_correction(mov, template, self.params.mc_nnls['offline_batch_size'], 0) 
+            
+            order = 'C'                     
                 
             self.corr = local_correlations(mov, swap_dim=False)                        
-            self.params.data['ROIs'] = mask
-            self.mov=mov            
-            logging.info(f'found {mask.shape[0]} neurons')
-            logging.info('CaImAn initialization complete')                
-            
-        else:
-            mask = self.params.data['ROIs']
+                        
+        else: 
+            order = 'F' 
             # perform motion correction before optimizing spatial footprints
             if self.params.mc_nnls['ms'] is None:
                 logging.info('skip motion correction')
@@ -93,10 +94,10 @@ class FIOLA(object):
                 # here we don't remove min_mov as it is removed before
                 mov, self.shifts_offline, _ = self.fit_gpu_motion_correction(mov, template, self.params.mc_nnls['offline_batch_size'], 0) 
             
-            logging.info('beginning initialization of spatial footprint')
-            
             # quick annotation if no masks are provided
             self.corr = local_correlations(mov, swap_dim=False)
+            logging.info('beginning initialization of spatial footprint')
+            
             if mask is None:
                 logging.info('beginning quick annotations')
                 flag = 0
@@ -107,55 +108,59 @@ class FIOLA(object):
                         logging.info(f'selected {len(mask)} components')
                     else:
                         logging.warning("didn't select any components, please reselect")
+        
+        
+        self.params.data['ROIs'] = mask             
             
-            if len(mask.shape) == 2:
-               mask = mask[np.newaxis,:]
+        if len(mask.shape) == 2:
+           mask = mask[np.newaxis,:]
 
-            border = self.params.mc_nnls['border_to_0']
-            if border > 0:
-                mov[:, :border, :] = mov[:, border:border + 1, :]
-                mov[:, -border:, :] = mov[:, -border-1:-border, :]
-                mov[:, :, :border] = mov[:, :, border:border + 1]
-                mov[:, :, -border:] = mov[:, :, -border-1:-border]            
-            if not np.all(mov.shape[1:] == mask.shape[1:]):
-                raise Exception(f'movie shape {mov.shape} does not match masks shape {mask.shape}')
+        border = self.params.mc_nnls['border_to_0']
+        if border > 0:
+            mov[:, :border, :] = mov[:, border:border + 1, :]
+            mov[:, -border:, :] = mov[:, -border-1:-border, :]
+            mov[:, :, :border] = mov[:, :, border:border + 1]
+            mov[:, :, -border:] = mov[:, :, -border-1:-border]            
+        
+        if not np.all(mov.shape[1:] == mask.shape[1:]):
+            raise Exception(f'movie shape {mov.shape} does not match masks shape {mask.shape}')
 
-            self.mask = mask
-            self.mov = mov
+        self.mask = mask
+        self.mov = mov
+        
+        if self.params.hals['estimate_neuron_baseline']:                
+            self.fit_hals(mov, mask, order=order)
             
-            if self.params.data['init_method'] == 'binary_masks':
-                logging.info('doing HALS to optimize masks')
-                self.fit_hals(mov, mask)
-            elif self.params.data['init_method'] == 'weighted_masks':
-                logging.info('weighted masks are given, no need to do HALS')
-                mask_2D = to_2D(mask, order='C')
-                Ab = mask_2D.T
-                Ab = Ab / norm(Ab, axis=0)
-                self.Ab = Ab
+        else:
+            mask_2D = mask.transpose([1,2,0]).reshape((-1, mask.shape[0]))
+            Ab = mask_2D.copy()
+            Ab = Ab / norm(Ab, axis=0)
+            self.Ab = Ab             
+            # mask_2D = to_2D(mask, order='C')
+            # Ab = mask_2D.T
+            # Ab = Ab / norm(Ab, axis=0)
+            # self.Ab = Ab
  
         logging.info('compiling models for extracting signal and spikes')     
         self.Ab = self.Ab.astype(np.float32)
-        template = bin_median(mov)
-        
-        if self.params.hals['estimate_neuron_baseline'] == False:
-            pass            
+        template = bin_median(mov)       
+       
+        logging.info('extracting traces for initialization')
+        if self.params.mc_nnls['initialize_with_gpu']:
+            # here we don't remove min_mov as it is removed before
+            trace = self.fit_gpu_motion_correction_nnls(self.mov, template, 
+                                                        batch_size=self.params.mc_nnls['offline_batch_size'], 
+                                                        min_mov=0, Ab=self.Ab)                
         else:
-            logging.info('extracting traces for initialization')
-            if self.params.mc_nnls['initialize_with_gpu']:
-                # here we don't remove min_mov as it is removed before
-                trace = self.fit_gpu_motion_correction_nnls(self.mov, template, 
-                                                            batch_size=self.params.mc_nnls['offline_batch_size'], 
-                                                            min_mov=0, Ab=self.Ab)                
-            else:
-                logging.warning('initializing without GPU')
-                fe = slice(0,None)
-                trace_nnls = np.array([nnls(self.Ab,yy)[0] for yy in self.mov[fe]])
-                trace = trace_nnls.T.copy() 
-    
-            if np.ndim(trace) == 1:
-                trace = trace[None, :]        
-            self.trace_init = trace
-            self.Cf = trace
+            logging.warning('initializing without GPU')
+            fe = slice(0,None)
+            trace_nnls = np.array([nnls(self.Ab,yy)[0] for yy in self.mov[fe]])
+            trace = trace_nnls.T.copy() 
+
+        if np.ndim(trace) == 1:
+            trace = trace[None, :]        
+        self.trace_init = trace
+        self.Cf = trace
 
         logging.info('extracting spikes for initialization')
         saoz = self.fit_spike_extraction(trace)
@@ -250,7 +255,7 @@ class FIOLA(object):
         
         return mov, trace_init, mask        
             
-    def fit_hals(self, mov, mask):
+    def fit_hals(self, mov, mask, order='F'):
         """
         optimize binary masks to be weighted masks using HALS algorithm
 
@@ -293,7 +298,7 @@ class FIOLA(object):
             hals_orig = True
     
             
-        mask_2D = to_2D(mask)        
+        mask_2D = to_2D(mask, order=order)        
         if self.params.hals['use_rank_one_nmf']:
             y_seq = y_filt.copy()
             # standard deviation of average signal in each mask
@@ -324,6 +329,8 @@ class FIOLA(object):
                          update_bg=self.params.hals['update_bg'], use_spikes=self.params.hals['use_spikes'],
                          hals_orig=hals_orig, fr=self.params.data['fr'])
        
+        
+            
         if self.params.hals['do_plot_init']:
             plt.figure();plt.imshow(A.sum(axis=1).reshape(mov.shape[1:], order='F'), vmax=np.percentile(A.sum(axis=1), 99));
             plt.colorbar();plt.title('spatial masks after hals'); plt.show()
@@ -335,7 +342,10 @@ class FIOLA(object):
             Ab = A.copy()                    
         Ab = Ab / norm(Ab, axis=0)
         self.Ab = Ab 
-        self.Cf = np.vstack((C, f))
+        # if self.params.spike['flip'] == True:
+        #     self.Cf = HALS4activity(-y.T, Ab, C=np.zeros_like(np.vstack((C, f))))
+        # else:
+        #     self.Cf = HALS4activity(y.T, A, C=np.zeros_like(np.vstack((C, f))))
         return self
         
     def fit_gpu_motion_correction(self, mov, template, batch_size, min_mov):
