@@ -16,7 +16,7 @@ class fiolaparams(object):
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
-                 filt_window = 15, do_plot=False, params_dict={}):
+                 filt_window = 15, do_plot=False, nb=1, params_dict={}):
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -27,7 +27,7 @@ class fiolaparams(object):
             'fr': fr, # sample rate of the movie
             'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'mode': mode, # 'voltage' or 'calcium 'fluorescence indicator
-            'init_method': init_method, # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+            #'init_method': init_method, # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
             'num_frames_init': num_frames_init, # number of frames used for initialization
             'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
         }
@@ -41,6 +41,8 @@ class fiolaparams(object):
             'semi_nmf': semi_nmf, # whether use semi-nmf (with no constraint in temporal components) instead of normal NMF
             'update_bg': update_bg, # update background components for spatial footprints
             'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
+            'estimate_neuron_baseline': True, # whether to use HALS to estimate the baseline of each neuron ater CaImAn (prevents nonnegativity from affecing the signal)
+            'nb': nb                          #number of background components
             }
         
         self.mc_nnls = {

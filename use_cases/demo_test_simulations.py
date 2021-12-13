@@ -29,13 +29,13 @@ except NameError:
 #%%
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
-from fiola.utilities import normalize, normalize_piecewise, match_spikes_greedy, compute_F1
+from fiola.utilities import normalize, normalize_piecewise, match_spikes_greedy, compute_F1, load, signal_filter, extract_spikes
 #sys.path.append('/home/nel/Code/NEL_LAB/fiola/use_cases')
 #sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/fiola'))
 from use_cases.test_run_fiola import run_fiola # must be in use_cases folder
 
 #%%
-mode = ['overlapping', 'non_overlapping', 'positron'][1]
+mode = ['overlapping', 'non_overlapping', 'positron'][0]
 dropbox_folder = '/home/nel/NEL-LAB Dropbox/'
 #dropbox_folder = '/Users/agiovann/Dropbox/'
 
@@ -167,8 +167,8 @@ plt.plot(np.arange(0, 75000, step), k)
 
 #%%  
 distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
-names = [f'viola_sim3_{i}' for i in range(1, 19)]
-#names = [f'viola_sim5_{i}' for i in range(1, 8)]
+#names = [f'viola_sim3_{i}' for i in range(1, 19)]
+names = [f'viola_sim5_{i}' for i in range(1, 8)]
 #t_range = [10000, 20000]
 for idx, dist in enumerate(distance):
     vi_result_all = []
@@ -242,119 +242,200 @@ plt.imshow(hh[:,:,3])
 
 plt.plot(vi_temporal[9])   
 
+#%%
+
+m = load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_7/viola_sim5_7.hdf5')
+cm.movie(m).save('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_7/viola_sim5_7.tiff')
 
 
 #%%
-names = [f'viola_sim5_{i}' for i in range(1, 8)]
-t_range = [10000, 75000]
-for idx, dist in enumerate(distance):  
-    v_result_all = []
+#'t_' means tested algorithm
+a_idx = 3 # algorithm idx
+algo = ['volpy', 'suite2p', 'meanroi', 'meanroi_online'][a_idx]
+thresh_list = np.arange(2.0, 4.1, 0.1)
+#best_thresh = [False, True, True][a_idx]
+best_thresh = [False, True, True, False][a_idx]
+
+if mode == 'overlapping':
+    t_range = [10000, 20000]
+    names = [f'viola_sim3_{i}' for i in range(1, 19)]
+    distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+elif mode == 'non_overlapping':
+    t_range = [10000, 75000]
+    names = [f'viola_sim5_{i}' for i in range(1, 8)]
+    distance = [0]
+    
+overlap_save_folder = os.path.join(SAVE_FOLDER, f'{algo}_result')
+try:
+    os.makedirs(overlap_save_folder)
+    print('make folder')
+except:
+    print('already exist')
+
+for ii, dist in enumerate(distance):  
+    t_result_all = []
     spnr_all = []
+    best_thresh_all = []
+
     if mode == 'overlapping':
-        select = np.arange(idx * 3, (idx + 1) * 3)
+        select = np.arange(ii * 3, (ii + 1) * 3)
     else:
         select = np.array(range(len(names)))
+    
     for name in np.array(names)[select]:
+        print(f'now processing {name}')
         folder = os.path.join(ROOT_FOLDER, name)
         gt_files = [file for file in os.listdir(folder) if 'SimResults' in file]
         gt_file = gt_files[0]
         gt = scipy.io.loadmat(os.path.join(folder, gt_file))
         gt = gt['simOutput'][0][0]['gt']
         spikes = gt['ST'][0][0][0]
-        
+        temporal = gt['trace'][0][0][:,:,0]
+        path_ROIs = os.path.join(folder, 'viola', 'ROIs_gt.hdf5')
+        with h5py.File(path_ROIs,'r') as h5:
+            spatial = np.array(h5['mov'])
+        plt.imshow(spatial.sum(0))
+                
         #summary_file = os.listdir(os.path.join(folder, 'volpy'))
         #summary_file = [file for file in summary_file if 'summary' in file][0]
         #summary = cm.load(os.path.join(folder, 'volpy', summary_file))
         
-        v_folder = os.path.join(folder, 'volpy')
-        v_files = sorted([file for file in os.listdir(v_folder) if 'adaptive_threshold' in file])
-        v_file = v_files[0]
-        v = np.load(os.path.join(v_folder, v_file), allow_pickle=True).item()
-        
-        v_spatial = v['weights'].copy()
-        v_temporal = v['ts'].copy()
-        v_ROIs = v['ROIs'].copy()
-        v_ROIs = v_ROIs * 1.0
-        v_templates = v['templates'].copy()
-        v_spikes = v['spikes'].copy()
-        
-        n_cells = v_spatial.shape[0]
-        v_result = {'F1':[], 'precision':[], 'recall':[]}        
-        rr = {'F1':[], 'precision':[], 'recall':[]}
-        for idx in range(n_cells):
-            s1 = spikes[idx].flatten()
-            s1 = s1 - 1
-            s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
-            s2 = v_spikes[idx]
-            s2 = s2[np.logical_and(s2>t_range[0], s2<t_range[1])]
-            idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
-            F1, precision, recall= compute_F1(s1, s2, idx1_greedy, idx2_greedy)
-            rr['F1'].append(F1)
-            rr['precision'].append(precision)
-            rr['recall'].append(recall)
-        v_result_all.append(rr)
-        
-        spnr = []
-        for idx in range(n_cells):
-            s1 = spikes[idx].flatten()
-            s1 = s1 - 1
-            s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
-            t2 = v_temporal[idx]
-            t2 = normalize_piecewise(t2, 5000)
-            ss = np.mean(t2[s1])
-            spnr.append(ss)        
-        spnr_all.append(spnr)
-   # np.save(os.path.join(SAVE_FOLDER, f'volpy_adaptive_threshold_{t_range[0]}_{t_range[1]}_v2.0'), v_result_all)
-    np.save(os.path.join(SAVE_FOLDER, f'volpy_spnr_adaptive_threshold_{t_range[0]}_{t_range[1]}_v2.0'), spnr_all)    
-    #np.save(os.path.join(ROOT_FOLDER, 'result_overlap', f'{dist}', f'volpy_{dist}_thresh_adaptive'), v_save_result)
+        if algo == 'meanroi' or 'meanroi_online':
+            movie_file = [file for file in os.listdir(folder) if 'hdf5' in file and 'flip' not in file][0]
+            mov = load(os.path.join(folder, movie_file))
+            mov = mov.reshape([mov.shape[0], -1], order='F')
+            spatial_F = [np.where(sp.reshape(-1, order='F')>0) for sp in spatial]
+            t_temporal = np.array([-mov[:, sp].mean((1,2)) for sp in spatial_F])
+            t_spatial = spatial
 
-    #plt.plot(v_temporal[0]);
+            """
+            idx = 2
+            plt.plot(m_temporal[idx,:1000])
+            spk = spikes[idx][spikes[idx]<1000]
+            plt.vlines(spk, ymin=m_temporal[idx,:1000].max(), ymax=m_temporal[idx,:1000].max()+10 )
+            plt.savefig(os.path.join(SAVE_FOLDER, 'eg_trace_amplitude_0.15.pdf'))
+            """
+     
+        elif algo == 'volpy':
+            t_folder = os.path.join(folder, 'volpy')
+            t_files = sorted([file for file in os.listdir(t_folder) if 'adaptive_threshold' in file])
+            t_file = t_files[0]
+            t = np.load(os.path.join(t_folder, t_file), allow_pickle=True).item()
+            t_spatial = t['weights'].copy()
+            t_temporal = t['ts'].copy()
+            t_ROIs = t['ROIs'].copy()
+            t_ROIs = t_ROIs * 1.0
+            t_templates = t['templates'].copy()
+            t_spikes = t['spikes'].copy()
+        
+        if not best_thresh:
+            print('not finding best thresh')
+            n_cells = t_spatial.shape[0]
+            t_result = {'F1':[], 'precision':[], 'recall':[]}        
+            rr = {'F1':[], 'precision':[], 'recall':[]}
+            
+            if algo == 'meanroi_online':
+                from fiola.signal_analysis_online import SignalAnalysisOnlineZ
+                saoz = SignalAnalysisOnlineZ(mode='voltage', window=10000, step=5000, detrend=True, flip=False,
+                                             do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
+                                             minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False)               
+                saoz.fit(t_temporal[:, :t_range[0]], num_frames=t_temporal.shape[1])
+                for n in range(t_range[0], t_temporal.shape[1]):
+                    saoz.fit_next(t_temporal[:, n: n+1], n)
+                t_spikes = [np.unique(saoz.index[idxx]) for idxx in range(len(saoz.index))]
+
+            for idx in range(n_cells):
+                s1 = spikes[idx].flatten()
+                s1 = s1 - 1
+                s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
+                s2 = t_spikes[idx]
+                s2 = s2[np.logical_and(s2>t_range[0], s2<t_range[1])]
+                idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
+                F1, precision, recall= compute_F1(s1, s2, idx1_greedy, idx2_greedy)
+                rr['F1'].append(F1)
+                rr['precision'].append(precision)
+                rr['recall'].append(recall)
+            t_result_all.append(rr)
+        else:
+            print('find best thresh')
+            n_cells = t_spatial.shape[0]
+            t_result = []
+            for thresh in thresh_list:
+                rr = {'F1':[], 'precision':[], 'recall':[]}
+                t_temporal_p = signal_filter(t_temporal, freq=15, fr=400)
+                t_temporal_p[:, :30] = 0
+                t_temporal_p[:, -30:] = 0                
+                t_spikes = extract_spikes(t_temporal_p, threshold=thresh)
+                
+                #plt.plot(t_temporal_p[0]) 
+                #plt.vlines(t_spikes[0], 5, 10, color='black')                
+                
+                for idx in range(n_cells):
+                    s1 = spikes[idx].flatten()    
+                    s1 = s1 - 1
+                    s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
+                    s2 = t_spikes[idx]
+                    s2 = s2[np.logical_and(s2>t_range[0], s2<t_range[1])]
+                    idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
+                    F1, precision, recall = compute_F1(s1, s2, idx1_greedy, idx2_greedy)
+                    rr['F1'].append(F1)
+                    rr['precision'].append(precision)
+                    rr['recall'].append(recall)
+                # if not t_result['F1']:
+                #     t_result = rr
+                #     best_thresh = thresh
+                #     new_F1 = np.array(rr['F1']).sum()/n_cells
+                #     print(f'update: thresh:{thresh}, best_F1:{new_F1}, new_F1:{new_F1}')
+                # else:
+                #     best_F1 = np.array(t_result['F1']).sum()/n_cells
+                #     new_F1 = np.array(rr['F1']).sum()/n_cells
+                #     #print(new_F1)
+                #     if new_F1 > best_F1:
+                #         print(f'update: thresh:{thresh}, best_F1:{best_F1}, new_F1:{new_F1}')
+                #         t_result = rr
+                #         best_thresh = thresh
+                t_result.append(np.array(rr['F1']).sum()/n_cells)
+            t_result_all.append(t_result)
+            
+            
+        #best_thresh_all.append(best_thresh)
+        
+        
+        if mode == 'non_overlapping':
+            spnr = []
+            for idx in range(n_cells):
+                s1 = spikes[idx].flatten()
+                s1 = s1 - 1
+                s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
+                t2 = t_temporal_p[idx]
+                t2 = normalize_piecewise(t2, 5000)
+                ss = np.mean(t2[s1])
+                spnr.append(ss)        
+            spnr_all.append(spnr)
+    
+    # t_result_all = np.array(t_result_all)
+    # t_result_all = t_result_all[:, np.argmax(t_result_all.mean(0))]
+    
+    
+    if mode == 'non_overlapping':
+        np.save(os.path.join(SAVE_FOLDER, f'{algo}_F1_best_thresh_{best_thresh}_{t_range[0]}_{t_range[1]}_v2.0'), t_result_all)
+        np.save(os.path.join(SAVE_FOLDER, f'{algo}_spnr_best_thresh_{best_thresh}_{t_range[0]}_{t_range[1]}_v2.0'), spnr_all)    
+    elif mode == 'overlapping':
+        np.save(os.path.join(overlap_save_folder, f'{algo}_F1_{t_range[0]}_{t_range[1]}_{dist}'), t_result_all)
+
+    #plt.plot(t_temporal[0]);
     #plt.vlines(spikes[0], 0, 150)
     
+#%%
+plt.plot(t_temporal_p[0])
+plt.vlines(t_spikes[0], 500, 1000, color='black')
+
+
 ##################################################################################################################
 ##################################################################################################################
-#%% F1 score
-x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
-VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
-viola_files = os.listdir(VIOLA_FOLDER)
-viola_files = [os.path.join(VIOLA_FOLDER, file) for file in viola_files if 'v2.0.npy' in file and 'spnr' not in file]
-VOLPY_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/volpy_result'
-volpy_files = os.listdir(VOLPY_FOLDER)
-volpy_files = [os.path.join(VOLPY_FOLDER, file) for file in volpy_files if '.npy' in file and 'spnr' not in file and 'v2.0' in file]
-VIOLA_FOLDER1 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_9_minimal_thresh_3_template_window_0_v2.1'
-v1 = os.listdir(VIOLA_FOLDER1)
-v1 = [os.path.join(VIOLA_FOLDER1, file) for file in v1 if 'spnr' not in file]
-files = viola_files+volpy_files + v1
-result_all = [np.load(file, allow_pickle=True) for file in files]
 
-for idx, results in enumerate(result_all):
-    try:
-        #if idx == 0:
-        plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results.item()['result']], marker='.', markersize='15', linewidth = 3)
-        #else:
-        #    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results.item()['result']], marker='.', markersize='15')
-    except:
-        if idx == 0 or idx == 2:
-            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='.', markersize=15)    
-        else: 
-            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='^', markersize=9, linestyle=':')    
 
-    plt.legend(['Fiola', 'VolPy'])
-    plt.xlabel('spike amplitude')
-    plt.ylabel('F1 score')
-    plt.title('F1 score for non-overlapping neurons')
-    plt.ylim([0, 1])
-    plt.xticks([0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2])
-    ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.xaxis.set_tick_params(length=8)
-    ax.yaxis.set_tick_params(length=8)
-
-SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-plt.savefig(os.path.join(SAVE_FOLDER, f'F1_Viola_vs_VolPy_{t_range[0]}_{t_range[1]}.pdf'))
-
-#%% Fig 4c, F1 score 
+#%% Fig 4c, F1 score
 x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
 VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
 viola_files = os.listdir(VIOLA_FOLDER)
@@ -368,7 +449,13 @@ v1 = [os.path.join(VIOLA_FOLDER1, file) for file in v1 if 'spnr' not in file]
 VIOLA_FOLDER2 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_[8, 4]_minimal_thresh_3_template_window_0_v2.1'
 v2 = os.listdir(VIOLA_FOLDER2)
 v2 = [os.path.join(VIOLA_FOLDER2, file) for file in v2 if 'spnr' not in file]
-files = viola_files+volpy_files + v1 + v2
+folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/'
+m = os.listdir(folder)
+m = [os.path.join(folder, file) for file in m if '.npy' in file and 'meanroi' in file and 'spnr' not in file and 'best_thresh' not in file]
+m1 = os.listdir(folder)
+m1 = [os.path.join(folder, file) for file in m1 if '.npy' in file and 'meanroi' in file and 'spnr' not in file and 'best_thresh_False' in file]
+
+files = viola_files+volpy_files + v1 + v2 + m + m1
 result_all = [np.load(file, allow_pickle=True) for file in files]
 
 for idx, results in enumerate(result_all):
@@ -378,12 +465,16 @@ for idx, results in enumerate(result_all):
         #else:
         #    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results.item()['result']], marker='.', markersize='15')
     except:
-        if idx != 1:
-            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='.', markersize=15)    
-        else: 
+        if idx == 1:
             plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='^', markersize=9, linestyle=':')    
+        elif idx == 4:
+            plt.plot(x, results, marker='^', markersize=9, linestyle=':')   
+        elif idx == 5:
+            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='^', markersize=9, linestyle=':')    
+        else:    
+            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='.', markersize=15)    
 
-    plt.legend(['FIOLA_25ms', 'VolPy', 'FIOLA_17.5ms', 'FIOLA_12.5ms'], frameon=False)
+    plt.legend(['FIOLA_25ms', 'VolPy', 'FIOLA_17.5ms', 'FIOLA_12.5ms', 'MeanROI', 'MeanROIOnline'], frameon=False)
     plt.xlabel('spike amplitude')
     plt.ylabel('F1 score')
     plt.title('F1 score for non-overlapping neurons')
@@ -398,6 +489,150 @@ for idx, results in enumerate(result_all):
 #SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
 #plt.savefig(os.path.join(SAVE_FOLDER, f'F1_Fiola&VolPy_non_symm_median_{t_range[0]}_{t_range[1]}_1.pdf'))
 
+#%% Fig 4d, SPNR
+x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
+VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+viola_files = os.listdir(VIOLA_FOLDER)
+viola_files = [os.path.join(VIOLA_FOLDER, file) for file in viola_files if 'v2.0.npy' in file and 'spnr' in file]
+VOLPY_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/volpy_result'
+volpy_files = os.listdir(VOLPY_FOLDER)
+volpy_files = [os.path.join(VOLPY_FOLDER, file) for file in volpy_files if '.npy' in file and 'spnr' in file and 'v2.0' in file]
+VIOLA_FOLDER1 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_[8, 4]_minimal_thresh_3_template_window_2_v2.1'
+v1 = os.listdir(VIOLA_FOLDER1)
+v1 = [os.path.join(VIOLA_FOLDER1, file) for file in v1 if 'spnr' in file]
+VIOLA_FOLDER2 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_[8, 4]_minimal_thresh_3_template_window_0_v2.1'
+v2 = os.listdir(VIOLA_FOLDER2)
+v2 = [os.path.join(VIOLA_FOLDER2, file) for file in v2 if 'spnr' in file]
+folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/'
+m = os.listdir(folder)
+m = [os.path.join(folder, file) for file in m if 'meanroi' in file and 'spnr' in file]
+files = viola_files+volpy_files+v1+v2+m
+result_all = [np.load(file, allow_pickle=True) for file in files]
+
+for idx, results in enumerate(result_all):
+    if idx == 0 or idx == 2 or idx == 3:
+        plt.plot(x, [np.array(result).sum()/len(result) for result in results],  marker='.', markersize=15)
+    else:
+        plt.plot(x, [np.array(result).sum()/len(result) for result in results],  marker='^', markersize=9, linestyle=':')
+                 
+    plt.legend(['FIOLA_25ms', 'VolPy', 'FIOLA_17.5ms', 'FIOLA_12.5ms', 'MeanROI'], frameon=False)
+    plt.xlabel('spike amplitude')
+    plt.ylabel('SPNR')
+    plt.title('SPNR for non-overlapping neurons')
+    plt.xticks([0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2])
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.xaxis.set_tick_params(length=8)
+    ax.yaxis.set_tick_params(length=8)
+
+SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+plt.savefig(os.path.join(SAVE_FOLDER, f'SPNR_Fiola_vs_VolPy_{t_range[0]}_{t_range[1]}.pdf'))
+
+#%% Fig4e. Overlapping neurons for volpy with different overlapping areas
+area = []
+
+for idx, dist in enumerate(distance):  
+    select = np.arange(idx * 3, (idx + 1) * 3)
+    v_result_all = []
+    #names = [f'sim3_{i}' for i in range(10, 17)]
+    for name in np.array(names)[select]:
+        folder = os.path.join(ROOT_FOLDER, name)
+        gt_files = [file for file in os.listdir(folder) if 'SimResults' in file]
+        gt_file = gt_files[0]
+        gt = scipy.io.loadmat(os.path.join(folder, gt_file))
+        gt = gt['simOutput'][0][0]['gt']
+        spikes = gt['ST'][0][0][0]
+        spatial = gt['IM2'][0][0]
+        temporal = gt['trace'][0][0][:,:,0]
+        spatial[spatial <= np.percentile(spatial, 99.5)] = 0 # just empirical
+        spatial[spatial > 0] = 1
+        spatial = spatial.transpose([2, 0, 1])
+        percent = (np.where(spatial.sum(axis=0) > 1)[0].shape[0])/(np.where(spatial.sum(axis=0) > 0)[0].shape[0])
+        area.append(percent)   
+        
+area = np.round(np.unique(area), 2)[::-1]
+area = np.append(area, 0)
+
+#%%
+result_all = {'volpy':{}, 'viola':{}, 'meanroi':{}, 'meanroi_online':{}}
+distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
+for mode in ['viola', 'volpy', 'meanroi', 'meanroi_online']:
+    if mode == 'viola':
+        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+    elif mode == 'volpy':
+        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/volpy_result'
+    elif mode == 'meanroi':
+        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/meanroi_result'
+    elif mode == 'meanroi_online':
+        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/meanroi_online_result'
+    
+    for dist in distance:   
+        files = np.array(sorted(os.listdir(SAVE_FOLDER)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]
+        files = [file for file in files if mode in file and dist+'.npy' in file]
+        print(len(files))
+        for file in files:
+            result_all[mode][file] = np.load(os.path.join(SAVE_FOLDER, file), allow_pickle=True)
+    
+colors = ['blue', 'orange', 'green', 'purple', 'red', 'black']
+for mode in ['viola', 'volpy', 'meanroi', 'meanroi_online']:
+    for idx, key in enumerate(result_all[mode].keys()):
+        if idx in [0,1,2,4]:
+            results = result_all[mode][key]
+            #print(results)
+            if mode in key:
+                if mode == 'viola':
+                    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
+                             marker='.',markersize=10, color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
+                elif mode == 'volpy':
+                    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
+                             marker='^',markersize=6, linestyle=':', color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
+                elif mode == 'meanroi':
+                    # plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
+                    #           marker='v',markersize=6, linestyle='-.', color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
+                    plt.plot(x, results, 
+                              marker='v',markersize=6, linestyle='-.', color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
+                elif mode == 'meanroi_online':
+                    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
+                             marker='<',markersize=6, linestyle='--', color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
+                
+plt.xlabel('spike amplitude')
+plt.ylabel('F1 score')
+plt.ylim([0.35,1])
+plt.xticks([0.075, 0.125, 0.175])
+plt.title(f'Fiola vs VolPy F1 score with different overlapping areas')
+ax = plt.gca()
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.xaxis.set_tick_params(length=8)
+ax.yaxis.set_tick_params(length=8)
+
+colors = ['blue', 'orange', 'green', 'red']
+for cc, col in enumerate(colors):
+    ax.plot(np.NaN, np.NaN, c=colors[cc], label=["63%", "36%", "16%", "0%"][cc])
+
+ax2 = ax.twinx()
+markers = ['.', '^', 'v', '<']
+linestyles = ['-', ':', '-.', '--']
+markersizes = [10, 6, 6, 6]
+for ss, sty in enumerate(markers):
+    ax2.plot(np.NaN, np.NaN, marker=markers[ss],linestyle=linestyles[ss], 
+             label=["Fiola", "VolPy", "MeanROI", "MeanROi_online"][ss], c='black', markersize=markersizes[ss])
+ax2.get_yaxis().set_visible(False)
+ax2.spines['top'].set_visible(False)
+ax2.spines['right'].set_visible(False)
+
+
+ax.legend(loc=4,  frameon=False)
+ax2.legend(loc=(0.6, 0.03),  frameon=False)
+           
+#SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+
+#SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#plt.savefig(os.path.join(SAVE_FOLDER, f'F1_overlapping_fiola&volpy.pdf'))
+
+#%%
 #%% Supplementary figure
 mean = []
 std = []
@@ -626,167 +861,6 @@ for idx, results in enumerate(result_all):
 SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
 plt.savefig(os.path.join(SAVE_FOLDER, f'SPNR_Fiola_vs_VolPy_{t_range[0]}_{t_range[1]}.pdf'))
 
-#%%
-x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
-VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
-viola_files = os.listdir(VIOLA_FOLDER)
-viola_files = [os.path.join(VIOLA_FOLDER, file) for file in viola_files if 'v2.0.npy' in file and 'spnr' in file]
-VOLPY_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/volpy_result'
-volpy_files = os.listdir(VOLPY_FOLDER)
-volpy_files = [os.path.join(VOLPY_FOLDER, file) for file in volpy_files if '.npy' in file and 'spnr' in file and 'v2.0' in file]
-VIOLA_FOLDER1 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_[8, 4]_minimal_thresh_3_template_window_2_v2.1'
-v1 = os.listdir(VIOLA_FOLDER1)
-v1 = [os.path.join(VIOLA_FOLDER1, file) for file in v1 if 'spnr' in file]
-VIOLA_FOLDER2 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_[8, 4]_minimal_thresh_3_template_window_0_v2.1'
-v2 = os.listdir(VIOLA_FOLDER2)
-v2 = [os.path.join(VIOLA_FOLDER2, file) for file in v2 if 'spnr' in file]
-files = viola_files+volpy_files+v1+v2
-result_all = [np.load(file, allow_pickle=True) for file in files]
-
-for idx, results in enumerate(result_all):
-    if idx == 0 or idx == 2 or idx == 3:
-        plt.plot(x, [np.array(result).sum()/len(result) for result in results],  marker='.', markersize=15)
-    else:
-        plt.plot(x, [np.array(result).sum()/len(result) for result in results],  marker='^', markersize=9, linestyle=':')
-                 
-    plt.legend(['FIOLA_25ms', 'VolPy', 'FIOLA_17.5ms', 'FIOLA_12.5ms'], frameon=False)
-    plt.xlabel('spike amplitude')
-    plt.ylabel('SPNR')
-    plt.title('SPNR for non-overlapping neurons')
-    plt.xticks([0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2])
-    ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.xaxis.set_tick_params(length=8)
-    ax.yaxis.set_tick_params(length=8)
-
-SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-plt.savefig(os.path.join(SAVE_FOLDER, f'SPNR_Fiola_vs_VolPy_{t_range[0]}_{t_range[1]}.pdf'))
-
-
-#%% Overlapping neurons for volpy with different overlapping areas
-area = []
-
-for idx, dist in enumerate(distance):  
-    select = np.arange(idx * 3, (idx + 1) * 3)
-    v_result_all = []
-    #names = [f'sim3_{i}' for i in range(10, 17)]
-    for name in np.array(names)[select]:
-        folder = os.path.join(ROOT_FOLDER, name)
-        gt_files = [file for file in os.listdir(folder) if 'SimResults' in file]
-        gt_file = gt_files[0]
-        gt = scipy.io.loadmat(os.path.join(folder, gt_file))
-        gt = gt['simOutput'][0][0]['gt']
-        spikes = gt['ST'][0][0][0]
-        spatial = gt['IM2'][0][0]
-        temporal = gt['trace'][0][0][:,:,0]
-        spatial[spatial <= np.percentile(spatial, 99.5)] = 0 # just empirical
-        spatial[spatial > 0] = 1
-        spatial = spatial.transpose([2, 0, 1])
-        percent = (np.where(spatial.sum(axis=0) > 1)[0].shape[0])/(np.where(spatial.sum(axis=0) > 0)[0].shape[0])
-        area.append(percent)   
-        
-area = np.round(np.unique(area), 2)[::-1]
-area = np.append(area, 0)
-
-#%%
-mode = ['viola', 'volpy'][0]
-result_all = {}
-distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
-SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
-x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
-for dist in distance:   
-    files = np.array(sorted(os.listdir(SAVE_FOLDER)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]
-    files = [file for file in files if mode in file and dist+'.npy' in file]
-    print(len(files))
-    for file in files:
-        result_all[file] = np.load(os.path.join(SAVE_FOLDER, file), allow_pickle=True)
-    
-for idx, key in enumerate(result_all.keys()):
-    results = result_all[key]
-    #print(results)
-    if mode in key:
-        plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
-                 marker='.',markersize=15, label=f'{mode}_{area[idx]:.0%}_{distance[idx]}')
-        
-    print([np.array(result['F1']).sum()/len(result['F1']) for result in results])
-    #elif 'volpy' in key:
-    #    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
-    #             marker='^',markersize=15, label=f'volpy_{area[idx]:.0%}')
-    plt.legend()
-    plt.xlabel('spike amplitude')
-    plt.ylabel('F1 score')
-    plt.title(f'{mode} F1 score with different overlapping areas')
-    
-plt.savefig(os.path.join(SAVE_FOLDER, f'F1_overlapping_{mode}.pdf'))
-
-
-#%%
-result_all = {'volpy':{}, 'viola':{}}
-distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
-x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
-for mode in ['viola', 'volpy']:
-    if mode == 'viola':
-        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
-    else:
-        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/volpy_result'
-        
-    for dist in distance:   
-        files = np.array(sorted(os.listdir(SAVE_FOLDER)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]
-        files = [file for file in files if mode in file and dist+'.npy' in file]
-        print(len(files))
-        for file in files:
-            result_all[mode][file] = np.load(os.path.join(SAVE_FOLDER, file), allow_pickle=True)
-    
-colors = ['blue', 'orange', 'green', 'purple', 'red', 'black']
-for mode in ['viola', 'volpy']:
-    for idx, key in enumerate(result_all[mode].keys()):
-        if idx in [0,1,2,4]:
-            results = result_all[mode][key]
-            #print(results)
-            if mode in key:
-                if mode == 'viola':
-                    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
-                             marker='.',markersize=10, color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                else:
-                    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
-                             marker='^',markersize=6, linestyle=':', color=colors[idx])#label=f'{mode}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-        
-plt.xlabel('spike amplitude')
-plt.ylabel('F1 score')
-plt.ylim([0.35,1])
-plt.xticks([0.075, 0.125, 0.175])
-plt.title(f'Fiola vs VolPy F1 score with different overlapping areas')
-ax = plt.gca()
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.xaxis.set_tick_params(length=8)
-ax.yaxis.set_tick_params(length=8)
-
-colors = ['blue', 'orange', 'green', 'red']
-for cc, col in enumerate(colors):
-    ax.plot(np.NaN, np.NaN, c=colors[cc], label=["63%", "36%", "16%", "0%"][cc])
-
-ax2 = ax.twinx()
-markers = ['.', '^']
-linestyles = ['-', ':']
-markersizes = [10, 6]
-for ss, sty in enumerate(markers):
-    ax2.plot(np.NaN, np.NaN, marker=markers[ss],linestyle=linestyles[ss], 
-             label=["Fiola", "VolPy"][ss], c='black', markersize=markersizes[ss])
-ax2.get_yaxis().set_visible(False)
-ax2.spines['top'].set_visible(False)
-ax2.spines['right'].set_visible(False)
-
-
-ax.legend(loc=4,  frameon=False)
-ax2.legend(loc=(0.6, 0.03),  frameon=False)
-           
-#SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
-
-SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-plt.savefig(os.path.join(SAVE_FOLDER, f'F1_overlapping_fiola&volpy.pdf'))
-    
 
 #%%
 ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/'
@@ -1073,15 +1147,183 @@ plt.boxplot(rr['F1']); plt.title('viola spikes on volpy trace')
 
         
 #%%
+
+
+#%%
+algo = ['volpy', 'suite2p', 'meanroi'][2]
+names = [f'viola_sim5_{i}' for i in range(1, 8)]
+t_range = [10000, 75000]
+for idx, dist in enumerate(distance):  
+    t_result_all = []
+    spnr_all = []
+    if mode == 'overlapping':
+        select = np.arange(idx * 3, (idx + 1) * 3)
+    else:
+        select = np.array(range(len(names)))
+    for name in np.array(names)[select]:
+        folder = os.path.join(ROOT_FOLDER, name)
+        gt_files = [file for file in os.listdir(folder) if 'SimResults' in file]
+        gt_file = gt_files[0]
+        gt = scipy.io.loadmat(os.path.join(folder, gt_file))
+        gt = gt['simOutput'][0][0]['gt']
+        spikes = gt['ST'][0][0][0]
+        
+        #summary_file = os.listdir(os.path.join(folder, 'volpy'))
+        #summary_file = [file for file in summary_file if 'summary' in file][0]
+        #summary = cm.load(os.path.join(folder, 'volpy', summary_file))
+        
+        v_folder = os.path.join(folder, 'volpy')
+        v_files = sorted([file for file in os.listdir(v_folder) if 'adaptive_threshold' in file])
+        v_file = v_files[0]
+        v = np.load(os.path.join(v_folder, v_file), allow_pickle=True).item()
+        
+        v_spatial = v['weights'].copy()
+        v_temporal = v['ts'].copy()
+        v_ROIs = v['ROIs'].copy()
+        v_ROIs = v_ROIs * 1.0
+        v_templates = v['templates'].copy()
+        v_spikes = v['spikes'].copy()
+        
+        n_cells = v_spatial.shape[0]
+        v_result = {'F1':[], 'precision':[], 'recall':[]}        
+        rr = {'F1':[], 'precision':[], 'recall':[]}
+        for idx in range(n_cells):
+            s1 = spikes[idx].flatten()
+            s1 = s1 - 1
+            s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
+            s2 = v_spikes[idx]
+            s2 = s2[np.logical_and(s2>t_range[0], s2<t_range[1])]
+            idx1_greedy, idx2_greedy = match_spikes_greedy(s1, s2, max_dist=4)
+            F1, precision, recall= compute_F1(s1, s2, idx1_greedy, idx2_greedy)
+            rr['F1'].append(F1)
+            rr['precision'].append(precision)
+            rr['recall'].append(recall)
+        v_result_all.append(rr)
+        
+        spnr = []
+        for idx in range(n_cells):
+            s1 = spikes[idx].flatten()
+            s1 = s1 - 1
+            s1 = s1[np.logical_and(s1>t_range[0], s1<t_range[1])]
+            t2 = v_temporal[idx]
+            t2 = normalize_piecewise(t2, 5000)
+            ss = np.mean(t2[s1])
+            spnr.append(ss)        
+        spnr_all.append(spnr)
+   # np.save(os.path.join(SAVE_FOLDER, f'volpy_adaptive_threshold_{t_range[0]}_{t_range[1]}_v2.0'), v_result_all)
+    np.save(os.path.join(SAVE_FOLDER, f'volpy_spnr_adaptive_threshold_{t_range[0]}_{t_range[1]}_v2.0'), spnr_all)    
+    #np.save(os.path.join(ROOT_FOLDER, 'result_overlap', f'{dist}', f'volpy_{dist}_thresh_adaptive'), v_save_result)
+
+    #plt.plot(v_temporal[0]);
+    #plt.vlines(spikes[0], 0, 150)        
+        
+        
+#%% F1 score
+x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
+VIOLA_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+viola_files = os.listdir(VIOLA_FOLDER)
+viola_files = [os.path.join(VIOLA_FOLDER, file) for file in viola_files if 'v2.0.npy' in file and 'spnr' not in file]
+VOLPY_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/volpy_result'
+volpy_files = os.listdir(VOLPY_FOLDER)
+volpy_files = [os.path.join(VOLPY_FOLDER, file) for file in volpy_files if '.npy' in file and 'spnr' not in file and 'v2.0' in file]
+VIOLA_FOLDER1 = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_filt_window_9_minimal_thresh_3_template_window_0_v2.1'
+v1 = os.listdir(VIOLA_FOLDER1)
+v1 = [os.path.join(VIOLA_FOLDER1, file) for file in v1 if 'spnr' not in file]
+files = viola_files+volpy_files + v1
+result_all = [np.load(file, allow_pickle=True) for file in files]
+
+for idx, results in enumerate(result_all):
+    try:
+        #if idx == 0:
+        plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results.item()['result']], marker='.', markersize='15', linewidth = 3)
+        #else:
+        #    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results.item()['result']], marker='.', markersize='15')
+    except:
+        if idx == 0 or idx == 2:
+            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='.', markersize=15)    
+        else: 
+            plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], marker='^', markersize=9, linestyle=':')    
+
+    plt.legend(['Fiola', 'VolPy'])
+    plt.xlabel('spike amplitude')
+    plt.ylabel('F1 score')
+    plt.title('F1 score for non-overlapping neurons')
+    plt.ylim([0, 1])
+    plt.xticks([0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2])
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.xaxis.set_tick_params(length=8)
+    ax.yaxis.set_tick_params(length=8)
+
+SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+plt.savefig(os.path.join(SAVE_FOLDER, f'F1_Viola_vs_VolPy_{t_range[0]}_{t_range[1]}.pdf'))        
         
         
         
+        #%%
+        mode = ['viola', 'volpy'][0]
+        result_all = {}
+        distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+        SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/viola_result_online_gpu_True_init_10000_bg_True_use_spikes_False_hals_movie_hp_thresh_semi_nmf_False_adaptive_threshold_True_do_scale_False_freq_15_v2.0'
+        x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
+        for dist in distance:   
+            files = np.array(sorted(os.listdir(SAVE_FOLDER)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]
+            files = [file for file in files if mode in file and dist+'.npy' in file]
+            print(len(files))
+            for file in files:
+                result_all[file] = np.load(os.path.join(SAVE_FOLDER, file), allow_pickle=True)
+            
+        for idx, key in enumerate(result_all.keys()):
+            results = result_all[key]
+            #print(results)
+            if mode in key:
+                plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
+                         marker='.',markersize=15, label=f'{mode}_{area[idx]:.0%}_{distance[idx]}')
+                
+            print([np.array(result['F1']).sum()/len(result['F1']) for result in results])
+            #elif 'volpy' in key:
+            #    plt.plot(x, [np.array(result['F1']).sum()/len(result['F1']) for result in results], 
+            #             marker='^',markersize=15, label=f'volpy_{area[idx]:.0%}')
+            plt.legend()
+            plt.xlabel('spike amplitude')
+            plt.ylabel('F1 score')
+            plt.title(f'{mode} F1 score with different overlapping areas')
+            
+        #plt.savefig(os.path.join(SAVE_FOLDER, f'F1_overlapping_{mode}.pdf'))
         
         
-        
-        
-        
-        
-        
-        
+ elif algo == 'suite2p':
+            import numpy as np
+            from scipy import stats
+            from suite2p.extraction.extract import compute_masks_and_extract_traces
+            
+            # make stat array
+            stat = []
+            for u in np.unique(masks)[1:]:
+                ypix,xpix = np.nonzero(masks==u)
+                npix = len(ypix)
+                stat.append({'ypix': ypix, 'xpix': xpix, 'npix': npix, 'lam': np.ones(npix, np.float32)})
+            stat = np.array(stat)
+            
+            # run extraction
+            F, Fneu,_,_ = compute_masks_and_extract_traces(ops, stat)
+            
+            # subtract neuropil
+            dF = F - ops['neucoeff'] * Fneu
+            
+            # compute activity statistics for classifier
+            sk = stats.skew(dF, axis=1)
+            sd = np.std(dF, axis=1)
+            for k in range(F.shape[0]):
+                stat[k]['skew'] = sk[k]
+                stat[k]['std']  = sd[k]
+            
+            fpath = ops['save_path']
+            # save ops
+            np.save(ops['ops_path'], ops)
+            # save results
+            np.save(os.path.join(fpath,'F.npy'), F)
+            np.save(os.path.join(fpath,'Fneu.npy'), Fneu)
+            np.save(os.path.join(fpath,'stat.npy'), stat)       
         

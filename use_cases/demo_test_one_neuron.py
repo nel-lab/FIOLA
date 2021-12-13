@@ -22,15 +22,13 @@ try:
 except NameError:
     pass
 #%%
-from viola.metrics import metric
-from viola.nmf_support import normalize
-from viola.violaparams import violaparams
-from viola.viola import VIOLA
+from fiola.utilities import normalize, metric, match_spikes_greedy, compute_F1, load
+from fiola.fiolaparams import fiolaparams
+from fiola.fiola import FIOLA
 import scipy.io
-from viola.match_spikes import match_spikes_greedy, compute_F1
 #sys.path.append('/home/nel/Code/NEL_LAB/VIOLA/use_cases')
 #sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/VIOLA'))
-from use_cases.test_run_viola import run_viola # must be in use_cases folder
+from use_cases.test_run_fiola import run_fiola # must be in use_cases folder
         
 #%%
 ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron'
@@ -125,11 +123,25 @@ for idx, name in enumerate(np.array(names)[select]):
     #run_viola(fnames, path_ROIs, fr=fr, online_gpu=True, options=options)
 
 #%%
-modes = ['viola', 'volpy']
-mode = modes[0]
+for idx, name in enumerate(np.array(names)):
+    try:
+        os.makedirs(os.path.join(ROOT_FOLDER, name, 'meanroi'))
+        print('make folder')
+    except:
+        print('already exist')
+
+
+
+#%%
+modes = ['viola', 'volpy', 'meanroi']
+mode = modes[2]
 result = {}
-select = np.array(range(19))[16:19]
+select = np.array(range(19))
 for mode in modes:
+result_threshold = {}
+thresh_list = np.arange(2.0, 4.1, 0.1)
+for thresh in thresh_list:    
+    print(f'threshold level {thresh}')
     f1_scores = []                
     prec = []
     rec = []
@@ -176,7 +188,25 @@ for mode in modes:
             v_spikes = v['spikes'][0]        
             v_spikes = np.delete(v_spikes, np.where(v_spikes >= dict1['v_t'].shape[0])[0])
             dict1_v_sp_ = dict1['v_t'][v_spikes]
-         
+        
+        elif mode == 'meanroi':
+            mov = load(os.path.join(ROOT_FOLDER, name, name+'_mc.tif'))
+            spatial = load(os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5'))#.squeeze()
+            spatial = spatial.squeeze()[None, :, :]
+            mov = mov.reshape([mov.shape[0], -1], order='F')
+            spatial_F = [np.where(sp.reshape(-1, order='F')>0) for sp in spatial]
+            t_temporal = np.array([-mov[:, sp].mean((1,2)) for sp in spatial_F])
+            t_spatial = spatial
+            
+            t_temporal_p = signal_filter(t_temporal, freq=freq_all[select][idx], fr=frate_all[select][idx])
+            t_temporal_p[:, :30] = 0
+            t_temporal_p[:, -30:] = 0  
+            v_temporal = t_temporal_p.squeeze()              
+            #thresh = 3
+            t_spikes = np.array(extract_spikes(t_temporal_p, threshold=thresh)).squeeze()
+            t_spikes = np.delete(t_spikes, np.where(t_spikes >= dict1['v_t'].shape[0])[0])
+            dict1_v_sp_ = dict1['v_t'][t_spikes]
+        
         if 'Cell' in name:
             for i in range(len(dict1['sweep_time']) - 1):
                 dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
@@ -185,7 +215,7 @@ for mode in modes:
         precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned, spnr\
                             = metric(name, dict1['sweep_time'], dict1['e_sg'], 
                                   dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
-                                  vi_temporal, dict1_v_sp_ , 
+                                  v_temporal, dict1_v_sp_ , 
                                   dict1['v_t'], dict1['v_sub'],init_frames=init_frames_all[select][idx], save=False)
             
         p = len(e_match)/len(v_spike_aligned)
@@ -196,6 +226,7 @@ for mode in modes:
         prec.append(p)
         rec.append(r)
         spnr_all.append(spnr)
+    result_threshold[str(thresh)] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
     result[mode] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
 
 #%%
@@ -209,9 +240,18 @@ print(np.array(rec).mean())
 plt.bar(range(16), f1_scores)
 
 #%%
+for key in result_threshold.keys():
+    print(key)
+    print(np.array(result_threshold[key]['f1']).mean())
+
+result_threshold['2.900000000000001']
+
+
+#%%
 SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron'
 np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_15_template_window_2'), result)
 
+np.save(os.path.join(SAVE_FOLDER, f'mean_roi_threshold_2.9'), result_threshold['2.900000000000001'])
    
 #%%
 sp = spnr_all.copy()

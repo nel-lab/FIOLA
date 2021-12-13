@@ -4,17 +4,17 @@ Config.py file is used to load parameters for FIOLA and CaImAn objects
 @author: @caichangjia
 """
 
-def load_fiola_config(fnames, mode='voltage', mask=None):
+def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
     if mode == 'voltage':
         # setting params
         # dataset dependent parameters
         fr = 400                        # sample rate of the movie
         ROIs = mask                     # a 3D matrix contains all region of interests
-
+        nb = 1                          # number of background components
         mode = 'voltage'                # 'voltage' or 'calcium 'fluorescence indicator
-        init_method = 'binary_masks'    # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+        #init_method = 'binary_masks'    # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
         num_frames_init =  10000        # number of frames used for initialization
-        num_frames_total =  20000       # estimated total number of frames for processing, this is used for generating matrix to store data
+               # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch_size = 200        # number of frames for one batch to perform offline motion correction
         batch_size = 1                  # number of frames processing at the same time using gpu 
         flip = True                     # whether to flip signal to find spikes   
@@ -29,7 +29,7 @@ def load_fiola_config(fnames, mode='voltage', mask=None):
             'fr': fr,
             'ROIs': ROIs,
             'mode': mode,
-            'init_method':init_method,
+#            'init_method':init_method,
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
             'offline_batch_size': offline_batch_size,
@@ -39,16 +39,20 @@ def load_fiola_config(fnames, mode='voltage', mask=None):
             'update_bg': update_bg,
             'filt_window': filt_window,
             'minimal_thresh': minimal_thresh,
-            'template_window':template_window}
+            'template_window':template_window,
+            'nb': nb}
         
     elif mode == 'calcium':
         fr = 30                         # sample rate of the movie
         ROIs = mask                     # a 3D matrix contains all region of interests
 
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-        init_method = 'weighted_masks'  # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
+        # if ROIs is None:
+        #     init_method = 'caiman'  
+        # else:
+        # init_method = 'weighted_masks'  # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
         num_frames_init =  1500         # number of frames used for initialization
-        num_frames_total =  3000        # estimated total number of frames for processing, this is used for generating matrix to store data
+        # num_frames_total =  3000        # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
         batch_size= 1                   # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
@@ -63,7 +67,7 @@ def load_fiola_config(fnames, mode='voltage', mask=None):
             'mode': mode, 
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
-            'init_method':init_method,
+            # 'init_method':init_method,
             'offline_batch_size': offline_batch_size,
             'batch_size':batch_size,
             'flip': flip,

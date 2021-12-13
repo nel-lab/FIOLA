@@ -13,33 +13,49 @@ matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot as plt
 import numpy as np 
 
+#%%
+import logging
+logging.basicConfig(level = logging.DEBUG)
+    
 #%% Supplementary figure timing for the algorithm
-tt = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy')
-trace = tt[:50,:].copy()
-trace = np.repeat(trace, 10, axis=0)
-saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
-                                  detrend=True, flip=True, 
-                                  frate=400, thresh_range=[2.8, 5.0], 
-                                  adaptive_threshold=True, online_filter_method='median_filter',
-                                  template_window=2, filt_window=15, minimal_thresh=2.8, mfp=0.1, step=2500, do_plot=False)
-saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
-for n in range(10000, trace.shape[1]):
-    saoz.fit_next(trace[:, n: n+1], n)
+from fiola.signal_analysis_online import SignalAnalysisOnlineZ
+# tt = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy')
+# trace = tt[:50,:].copy()
+# trace = np.repeat(trace, 10, axis=0)
+# saoz = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
+#                                   detrend=True, flip=True, 
+#                                   fr=400,
+#                                   adaptive_threshold=True, online_filter_method='median_filter',
+#                                   template_window=2, filt_window=15, minimal_thresh=2.8, step=2500, do_plot=False)
+# saoz.fit(trace[:, :10000], num_frames=trace.shape[1])
+# for n in range(10000, trace.shape[1]):
+#     saoz.fit_next(trace[:, n: n+1], n)
 
 tt = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/viola_sim5_7_nnls_result.npy')
 trace = tt[:50,:].copy()
 trace = np.repeat(trace, 2, axis=0)
 saoz1 = SignalAnalysisOnlineZ(do_scale=False, freq=15, 
                                   detrend=True, flip=True, 
-                                  frate=400, thresh_range=[2.8, 5.0], 
+                                  fr=400,
                                   adaptive_threshold=True, online_filter_method='median_filter',
-                                  template_window=2, filt_window=15, minimal_thresh=2.8, mfp=0.1, step=2500, do_plot=False)
+                                  template_window=2, filt_window=15, minimal_thresh=2.8, step=2500, do_plot=False)
 saoz1.fit(trace[:, :10000], num_frames=trace.shape[1])
+print('processing online')
 for n in range(10000, trace.shape[1]):
     saoz1.fit_next(trace[:, n: n+1], n)
 
-t_detect = np.array(saoz.t_detect[10000:])*1000
+#t_detect = np.array(saoz.t_detect[10000:])*1000
 t1_detect = np.array(saoz1.t_detect[10000:])*1000
+t_detect = t1_detect
+#%%
+
+#%%
+from numba import jit
+@jit
+def speed_up(saoz1, trace, n):
+    for n in range(10000, trace.shape[1]):
+        saoz1.fit_next(trace[:, n: n+1], n)
+    
 #%%    
 fig, ax = plt.subplots(1,1)
 ax.plot(t_detect, label=f'500 neurons', color='orange')
@@ -54,10 +70,10 @@ ax.spines['right'].set_visible(False)
 ax.hlines(0.7, 0, 65000, color='black', linestyle='--')
 ax.xaxis.set_tick_params(length=8)
 ax.yaxis.set_tick_params(length=8)
-
+ax.set_ylim(0, 1)
 #ax.plot(saoz.t_s[:, 10000:].mean(0)/200000)
 #plt.title('timing for spike extraction algorithm ')
-plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_timing_spike_extraction1.png')
+#plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_timing_spike_extraction1.png')
 
 #%%
 lists = ['454597_Cell_0_40x_patch1_output.npz', '456462_Cell_3_40x_1xtube_10A2_output.npz',
@@ -183,38 +199,40 @@ viola1 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_
 viola1 = viola1.item()['viola']['f1']
 viola2 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_0.npy', allow_pickle=True)
 viola2 = viola2.item()['viola']['f1']
-
-v = np.array([viola, volpy, viola1, viola2])
+meanroi = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/mean_roi_threshold_2.9.npy', allow_pickle=True)
+meanroi = meanroi.item()['f1']
+v = np.array([viola, volpy, viola1, viola2, meanroi])
 v_mean = v.mean(1)
 v_std = v.std(1)
 
+#%%
 from matplotlib import gridspec
 fig = plt.figure(figsize=(8, 6)) 
-gs = gridspec.GridSpec(1, 2, width_ratios=[9, 1]) 
-ax0 = plt.subplot(gs[0])
-ax1 = plt.subplot(gs[1])
-rects1 = ax0.bar(x+1 - width/2, viola, width/4, label=f'FIOLA_25ms')
-rects2 = ax0.bar(x+1 - width/4, volpy, width/4, label=f'VolPy')
-rects3 = ax0.bar(x+1  , viola1, width/4, label=f'FIOLA_17.5ms')
-rects4 = ax0.bar(x+1 + width/4, viola2, width/4, label=f'FIOLA_12.5ms')
+#gs = gridspec.GridSpec(1, 1) 
+#ax0 = plt.subplot(gs[0])
+ax1 = plt.subplot()
+# rects1 = ax0.bar(x+1 - width/2, viola, width/4, label=f'FIOLA_25ms')
+# rects2 = ax0.bar(x+1 - width/4, volpy, width/4, label=f'VolPy')
+# rects3 = ax0.bar(x+1  , viola1, width/4, label=f'FIOLA_17.5ms')
+# rects4 = ax0.bar(x+1 + width/4, viola2, width/4, label=f'FIOLA_12.5ms')
 
 
-# Add some text for labels, title and custom x-axis tick labels, etc.
-ax0.spines['top'].set_visible(False)
-ax0.spines['right'].set_visible(False)
-ax0.spines['bottom'].set_visible(False)
-ax0.set_ylim([0,1])
-ax0.set_xlabel('Cell')
-ax0.set_xticks(x+1)
+# # Add some text for labels, title and custom x-axis tick labels, etc.
+# ax0.spines['top'].set_visible(False)
+# ax0.spines['right'].set_visible(False)
+# ax0.spines['bottom'].set_visible(False)
+# ax0.set_ylim([0,1])
+# ax0.set_xlabel('Cell')
+# ax0.set_xticks(x+1)
 
-ax0.set_ylabel('F1 Score')
-#ax0.set_title('Fiola vs VolPy')
-#ax0.set_xticklabels(labels, rotation='vertical', fontsize=3)
-ax0.xaxis.set_ticks_position('none') 
-ax0.yaxis.set_tick_params(length=8)
-ax0.legend()
-ax0.legend(ncol=2, frameon=False, loc=0)
-plt.tight_layout()
+# ax0.set_ylabel('F1 Score')
+# #ax0.set_title('Fiola vs VolPy')
+# #ax0.set_xticklabels(labels, rotation='vertical', fontsize=3)
+# ax0.xaxis.set_ticks_position('none') 
+# ax0.yaxis.set_tick_params(length=8)
+# ax0.legend()
+# ax0.legend(ncol=2, frameon=False, loc=0)
+# plt.tight_layout()
 #plt.savefig(os.path.join(save_folder, 'one_neuron_F1_v2.0.pdf'))
 
 
@@ -224,6 +242,7 @@ rects1 = ax1.bar(x - width/2, v_mean[0], width/4, yerr=v_std[0], capsize=5, labe
 rects2 = ax1.bar(x - width/4, v_mean[1], width/4, yerr=v_std[1], capsize=5, label=f'VolPy')
 rects3 = ax1.bar(x  , v_mean[2], width/4, yerr=v_std[2], capsize=5, label=f'FIOLA_17.5ms')
 rects4 = ax1.bar(x + width/4, v_mean[3], width/4, yerr=v_std[3], capsize=5, label=f'FIOLA_12.5ms')
+rects4 = ax1.bar(x + width/2, v_mean[4], width/4, yerr=v_std[4], capsize=5, label=f'MeansROI')
 
 
 ax1.spines['top'].set_visible(False)
@@ -239,7 +258,7 @@ ax1.set_ylim([0,1])
 
 #ax1.set_xticks(None)
 #ax1.set_xticklabels(labels, rotation='horizontal', fontsize=5)
-#ax1.legend()
+ax1.legend()
 #save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
 #plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1_Fiola&VolPy_non_symm_median_1.pdf'))
 
@@ -249,6 +268,20 @@ rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
 rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
 stats.ttest_ind(volpy,viola2,  equal_var = False)
 stats.wilcoxon(volpy, viola2)
+
+stats.ttest_ind(viola,viola2,  equal_var = False)
+stats.wilcoxon(viola, viola2)
+
+#%%
+from scipy import stats
+rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
+rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
+stats.ttest_ind(viola, meanroi,  equal_var = False)
+stats.wilcoxon(viola, meanroi, alternative='greater')
+#stats.ttest_ind(viola, viola2,  equal_var = False)
+stats.wilcoxon(viola, meanroi)
+
+
 #%% Fig5 b
 fig, ax = plt.subplots(1, 1)
 xx = np.arange(0.2, 1.1, 0.01)

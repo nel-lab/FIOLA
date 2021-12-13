@@ -23,7 +23,7 @@ from scipy import stats
 from scipy.optimize import linear_sum_assignment
 import scipy.ndimage as nd
 import scipy.sparse as spr
-from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi
+from scipy.signal import argrelextrema, butter, sosfilt, sosfilt_zi, find_peaks
 from skimage.io import imread
 from sklearn.decomposition import NMF
 import time
@@ -1017,8 +1017,10 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         return A
     Ab = np.c_[A, b]
     Cf = np.r_[C, f.reshape(nb, -1)]
-
-    for thr_ in np.linspace(3.5,2.5,maxIter):    
+    count = 0
+    for thr_ in np.linspace(3.5,2.5,maxIter):
+        count += 1
+        logging.info('Hals Iteration activity:' + str(count))
         Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf, semi_nmf=semi_nmf)
         Cf_processed = Cf.copy()
 
@@ -1046,6 +1048,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
                         Cf_processed[i] = Cf_processed[i] + bl  
                     
         Cf = Cf_processed
+        logging.info('Hals Iteration shape:' + str(count))
         Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
         
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
@@ -1691,36 +1694,36 @@ def distance_masks(M_s: List, cm_s: List[List], max_dist: float, enclosed_thr: O
     return D_s
 
 
-def find_matches(D_s, print_assignment: bool = False) -> Tuple[List, List]:
-    # todo todocument
+# def find_matches(D_s, print_assignment: bool = False) -> Tuple[List, List]:
+#     # todo todocument
 
-    matches = []
-    costs = []
-    t_start = time.time()
-    for ii, D in enumerate(D_s):
-        # we make a copy not to set changes in the original
-        DD = D.copy()
-        if np.sum(np.where(np.isnan(DD))) > 0:
-            logging.error('Exception: Distance Matrix contains NaN, not allowed!')
-            raise Exception('Distance Matrix contains NaN, not allowed!')
+#     matches = []
+#     costs = []
+#     t_start = time.time()
+#     for ii, D in enumerate(D_s):
+#         # we make a copy not to set changes in the original
+#         DD = D.copy()
+#         if np.sum(np.where(np.isnan(DD))) > 0:
+#             logging.error('Exception: Distance Matrix contains NaN, not allowed!')
+#             raise Exception('Distance Matrix contains NaN, not allowed!')
 
-        # we do the hungarian
-        indexes = linear_sum_assignment(DD)
-        indexes2 = [(ind1, ind2) for ind1, ind2 in zip(indexes[0], indexes[1])]
-        matches.append(indexes)
-        DD = D.copy()
-        total = []
-        # we want to extract those informations from the hungarian algo
-        for row, column in indexes2:
-            value = DD[row, column]
-            if print_assignment:
-                logging.debug(('(%d, %d) -> %f' % (row, column, value)))
-            total.append(value)
-        logging.debug(('FOV: %d, shape: %d,%d total cost: %f' % (ii, DD.shape[0], DD.shape[1], np.sum(total))))
-        logging.debug((time.time() - t_start))
-        costs.append(total)
-        # send back the results in the format we want
-    return matches, costs
+#         # we do the hungarian
+#         indexes = linear_sum_assignment(DD)
+#         indexes2 = [(ind1, ind2) for ind1, ind2 in zip(indexes[0], indexes[1])]
+#         matches.append(indexes)
+#         DD = D.copy()
+#         total = []
+#         # we want to extract those informations from the hungarian algo
+#         for row, column in indexes2:
+#             value = DD[row, column]
+#             if print_assignment:
+#                 logging.debug(('(%d, %d) -> %f' % (row, column, value)))
+#             total.append(value)
+#         logging.debug(('FOV: %d, shape: %d,%d total cost: %f' % (ii, DD.shape[0], DD.shape[1], np.sum(total))))
+#         logging.debug((time.time() - t_start))
+#         costs.append(total)
+#         # send back the results in the format we want
+#     return matches, costs
 
 def norm_nrg(a_):
 
@@ -2208,7 +2211,7 @@ def whitened_matched_filter(data, locs, window):
     return datafilt
 
 
-def signal_filter(sg, freq, fr, order=3, mode='high'):
+def signal_filter(sg, freq, fr, order=3, mode='high', remove_mean=False):
     """
     Function for high/low passing the signal with butterworth filter
     
@@ -2231,5 +2234,20 @@ def signal_filter(sg, freq, fr, order=3, mode='high'):
     """
     normFreq = freq / (fr / 2)
     b, a = signal.butter(order, normFreq, mode)
-    sg = np.single(signal.filtfilt(b, a, sg, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    step = 10000
+    for i in range(0,sg.shape[0],step): # to make it scalable for large datasets
+        logging.info('Filtering pixels up to:'+str(i))  
+        temp_sig = sg[i:i+step]
+        if remove_mean:
+            temp_sig  -= temp_sig.mean(axis=1)[:,None]
+        sg[i:i+step] = np.single(signal.filtfilt(b, a, temp_sig, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    
     return sg
+
+def extract_spikes(traces, threshold):
+    spikes = []
+    for cc in traces:
+        cc = normalize(cc)
+        spk = find_peaks(cc, threshold)[0]
+        spikes.append(spk)
+    return spikes
