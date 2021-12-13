@@ -63,22 +63,12 @@ def main():
     pass  # For compatibility between running under Spyder and the CLI
 
 #%% Select file(s) to be processed (download if not present)
-#    fnames = ['Sue_2x_3000_40_-46.tif']  # filename to be processed
-#    if fnames[0] in ['Sue_2x_3000_40_-46.tif', 'demoMovie.tif']:
-#        fnames = [download_demo(fnames[1])]
-    # fnames = ['/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000.hdf5']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/7000/mov_R2_20190219T210000_7000.hdf5']
-    # # fnames = ['/media/nel/DATA/fiola/R2_20190219/full/mov_R2_20190219T210000.hdf5']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mov_R2_20190219T210000.hdf5']
-    # #fnames = ['/media/nel/DATA/fiola/R2_20190219/3000/mov_R2_20190219T210000_3000.hdf5']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/test/test.hdf5']
-    #fnames = ['/media/nel/DATA/fiola/R2_20190219/1000/mov_R2_20190219T210000_1000.hdf5']
-    from time import time
-    start = time()    
-    fnames = ['/media/nel/DATA/fiola/R2_20190219/3000/mov_R2_20190219T210000_3000.hdf5']
-    #folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/calcium_data/images_J123'
-    #fnames = ['/media/nel/DATA/fiola/dandi_3000.tif']
+    fnames = ['Sue_2x_3000_40_-46.tif']  # filename to be processed
+    if fnames[0] in ['Sue_2x_3000_40_-46.tif', 'demoMovie.tif']:
+        fnames = [download_demo(fnames[0])]
+    folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/calcium_data/images_J123'
+    fnames = sorted(os.listdir(folder, ))
+    fnames = [os.path.join(folder, ff) for ff in fnames]
 #%% First setup some parameters for data and motion correction
 
     # dataset dependent parameters
@@ -86,11 +76,11 @@ def main():
     decay_time = 0.4    # length of a typical transient in seconds
     dxy = (2., 2.)      # spatial resolution in x and y in (um per pixel)
     # note the lower than usual spatial resolution here
-    max_shift_um = (20., 20.)       # maximum shift in um
+    max_shift_um = (12., 12.)       # maximum shift in um
     patch_motion_um = (100., 100.)  # patch size for non-rigid correction in um
 
     # motion correction parameters
-    pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
+    pw_rigid = False       # flag to select rigid vs pw_rigid motion correction
     # maximum allowed rigid shift in pixels
     max_shifts = [int(a/b) for a, b in zip(max_shift_um, dxy)]
     # start a new patch for pw-rigid motion correction every x pixels
@@ -118,7 +108,7 @@ def main():
 # %% play the movie (optional)
     # playing the movie using opencv. It requires loading the movie in memory.
     # To close the video press q
-    display_images = False
+    display_images = True
 
     if display_images:
         m_orig = cm.load_movie_chain(fnames)
@@ -145,7 +135,7 @@ def main():
         ds_ratio = 0.2
         moviehandle = cm.concatenate([m_orig.resize(1, 1, ds_ratio) - mc.min_mov*mc.nonneg_movie,
                                       m_els.resize(1, 1, ds_ratio)], axis=2)
-        moviehandle.play(fr=30, q_max=99.5, magnification=1)  # press q to exit
+        moviehandle.play(fr=60, q_max=99.5, magnification=2)  # press q to exit
 
 # %% MEMORY MAPPING
     border_to_0 = 0 if mc.border_nan == 'copy' else mc.border_to_0
@@ -154,7 +144,7 @@ def main():
     # the boundaries
 
     # memory map the file in order 'C'
-    fname_new = cm.save_memmap(mc.mmap_file, base_name=f'memmap_pw_rigid_{pw_rigid}', order='C',dview=dview,
+    fname_new = cm.save_memmap(mc.mmap_file, base_name='memmap_', order='C',
                                border_to_0=border_to_0)  # exclude borders
 
     # now load the file
@@ -167,19 +157,19 @@ def main():
     c, dview, n_processes = cm.cluster.setup_cluster(
         backend='local', n_processes=None, single_thread=False)
 
-# %%  parameters for source extraction and deconvolution    
+# %%  parameters for source extraction and deconvolution
     p = 1                    # order of the autoregressive system
-    gnb = 1                 # number of global background components
-    merge_thr = 0.95         # merging tWhreshold, max correlation allowed
+    gnb = 2                  # number of global background components
+    merge_thr = 0.85         # merging threshold, max correlation allowed
     rf = 15
     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
-    stride_cnmf = 10         # amount of overlap between the patches in pixels
-    K = 5                    # number of components per patch
+    stride_cnmf = 6          # amount of overlap between the patches in pixels
+    K = 4                    # number of components per patch
     gSig = [4, 4]            # expected half size of neurons in pixels
     # initialization method (if analyzing dendritic data using 'sparse_nmf')
     method_init = 'greedy_roi'
-    ssub = 2                 # spatial subsampling during initialization
-    tsub = 2                 # temporal subsampling during intialization
+    ssub = 2                     # spatial subsampling during initialization
+    tsub = 2                     # temporal subsampling during intialization
 
     # parameters for component evaluation
     opts_dict = {'fnames': fnames,
@@ -226,7 +216,7 @@ def main():
     plt.title('Contour plots of found components')
 #%% save results
     cnm.estimates.Cn = Cn
-    #cnm.save(fname_new[:-5]+'_5_5_K_8_init.hdf5')
+    cnm.save(fname_new[:-5]+'_init.hdf5')
 
 # %% RE-RUN seeded CNMF on accepted patches to refine and perform deconvolution
     cnm2 = cnm.refit(images, dview=dview)
@@ -235,15 +225,15 @@ def main():
     #   a) the shape of each component must be correlated with the data
     #   b) a minimum peak SNR is required over the length of a transient
     #   c) each shape passes a CNN based classifier
-    min_SNR = 1.6  # signal to noise ratio for accepting a component
-    rval_thr = 0.8  # space correlation threshold for accepting a component
+    min_SNR = 2  # signal to noise ratio for accepting a component
+    rval_thr = 0.85  # space correlation threshold for accepting a component
     cnn_thr = 0.99  # threshold for CNN based classifier
     cnn_lowest = 0.1 # neurons with cnn probability lower than this value are rejected
 
     cnm2.params.set('quality', {'decay_time': decay_time,
                                'min_SNR': min_SNR,
                                'rval_thr': rval_thr,
-                               'use_cnn': False,
+                               'use_cnn': True,
                                'min_cnn_thr': cnn_thr,
                                'cnn_lowest': cnn_lowest})
     cnm2.estimates.evaluate_components(images, cnm2.params, dview=dview)
@@ -257,11 +247,8 @@ def main():
                                       idx=cnm2.estimates.idx_components)
         cnm2.estimates.view_components(images, img=Cn,
                                       idx=cnm2.estimates.idx_components_bad)
-        
-    #%%
-    #sort = np.argsort(cnm2.estimates.SNR_comp[cnm2.estimates.idx_components_bad])[::-1]
     #%% update object with selected components
-    #cnm2.estimates.select_components(use_object=True)
+    cnm2.estimates.select_components(use_object=True)
     #%% Extract DF/F values
     cnm2.estimates.detrend_df_f(quantileMin=8, frames_window=250)
 
@@ -269,22 +256,14 @@ def main():
     cnm2.estimates.view_components(img=Cn)
     #%%
     cnm2.estimates.Cn = Cn
-    cnm2.save(cnm2.mmap_file[:-5] + 'non_rigid_K_5.hdf5')
-    end = time()
-    print(end-start)
+    cnm2.save(cnm2.mmap_file[:-4] + 'hdf5')
     #%% reconstruct denoised movie (press q to exit)
     if display_images:
-        rec = cnm2.estimates.play_movie(images, q_max=99.9, gain_res=1,frame_range=slice(0, 1000, 1),
-                                  magnification=0.5,
-                                  bpx=0, 
-                                  include_bck=False, 
-                                  display=False)  # background not shown
+        cnm2.estimates.play_movie(images, q_max=99.9, gain_res=2,
+                                  magnification=2,
+                                  bpx=border_to_0,
+                                  include_bck=False)  # background not shown
 
-
-    #%%
-    from caiman.source_extraction.cnmf.cnmf import load_CNMF
-    cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8.hdf5')
-    cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/3000/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_3000_non_rigid_K_5.hdf5')
     #%% STOP CLUSTER and clean up log files
     cm.stop_server(dview=dview)
     log_files = glob.glob('*_LOG_*')

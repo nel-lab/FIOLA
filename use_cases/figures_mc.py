@@ -23,7 +23,7 @@ import cv2
 import timeit
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
-from viola.caiman_functions import to_3D, to_2D
+from fiola.utilities import to_3D, to_2D
 import scipy
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -34,7 +34,7 @@ matplotlib.rcParams['ps.fonttype'] = 42
 import matplotlib.pyplot  as plt
 
 #%% set folders
-cal = False
+cal = True
 if cal: 
     base_folder = "../../NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE"
     dataset = "/N.01.01"
