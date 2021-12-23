@@ -4,84 +4,132 @@ Config.py file is used to load parameters for FIOLA and CaImAn objects
 @author: @caichangjia
 """
 
-def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
-    if mode == 'voltage':
-        # setting params
-        # dataset dependent parameters
-        fr = 400                        # sample rate of the movie
-        ROIs = mask                     # a 3D matrix contains all region of interests
-        nb = 1                          # number of background components
-        mode = 'voltage'                # 'voltage' or 'calcium 'fluorescence indicator
-        #init_method = 'binary_masks'    # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
-        num_frames_init =  10000        # number of frames used for initialization
-               # estimated total number of frames for processing, this is used for generating matrix to store data
-        offline_batch_size = 200        # number of frames for one batch to perform offline motion correction
-        batch_size = 1                  # number of frames processing at the same time using gpu 
-        flip = True                     # whether to flip signal to find spikes   
-        ms = [10, 10]                   # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-        update_bg = True                # update background components for spatial footprints
-        filt_window = 15                # window size for removing the subthreshold activities 
-        minimal_thresh = 3.5            # minimal of the threshold 
-        template_window = 2             # half window size of the template; will not perform template matching if window size equals 0
+def load_fiola_config_voltron(fnames, num_frames_total, num_frames_init=10000, mask=None, ms = [10, 10], fr = 400,
+                              nb = 1, =10000, offline_batch_size = 200,
+                              batch_size=1, flip = True,  update_bg = True, filt_window=15,
+                              minimal_thresh=3.5, template_window=2):
+    """
+    Parameters
+    ----------
+    fnames : int
+        sample rate of the movie.
+    num_frames_total : int
+        estimated total number of frames for processing, this is used for generating matrix to store d.
+    num_frames_init : TYPE, optional
+            number of frames used for initialization. The default is 10000.
+    mask : TYPE, optional
+        a 3D matrix contains all region of interest. The default is None.
+    ms : TYPE, optional
+        maximum shift in x and y axis respectively. Will not perform motion correction if None. The default is [10, 10].
+    fr : TYPE, optional
+        DESCRIPTION. The default is 400.
+    nb : TYPE, optional
+        number of background components. The default is 1.
+    offline_batch_size : TYPE, optional
+        number of frames for one batch to perform offline motion correction. The default is 200.
+    batch_size : TYPE, optional
+        number of frames processing at the same time using gpu . The default is 1.
+    flip : TYPE, optional
+        whether to flip signal to find spikes. The default is True.
+    update_bg : TYPE, optional
+        update background components for spatial footprints. The default is True.
+    filt_window : TYPE, optional
+        window size for removing the subthreshold activities . The default is 15.
+    minimal_thresh : TYPE, optional
+        minimal threshold for spike detection. The default is 3.5.
+    template_window : TYPE, optional
+        half window size of the template; will not perform template matching if window size equals 0. The default is 2.
 
-        options = {
-            'fnames': fnames,
-            'fr': fr,
-            'ROIs': ROIs,
-            'mode': mode,
-#            'init_method':init_method,
-            'num_frames_init': num_frames_init, 
-            'num_frames_total':num_frames_total,
-            'offline_batch_size': offline_batch_size,
-            'batch_size':batch_size,
-            'flip': flip,
-            'ms': ms,
-            'update_bg': update_bg,
-            'filt_window': filt_window,
-            'minimal_thresh': minimal_thresh,
-            'template_window':template_window,
-            'nb': nb}
-        
-    elif mode == 'calcium':
-        fr = 30                         # sample rate of the movie
-        ROIs = mask                     # a 3D matrix contains all region of interests
-
-        mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-        # if ROIs is None:
-        #     init_method = 'caiman'  
-        # else:
-        # init_method = 'weighted_masks'  # initialization method 'caiman', 'weighted_masks' or 'binary_masks'. Needs to provide masks or using gui to draw masks if choosing 'masks'
-        num_frames_init =  1500         # number of frames used for initialization
-        # num_frames_total =  3000        # estimated total number of frames for processing, this is used for generating matrix to store data
-        offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
-        batch_size= 1                   # number of frames processing at the same time using gpu 
-        flip = False                    # whether to flip signal to find spikes   
-        ms = [5, 5]                     # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-        center_dims = None              # template dimensions for motion correction. If None, the input will the the shape of the FOV
-        hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
-                                        # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
-        n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication. Important when spatial matrix A is larger than 2GB.
-        
-        options = {
-            'fnames': fnames,
-            'fr': fr,
-            'ROIs': ROIs,
-            'mode': mode, 
-            'num_frames_init': num_frames_init, 
-            'num_frames_total':num_frames_total,
-            # 'init_method':init_method,
-            'offline_batch_size': offline_batch_size,
-            'batch_size':batch_size,
-            'flip': flip,
-            'ms': ms,
-            'hals_movie': hals_movie,
-            'center_dims':center_dims, 
-            'n_split': n_split}
+    Returns
+    -------
+    option dictionary.
+    """
     
-    else:
-        raise ValueError('mode must be "calcium" or "voltage"')
+    mode == 'voltage':
+    
+    options = {
+        'fnames': fnames,
+        'fr': fr,
+        'ROIs': ROIs,
+        'mode': mode,
+#            'init_method':init_method,
+        'num_frames_init': num_frames_init, 
+        'num_frames_total':num_frames_total,
+        'offline_batch_size': offline_batch_size,
+        'batch_size':batch_size,
+        'flip': flip,
+        'ms': ms,
+        'update_bg': update_bg,
+        'filt_window': filt_window,
+        'minimal_thresh': minimal_thresh,
+        'template_window':template_window,
+        'nb': nb}
+    
     
     return options
+
+def load_fiola_config_calcium(fnames, num_frames_total, num_frames_init=1500, mask=None, ms = [10, 10], fr = 30,
+                              nb = 1, offline_batch_size = 5,
+                              batch_size=1, flip = False, center_dims = None,
+                              hals_movie = 'hp_thresh', n_split = 1):
+    """
+    Parameters
+    ----------
+    fnames : int
+        sample rate of the movie.
+    num_frames_total : int
+        estimated total number of frames for processing, this is used for generating matrix to store d.
+    num_frames_init : TYPE, optional
+            number of frames used for initialization. The default is 1500.
+    mask : TYPE, optional
+        a 3D matrix contains all region of interest. The default is None.
+    ms : TYPE, optional
+        maximum shift in x and y axis respectively. Will not perform motion correction if None. The default is [10, 10].
+    fr : TYPE, optional
+        DESCRIPTION. The default is 30.
+    nb : TYPE, optional
+        number of background components. The default is 1.
+    offline_batch_size : TYPE, optional
+        number of frames for one batch to perform offline motion correction. The default is 5.
+    batch_size : TYPE, optional
+        number of frames processing at the same time using gpu . The default is 1.
+    flip : TYPE, optional
+        whether to flip signal to find spikes. The default is True.
+    center_dims : tuple
+        template dimensions for motion correction. If None, the input will the the shape of the FOV
+    hals_movie: str
+         apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp)
+         original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
+    n-split: int
+      split neuron spatial footprints into n_split portion before performing matrix multiplication. Important when spatial matrix A is larger than 2GB.
+    
+    Returns
+    -------
+      option dictionary.
+    """
+    
+    
+    options = {
+        'fnames': fnames,
+        'fr': fr,
+        'ROIs': mask,
+        'mode': mode, 
+        'num_frames_init': num_frames_init, 
+        'num_frames_total':num_frames_total,
+        # 'init_method':init_method,
+        'offline_batch_size': offline_batch_size,
+        'batch_size':batch_size,
+        'flip': flip,
+        'ms': ms,
+        'hals_movie': hals_movie,
+        'center_dims':center_dims, 
+        'n_split': n_split,
+        'nb' : nb}
+
+    return options
+
+
+
 
 def load_caiman_config(fnames):
     # params for caiman init

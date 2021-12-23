@@ -38,7 +38,20 @@ class FIOLA(object):
         else:
             self.params = params
         
-    def fit(self, mov_input, mode, mask=None):
+     def create_pipeline(self, trace_init, template, Ab):
+         logging.info('extracting spikes for initialization')
+         saoz = self.fit_spike_extraction(trace_init)
+     
+         logging.info('compiling new models for online analysis')
+         self.pipeline = Pipeline(self.params.data['mode'], self.mov, template, self.params.mc_nnls['batch_size'], Ab, saoz, 
+                                  ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=self.min_mov,
+                                  use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
+                                  center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
+                                  num_layers=self.params.mc_nnls['num_layers'])
+         
+         return self
+     
+     def fit(self, mov_input, mode, mask=None):
         """
         Offline method for doing motion correction, source extraction and spike detection(if needed).
         Prepare objects and parameters for the online analysis.
