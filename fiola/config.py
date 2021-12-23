@@ -60,6 +60,8 @@ def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
         center_dims = None              # template dimensions for motion correction. If None, the input will the the shape of the FOV
         hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
                                         # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
+        n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication. Important when spatial matrix A is larger than 2GB.
+        
         options = {
             'fnames': fnames,
             'fr': fr,
@@ -73,7 +75,8 @@ def load_fiola_config(fnames, num_frames_total, mode='voltage', mask=None):
             'flip': flip,
             'ms': ms,
             'hals_movie': hals_movie,
-            'center_dims':center_dims}
+            'center_dims':center_dims, 
+            'n_split': n_split}
     
     else:
         raise ValueError('mode must be "calcium" or "voltage"')

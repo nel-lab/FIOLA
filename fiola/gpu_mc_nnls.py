@@ -302,6 +302,28 @@ class compute_theta2(keras.layers.Layer):
         base_config = super().get_config().copy()
         return {**base_config, "A":self.A, "n_AtA":self.n_AtA}
     
+class compute_theta2_split(keras.layers.Layer):
+    def __init__(self, A, n_AtA, n_split=1, **kwargs): 
+        super().__init__(**kwargs)
+        self.A = A
+        self.n_AtA = n_AtA
+        self.n_split = n_split
+        
+    def call(self, X):
+        if self.n_split == 1:
+            Y = tf.matmul(X, self.A)
+        else:
+            size = np.ceil(self.A.shape[1] / self.n_split).astype(np.int32)
+            aa = [self.A[:, n * size : (n + 1) * size] for n in range(self.n_split)]
+            Y = tf.concat([tf.matmul(X, a) for a in aa], axis=1)
+        Y = tf.divide(Y, self.n_AtA)
+        Y = tf.transpose(Y)
+        return Y    
+    
+    def get_config(self):
+        base_config = super().get_config().copy()
+        return {**base_config, "A":self.A, "n_AtA":self.n_AtA, "n_split": self.n_split}
+    
 class Empty(keras.layers.Layer):
     def call(self,  fr):
         fr = fr[0, ..., 0]
@@ -326,7 +348,7 @@ def get_mc_model(template, batch_size, **kwargs):
     model = keras.Model(inputs=[fr_in], outputs=[mc, shifts])   
     return model
 
-def get_nnls_model(dims, Ab, batch_size, num_layers=10):
+def get_nnls_model(dims, Ab, batch_size, num_layers=10, n_split=1):
     """
     build gpu nnls model
     """
@@ -349,7 +371,7 @@ def get_nnls_model(dims, Ab, batch_size, num_layers=10):
     mc = mc_layer(fr_in)
     
     # chains motion correction layer to weight-calculation layer
-    c_th2 = compute_theta2(Ab, n_AtA)
+    c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
     th2 = c_th2(mc)
     
     # connects weights, to the NNLS layer
@@ -364,7 +386,7 @@ def get_nnls_model(dims, Ab, batch_size, num_layers=10):
     model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
     return model  
 
-def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
+def get_model(template, Ab, batch_size, num_layers=10, n_split=1, **kwargs):
     """
     build full gpu mc-nnls model
     """
@@ -385,7 +407,7 @@ def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
     mc = mc_layer(fr_in)
 
     # chains motion correction layer to weight-calculation layer
-    c_th2 = compute_theta2(Ab, n_AtA)
+    c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
     th2 = c_th2(mc)
     
     # connects weights, calculated from the motion correction, to the NNLS layer

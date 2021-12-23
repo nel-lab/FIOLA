@@ -26,7 +26,7 @@ class FIOLA(object):
                  ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
                  update_bg=True, use_spikes=False, batch_size=1, use_fft=True, normalize_cc=True,
-                 center_dims=None, num_layers=10, initialize_with_gpu=True, 
+                 center_dims=None, num_layers=10, n_split=1, initialize_with_gpu=True, 
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15, adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
@@ -77,13 +77,9 @@ class FIOLA(object):
                 template = bin_median(mov)
                 # here we don't remove min_mov as it is removed before
                 mov, self.shifts_offline, _ = self.fit_gpu_motion_correction(mov, template, self.params.mc_nnls['offline_batch_size'], 0) 
-            
-            order = 'C'                     
-                
             self.corr = local_correlations(mov, swap_dim=False)                        
                         
         else: 
-            order = 'F' 
             # perform motion correction before optimizing spatial footprints
             if self.params.mc_nnls['ms'] is None:
                 logging.info('skip motion correction')
@@ -129,17 +125,13 @@ class FIOLA(object):
         self.mov = mov
         
         if self.params.hals['estimate_neuron_baseline']:                
-            self.fit_hals(mov, mask, order=order)
+            self.fit_hals(mov, mask, order='F')
             
         else:
-            mask_2D = mask.transpose([1,2,0]).reshape((-1, mask.shape[0]))
+            mask_2D = to_2D(mask, order='F') 
             Ab = mask_2D.copy()
             Ab = Ab / norm(Ab, axis=0)
             self.Ab = Ab             
-            # mask_2D = to_2D(mask, order='C')
-            # Ab = mask_2D.T
-            # Ab = Ab / norm(Ab, axis=0)
-            # self.Ab = Ab
  
         logging.info('compiling models for extracting signal and spikes')     
         self.Ab = self.Ab.astype(np.float32)
@@ -247,7 +239,7 @@ class FIOLA(object):
         estimates.plot_contours(img=estimates.Cn)
         plt.title('found components') 
         plt.show()
-        mask = np.hstack((estimates.A.toarray(), estimates.b)).reshape([mov.shape[1], mov.shape[2], -1]).transpose([2, 0, 1])
+        mask = np.hstack((estimates.A.toarray(), estimates.b)).reshape([mov.shape[1], mov.shape[2], -1], order='F').transpose([2, 0, 1])
         trace_init = np.vstack((estimates.C, estimates.f))
         if np.ndim(trace_init) == 1:
             trace_init = trace_init[None, :]        
@@ -472,8 +464,7 @@ class FIOLA(object):
         x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
         x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
         num_components = Ab.shape[-1]
-        
-        nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'])
+        nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], self.params.mc_nnls['n_split'])
         nnls_model.compile(optimizer='rmsprop', loss='mse')   
         estimator = tf.keras.estimator.model_to_estimator(nnls_model)
         
@@ -557,7 +548,9 @@ class FIOLA(object):
                           ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
                           use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                           center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
-                          num_layers=self.params.mc_nnls['num_layers'])
+                          num_layers=self.params.mc_nnls['num_layers'], n_split=self.params.mc_nnls['n_split'])
+        
+
         model.compile(optimizer='rmsprop', loss='mse')   
         estimator = tf.keras.estimator.model_to_estimator(model)
         
@@ -635,7 +628,7 @@ class FIOLA(object):
         n = len(idx) 
         fig = plt.figure(figsize=(10, 10))
         
-        dims = self.dims
+        dims = img.shape
         
         spatial = self.estimates.Ab.T.reshape([-1, dims[0], dims[1]], order='F')
     

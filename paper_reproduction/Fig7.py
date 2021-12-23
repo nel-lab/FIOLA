@@ -7,15 +7,33 @@ Created on Tue Nov 30 09:37:36 2021
 """
 
 import caiman as cm
+from caiman.source_extraction.cnmf.cnmf import load_CNMF
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.linalg import norm
+import os
 from pynwb import NWBHDF5IO
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
-#path = '/media/nel/DATA/fiola/sub-R2_ses-20190206T210000_obj-16d9pmi_behavior+ophys.nwb'
-path = '/media/nel/DATA/fiola/R2_20190219/sub-R2_ses-20190219T210000_behavior+ophys.nwb'
-#path = '/media/nel/DATA/fiola/R4_20190904/sub-R4_ses-20190904T210000_behavior+ophys.nwb'
-#path = '/media/nel/DATA/fiola/F2_20190415/sub-F2_ses-20190415T210000_behavior+ophys.nwb'
+
+from fiola.config import load_fiola_config, load_caiman_config
+from fiola.fiolaparams import fiolaparams
+from fiola.fiola import FIOLA
+from fiola.utilities import bin_median, to_2D
+
+import sys
+sys.path.append('/home/nel/CODE/VIOLA/paper_reproduction')
+
+from Fig7_caiman_pipeline import run_caiman_fig7
+
+#base_folder = '/media/nel/storage/fiola/F2_20190415'
+#base_folder = '/media/nel/storage/fiola/R6_20200210T2100'
+base_folder = '/media/nel/DATA/fiola/R2_20190219'
+for file in os.listdir(base_folder):
+    if '.nwb' in file:
+        path = os.path.join(base_folder, file)
+        print(path)
+
 io = NWBHDF5IO(path, 'r')
 nwbfile_in = io.read()
 pos = nwbfile_in.processing['behavior'].data_interfaces['BehavioralTimeSeries'].time_series['pos'].data[:]
@@ -38,77 +56,10 @@ for i in range(len(pos_n)):
                 
 pos_s = StandardScaler().fit_transform(pos_n[:, None])[:, 0]
 spd_s = StandardScaler().fit_transform(speed[:, None])[:, 0]
-                
-# plt.figure(); 
-# plt.plot(pos)
-# plt.title('pos')
-# plt.plot(pos_n) 
-# plt.figure()
-# plt.plot(speed)
-# plt.title('spd')
-# 
-# mov_100 = nwbfile_in.acquisition['TwoPhotonSeries'].data[:1000]
-# #m1 = mov_100.mo
-# mov_l_100 = nwbfile_in.acquisition['TwoPhotonSeries'].data[-5000:-4000]
-# me = np.median(mov_100, axis=0)
-# me1 = np.median(mov_l_100, axis=0)
-# mm = cm.concatenate([cm.movie(me)[None, :, :], cm.movie(me1)[None, :, :]])
-# mov = cm.movie(mov)
-#mov.save('/media/nel/DATA/fiola/mov_R2_20190219T210000.hdf5')
-# mov[:1000].save('/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000_1000.hdf5')
-# mov[:5000].save('/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000_5000.hdf5')
-# mov[:7000].save('/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000_7000.hdf5')
 
-# mov.save('/media/nel/DATA/fiola/mov_R2_20190219T210000.hdf5')
-
-# masks = nwbfile_in.processing['ophys'].data_interfaces['ImageSegmentation'].plane_segmentations['PlaneSegmentation'].columns[0][:]
-# centers = nwbfile_in.processing['ophys'].data_interfaces['ImageSegmentation'].plane_segmentations['PlaneSegmentation'].columns[1][:]
-# #accepted = nwbfile_in.processing['ophys'].data_interfaces['ImageSegmentation'].plane_segmentations['PlaneSegmentation'].columns[2][:]
-# plt.imshow(masks.sum(0))
-# plt.scatter(centers[:, 0], centers[:, 1],  s=0.5, color='red')
-
-#%%
 trace0 = nwbfile_in.processing['ophys'].data_interfaces['Fluorescence'].roi_response_series['Deconvolved'].data[:]
 trace = nwbfile_in.processing['ophys'].data_interfaces['Fluorescence'].roi_response_series['RoiResponseSeries'].data[:]
-#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_30000.npy')
-#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_3000_nonrigid.npy')
-#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_30000_K_8.npy')
-#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_1285_nonrigid.npy')
-trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_1285_non_rigid_init_non_rigid_movie.npy')
-trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_1285_non_rigid_init_non_rigid_movie_nnls_only.npy')
-trace1 = trace1.T
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/3000/mean_roi_99.98.npy')
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_all_masks.npy')
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/3000/mean_roi_99.98_non_rigid.npy')
-#tracem = tracem.T
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks.npy')
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks_selected_1543.npy')
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks_selected_2365.npy')
-#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks_selected_1285.npy')
-tracem = np.load('/media/nel/DATA/fiola/R2_20190219/3000/mean_roi_99.98_non_rigid_init_non_rigid_1285.npy')
-#%%
-from sklearn.preprocessing import StandardScaler
-from caiman.source_extraction.cnmf.cnmf import load_CNMF
-cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8_K_8.hdf5')
-#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/caiman_online_results.hdf5')
-#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8_cnn_True.hdf5')
-#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8.hdf5')
-#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5.hdf5')
-#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp.hdf5')
-
-#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_.hdf5')
-tracec = cnm2.estimates.C[cnm2.estimates.idx_components] + cnm2.estimates.YrA[cnm2.estimates.idx_components]
-#tracec = cnm2.estimates.C + cnm2.estimates.YrA
-tracec = tracec.T
-#tracec = tracec[1:]
-#tracec = np.vstack([np.zeros((1, 1630)), tracec])
-#tracec_s = StandardScaler().fit_transform(tracec)
-#%%
-trace1_s = StandardScaler().fit_transform(trace1)
-tracem_s = StandardScaler().fit_transform(tracem)
-
-
-#%%
+                
 def remove_neurons_with_sparse_activities(trace, do_remove=True, std_level=5, timepoints=10):
     from sklearn.preprocessing import StandardScaler
     print(f'original trace shape {trace.shape}')
@@ -127,12 +78,207 @@ def remove_neurons_with_sparse_activities(trace, do_remove=True, std_level=5, ti
         trace_s = trace_s[:, sort]
     print(f'after removing neurons trace shape {trace_s.shape}')
     return trace_s, select
-   
-trace_s = remove_neurons_with_sparse_activities(trace)
-trace1_s = remove_neurons_with_sparse_activities(trace1)
-tracem_s = remove_neurons_with_sparse_activities(tracem)
-tracec_s = remove_neurons_with_sparse_activities(tracec)
 
+# mean roi
+def run_meanroi(mov, cnm, select):
+    A = cnm.estimates.A.toarray()
+    A = A[:, select]     
+    A = A.reshape([dims[0], dims[1], -1], order='F')
+    A = A.transpose([2, 0, 1])
+    aa = []
+    for i in range(A.shape[0]):
+        a = A[i].copy()
+        #a[a>np.percentile(a[a>0], 30)] = 1
+        a[a>np.percentile(a, 99.98)] = 1
+        a[a!=1]=0
+        aa.append(a)
+    aa = np.array(aa)
+    # plt.imshow(aa.sum(0))
+    # plt.figure()
+    # plt.imshow(A.sum(0))
+    aa = aa.transpose([1, 2, 0])
+    aa = aa.reshape([-1, aa.shape[-1]], order='F')
+    
+    trace = []
+    for idx in range(len(aa.T)):
+        nonz = np.where(aa[:, idx] >0)[0]
+        t = mov[:, nonz].mean(1)
+        trace.append(t)
+        if idx % 50 == 0:
+            print(idx)
+    trace = np.array(trace)
+    return trace
+
+def run_fiola(mov, cnm, select, fnames='/'):
+    # load movie and masks
+    mode_idx = 1
+    mode = ['voltage', 'calcium'][mode_idx]
+    mask = np.hstack([cnm.estimates.A[:, select].toarray(), cnm.estimates.b])    
+    #mask = np.hstack([cnm.estimates.A[:, cnm.estimates.idx_components].toarray(), cnm.estimates.b])    
+    #mask = mask.reshape([dims[0], dims[1], -1], order='C').transpose([2, 0, 1])
+    
+    mask = mask.reshape([dims[0], dims[1], -1], order='F').transpose([2, 0, 1])
+    Ab = to_2D(mask, order='F').T
+    Ab = Ab / norm(Ab, axis=0)
+
+    options = load_fiola_config(fnames, num_frames_total=30000, mode=mode, mask=mask) 
+    params = fiolaparams(params_dict=options)
+    fio = FIOLA(params=params)
+    fio.Ab = Ab        
+
+    min_mov = mov[:3000].min()
+    template = bin_median(mov[:3000])
+    plt.imshow(template)
+    trace = fio.fit_gpu_motion_correction_nnls(mov[:30000], template=template, batch_size=5, 
+                                min_mov=min_mov, Ab=fio.Ab)
+    #trace = fio.fit_gpu_nnls(mov[:31930], fio.Ab, batch_size=5) 
+    plt.plot(trace[:-2].T)
+    return trace    
+
+# plt.figure(); 
+# plt.plot(pos)
+# plt.title('pos')
+# plt.plot(pos_n) 
+# plt.figure()
+# plt.plot(speed)
+# plt.title('spd')
+# 
+# mov_100 = nwbfile_in.acquisition['TwoPhotonSeries'].data[:1000]
+# #m1 = mov_100.mo
+# mov_l_100 = nwbfile_in.acquisition['TwoPhotonSeries'].data[-5000:-4000]
+# me = np.median(mov_100, axis=0)
+# me1 = np.median(mov_l_100, axis=0)
+# mm = cm.concatenate([cm.movie(me)[None, :, :], cm.movie(me1)[None, :, :]])
+# mov = cm.movie(mm)
+#mov = nwbfile_in.acquisition['TwoPhotonSeries'].data[:]
+#cm.movie(mov).save('/media/nel/storage/fiola/R6_20200210T2100/mov_R6__20200210T2100.hdf5')
+#mov.save('/media/nel/DATA/fiola/mov_R2_20190219T210000.hdf5')
+# mov[:1000].save('/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000_1000.hdf5')
+# mov[:5000].save('/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000_5000.hdf5')
+# mov[:7000].save('/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000_7000.hdf5')
+
+# mov.save('/media/nel/DATA/fiola/mov_R2_20190219T210000.hdf5')
+
+# masks = nwbfile_in.processing['ophys'].data_interfaces['ImageSegmentation'].plane_segmentations['PlaneSegmentation'].columns[0][:]
+# centers = nwbfile_in.processing['ophys'].data_interfaces['ImageSegmentation'].plane_segmentations['PlaneSegmentation'].columns[1][:]
+# #accepted = nwbfile_in.processing['ophys'].data_interfaces['ImageSegmentation'].plane_segmentations['PlaneSegmentation'].columns[2][:]
+# plt.imshow(masks.sum(0))
+# plt.scatter(centers[:, 0], centers[:, 1],  s=0.5, color='red')
+
+#path = '/media/nel/DATA/fiola/sub-R2_ses-20190206T210000_obj-16d9pmi_behavior+ophys.nwb'
+#path = '/media/nel/DATA/fiola/R2_20190219/sub-R2_ses-20190219T210000_behavior+ophys.nwb'
+#path = '/media/nel/storage/fiola/sub-R6_ses-20200210T210000_obj-10qdhbr_behavior+ophys.nwb'
+#path = '/media/nel/storage/fiola/sub-R6_ses-20200206T210000_behavior+ophys.nwb'
+#path = '/media/nel/DATA/fiola/R4_20190904/sub-R4_ses-20190904T210000_behavior+ophys.nwb'
+#path = '/media/nel/DATA/fiola/F2_20190415/sub-F2_ses-20190415T210000_behavior+ophys.nwb'
+
+
+#%% save movie 
+mov = nwbfile_in.acquisition['TwoPhotonSeries'].data[:]
+mov = cm.movie(mov)
+try:
+    os.mkdir(os.path.join(base_folder, '3000'))
+    print('make folder')
+except:
+    print('fail to make folder')
+mov.save(os.path.join(base_folder, 'mov_raw.hdf5'))
+mov[:3000].save(os.path.join(base_folder, '3000', 'mov_raw_3000.hdf5'))
+
+#%% init
+fnames_init = os.path.join(base_folder, '5000', 'mov_raw_5000.hdf5')
+fnames_all = os.path.join(base_folder, 'mov_raw.hdf5')
+run_caiman_fig7(fnames_init, pw_rigid=True, motion_correction_only=False, K=5)
+run_caiman_fig7(fnames_all, pw_rigid=False, motion_correction_only=True)
+run_caiman_fig7(fnames_all, pw_rigid=True, motion_correction_only=False, K=8)
+
+#%%
+from sklearn.preprocessing import StandardScaler
+#caiman_output_path = os.path.join(base_folder, '5000', [file for file in os.listdir(base_folder+'/5000') if 'memmap_pw_rigid_True' in file and '.hdf5' in file][0])
+caiman_output_path = '/media/nel/DATA/fiola/R2_20190219/3000/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_3000_non_rigid_K_5.hdf5'
+cnm = load_CNMF(caiman_output_path)
+dims = (796, 512)
+A = cnm.estimates.A[:, cnm.estimates.idx_components].toarray()
+#A = cnm.estimates.A[:, :2000].toarray()
+noisy_C = cnm.estimates.C + cnm.estimates.YrA
+noisy_C = noisy_C.T
+noisy_C = StandardScaler().fit_transform(noisy_C)
+# select = []
+# high_act = []
+# std_level = 5; timepoints = 10
+# for idx in range(len(noisy_C.T)):
+#     t = noisy_C[:, idx]
+#     select.append(len(t[t>t.std() * std_level]) > timepoints)
+#     high_act.append(len(t[t>t.std() * std_level]))
+noisy_C_selected, select = remove_neurons_with_sparse_activities(noisy_C)
+select = np.zeros(cnm.estimates.C.shape[0])
+select[cnm.estimates.idx_components] = 1
+select = select.astype(bool)
+if np.array(select).sum()>1300:
+    raise Exception('Too many components for fiola')
+
+#%%
+trace = run_fiola(mov.astype(np.float32), cnm=cnm, select=select)
+np.save(os.path.join(base_folder, '3000/fiola_non_rigid_init.npy'), trace)
+
+#%%
+mmap_file = os.path.join(base_folder, [file for file in os.listdir(base_folder) if '.mmap' in file][0])
+mov = cm.load(mmap_file, in_memory=True)
+#mov = mov.reshape([mov.shape[0], 796, 512], order='F')
+mov = mov.reshape([mov.shape[0], -1], order='F')
+tracem = run_meanroi(mov, cnm, select)
+np.save(os.path.join(base_folder,'3000/mean_roi_99.98_non_rigid_init.npy'), tracem.T)
+
+#%%
+#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_30000.npy')
+#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_3000_nonrigid.npy')
+#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_30000_K_8.npy')
+#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_1285_nonrigid.npy')
+#trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_1285_non_rigid_init_non_rigid_movie.npy')
+trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_1285_non_rigid_init_non_rigid_movie_nnls_only.npy')
+#trace1 = np.load('/media/nel/storage/fiola/R6_20200210T2100/3000/fiola_non_rigid_init.npy')
+#trace1 = np.load('/media/nel/storage/fiola/F2_20190415/3000/fiola_non_rigid_init.npy')
+trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_do_hals.npy')
+trace1 = np.load('/media/nel/DATA/fiola/R2_20190219/3000/fiola_do_hals_new.npy')
+trace1 = trace1.T
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/3000/mean_roi_99.98.npy')
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_all_masks.npy')
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/3000/mean_roi_99.98_non_rigid.npy')
+#tracem = tracem.T
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks.npy')
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks_selected_1543.npy')
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks_selected_2365.npy')
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mean_roi_99.98_non_rigid_caiman_3000_masks_selected_1285.npy')
+#tracem = np.load('/media/nel/DATA/fiola/R2_20190219/3000/mean_roi_99.98_non_rigid_init_non_rigid_1285.npy')
+#tracem = np.load('/media/nel/storage/fiola/R6_20200210T2100/3000/mean_roi_99.98_non_rigid_init.npy')
+tracem = np.load('/media/nel/storage/fiola/F2_20190415/3000/mean_roi_99.98_non_rigid_init.npy')
+#tracem = tracem.T
+#%%
+from sklearn.preprocessing import StandardScaler
+from caiman.source_extraction.cnmf.cnmf import load_CNMF
+#cnm2 = load_CNMF('/media/nel/storage/fiola/R6_20200210T2100/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_31604_non_rigid_K_5.hdf5')
+#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8_K_8.hdf5')
+cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/caiman_online_results.hdf5')
+#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8_cnn_True.hdf5')
+#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8.hdf5')
+#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5.hdf5')
+#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp.hdf5')
+
+#cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_.hdf5')
+tracec = cnm2.estimates.C[cnm2.estimates.idx_components] + cnm2.estimates.YrA[cnm2.estimates.idx_components]
+#tracec = cnm2.estimates.C + cnm2.estimates.YrA
+tracec = tracec.T
+#tracec = tracec[1:]
+#tracec = np.vstack([np.zeros((1, 1630)), tracec])
+#tracec_s = StandardScaler().fit_transform(tracec)
+#%%
+trace1_s = StandardScaler().fit_transform(trace1)
+tracem_s = StandardScaler().fit_transform(tracem)
+#%%
+trace_s, _ = remove_neurons_with_sparse_activities(trace)
+trace1_s, _ = remove_neurons_with_sparse_activities(trace1)
+tracem_s, _ = remove_neurons_with_sparse_activities(tracem)
+tracec_s, _ = remove_neurons_with_sparse_activities(tracec, std_level=7, timepoints=15)
+tracec_s, _ = remove_neurons_with_sparse_activities(tracec)
 #%%
 first_act = []
 std_level = 5
@@ -141,7 +287,7 @@ for idx in range(len(tracec_s.T)):
     first_act.append(np.where(t>t.std() * std_level)[0][0])
     
 plt.plot(first_act)
-select = np.where(np.array(first_act)<3000)[0]
+select = np.where(np.array(first_act)<8000)[0]
 tracec_s = tracec_s[:, select]
 #%%
 from scipy.ndimage import gaussian_filter1d
@@ -173,7 +319,7 @@ def cross_validation_ridge(X, y, n_splits=5, alpha=500):
         x_train = X[cv_train]
         y_train = y[cv_train]
         x_test = X[cv_test]
-        y_test = y[cv_test]
+        y_test = y[cv_test]cnm2.estimates.idx_components
     
         clf = Ridge(alpha=alpha)
         clf.fit(x_train, y_train)  
@@ -181,27 +327,40 @@ def cross_validation_ridge(X, y, n_splits=5, alpha=500):
     return score
 
 #X = t_g[:30000]
-method = ['Suite2p', 'Fiola', 'MeanROI', 'CaImAn'][1:3]
-#X_list = [t_g, t1_g, tm_g, tc_g][1:2]
-X_list = [t1_g, tm_g]
-
+method = ['Suite2p', 'Fiola', 'MeanROI', 'CaImAn'][3:4]
+#X_list = [t_g, t1_g, tm_g, tc_g][0:3]
+#X_list = [t_g, t1_g, tm_g][0:3]
+X_list = [tc_g]
 r = {}
-alpha_list = [100, 500, 1000, 5000, 10000]
+alpha_list = [500, 1000, 5000]
 for idx, X in enumerate(X_list):
+    r[method[idx]] = []
     print(method[idx])
-    X = X[:30000]
-    y = pos_s[:30000]
-    score_all = {}
-    for alpha in alpha_list:
-        print(alpha)
-        score = cross_validation_ridge(X, y, n_splits=5, alpha=alpha)
-        score_all[alpha] = score
-    #print(score_all)
-    score_m = [np.mean(s) for s in score_all.values()]
-    print(f'max score:{max(score_m)}')
-    print(f'alpha:{alpha_list[np.argmax(score_m)]}')
-    r[method[idx]] = score_all[alpha_list[np.argmax(score_m)]]
-    
+    for num in range(100, 2800, 400):
+        print(num)        
+        X = X[:30000]
+        y = pos_s[:30000]
+        xx = X[:, :num]
+        score_all = {}
+        for alpha in alpha_list:
+            print(f'{alpha:} alpha')cnm2.estimates.idx_components
+            score = cross_validation_ridge(xx, y, n_splits=5, alpha=alpha)
+            score_all[alpha] = score
+        #print(score_all)
+        score_m = [np.mean(s) for s in score_all.values()]
+        print(f'max score:{max(score_m)}')
+        print(f'alpha:{alpha_list[np.argmax(score_m)]}')
+        r[method[idx]].append(np.mean(score_all[alpha_list[np.argmax(score_m)]]))
+        
+#%%
+xx = list(range(100, 2200, 200))
+plt.figure(); plt.plot(xx, r[method[0]]); plt.plot(xx, r[method[1]]); 
+plt.plot(xx, r[method[2]]); plt.plot(xx, r[method[3]])
+#plt.plot(xx, np.array(r) - np.array(r1)); 
+plt.legend(['Suite2p', 'Fiola', 'MeanROI','CaImAn', 'Difference Suite2p FIOLA'])
+plt.title('Performance vs different number of neurons')
+
+        
 #%%
 for key in r.keys():
     print(np.mean(r[key]))
@@ -221,11 +380,52 @@ plt.xticks(list(range(4)), method)
 plt.title('R^2 for prediction with cross validation')
 
 #plt.scatter([1, 1], [1, 2])
+
+#%%
+import numpy as np
+from sklearn.model_selection import KFold
+def cross_validation_ridge(X, y, n_splits=5, alpha=500):
+    score = []
+    kf = KFold(n_splits=5)
+    for cv_train, cv_test in kf.split(X):
+        x_train = X[cv_train]
+        y_train = y[cv_train]
+        x_test = X[cv_test]
+        y_test = y[cv_test]
+    
+        clf = Ridge(alpha=alpha)
+        clf.fit(x_train, y_train)  
+        score.append(clf.score(x_test, y_test))
+    return score
+
+#X = t_g[:30000]
+method = ['Suite2p', 'Fiola', 'MeanROI', 'CaImAn'][3:4]
+#X_list = [t_g, t1_g, tm_g, tc_g][1:2]
+#X_list = [t_g, t1_g, tm_g, tc_g][3:]
+X_list = [tc_g][0:1]
+
+r = {}
+alpha_list = [100, 500, 1000, 5000, 10000]
+for idx, X in enumerate(X_list):
+    print(method[idx])
+    X = X[:30000]
+    y = pos_s[:30000]
+    score_all = {}
+    for alpha in alpha_list:
+        print(alpha)
+        score = cross_validation_ridge(X, y, n_splits=5, alpha=alpha)
+        score_all[alpha] = score
+    #print(score_all)
+    score_m = [np.mean(s) for s in score_all.values()]
+    print(f'max score:{max(score_m)}')
+    print(f'alpha:{alpha_list[np.argmax(score_m)]}')
+    r[method[idx]] = score_all[alpha_list[np.argmax(score_m)]]
+
 #%%
 r = []
 train = [0, 10000]
 flag = 0
-test = [10000, 12000]
+#test = [10000, 12000]
 for test in [[i, i+2000] for i in range(10000, 30000, 2000)]:
     #test = [10000, 12000]
     clf = Ridge(alpha=800)

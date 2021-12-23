@@ -36,8 +36,8 @@ simplefilter(action='ignore', category=FutureWarning)
 #%%
 def main():
     #%% load movie and masks
-    folder = ''    
-    file_id = 1   
+    folder = '/home/nel/caiman_data/example_movies/volpy'    
+    file_id = 0   
     if file_id  == 0:
         fnames = download_demo(folder, 'demo_voltage_imaging.hdf5')
         path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
@@ -49,7 +49,7 @@ def main():
         mask = load(path_ROIs)
         mode = 'calcium'
     elif file_id  == 2:
-        fnames = '/home/nel/software/CaImAn/example_movies/demoMovie.tif'
+        fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
         path_ROIs = None
         mask = None
         mode = 'calcium'
@@ -58,7 +58,7 @@ def main():
     mov = (load(fnames)).astype(np.float32)    
     num_frames_total =  mov.shape[0]    
         
-    display_images = False
+    display_images = True
     if display_images:
         plt.figure()
         plt.imshow(mov.mean(0), vmax=np.percentile(mov.mean(0), 99.9))
@@ -97,45 +97,39 @@ def main():
     options = load_fiola_config(fnames, num_frames_total, mode, mask) 
     params = fiolaparams(params_dict=options)
     fio = FIOLA(params=params)
-    estimate_neuron_baseline = True
+    estimate_neuron_baseline = False
     if mask is not None:
-        mask_C_order = True
-        if mode == 'voltage': 
-            mask_C_order = False
-        # depending on how the matrix is reshaped we will need different order options
-        if mask_C_order: 
-            order = 'C'
-        else:
-            order = 'F'
-    else:
-        
+        pass
+    else:        
         if mode == 'voltage':
             raise Exception('Automatic initialization method not implemented for Voltage. please provide a binary mask')
-        #initialize with CaImAn
-        fio.params.mc_dict, fio.params.opts_dict, fio.params.quality_dict = load_caiman_config(fnames)
-        _, _ , mask = fio.fit_caiman_init(mc_mov[:fio.params.data['num_frames_init']], 
-                                            fio.params.mc_dict, 
-                                            fio.params.opts_dict, 
-                                            fio.params.quality_dict)
-        order = 'C'
+        elif mode == 'calcium':
+            #initialize with CaImAn
+            fio.params.mc_dict, fio.params.opts_dict, fio.params.quality_dict = load_caiman_config(fnames)
+            _, _ , mask = fio.fit_caiman_init(mc_mov[:fio.params.data['num_frames_init']], 
+                                                fio.params.mc_dict, 
+                                                fio.params.opts_dict, 
+                                                fio.params.quality_dict)
     
     if estimate_neuron_baseline or mode == 'voltage':
-        fio.fit_hals(mc_mov, mask, order=order) # transform binary masks into weighted masks  
+        fio.fit_hals(mc_mov, mask, order='F') # transform binary masks into weighted masks  
     else:
-        mask_2D = to_2D(mask, order='C')
+        mask_2D = to_2D(mask, order='F')
         Ab = mask_2D.T
         fio.Ab = Ab / norm(Ab, axis=0)
-        
+    
+    #%%
     t,w,h = mc_mov.shape   
     plt.figure()
     plt.imshow(fio.Ab[:,-1].reshape((w,h), order='F'))           
-    trace = fio.fit_gpu_nnls(mc_mov, fio.Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
+    trace = fio.fit_gpu_nnls(mc_mov[:30000], fio.Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
     plt.figure()
-    plt.plot(trace[:].T)
+    plt.plot(trace[:].T) 
     #%%
     import caiman as cm
     bcg = (fio.Ab[:,:-2].dot(trace[:-2])).astype(np.float32)
-    cm.movie(np.reshape(bcg.astype(np.float32),(h,w,t)).transpose([2,1,0])).resize(1,1,.2).play(gain=1,fr=100, magnification=1)
+    bcg = np.reshape(bcg.astype(np.float32),(h,w,t)).transpose([2,1,0])
+    cm.movie(bcg).resize(1,1,.2).play(gain=1,fr=100, magnification=1)
     #%% offline spike detection (only available for voltage currently)
     fio.saoz = fio.fit_spike_extraction(trace)
     #%% put the result in fio.estimates object
@@ -163,7 +157,7 @@ def main():
     #%% fit online frame by frame 
     start = time()
     for idx in range(scope[0], scope[1]):
-        fio.fit_online_frame(mov[idx:idx+1])   
+        fio.fit_online_frame(mov[idx:idx+1])   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i
     logging.info(f'total time online: {time()-start}')
     logging.info(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
         

@@ -18,7 +18,7 @@ from tifffile import imread
 #%% set up folders
 filepath = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p'
 movpath = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
-data = imread(movpath[0])[:1500]
+data = imread(movpath[0])
 n_time, Ly, Lx  = data.shape
 
 #%% set suite2 pparameters
@@ -27,9 +27,9 @@ ops['batch_size'] = 1
 ops['report_timing']  = True
 ops['nonrigid'] = False
 # ops['block_size'] = [548,496]
-ops['maxregshift']  = 0.03
-ops["nimg_init"]= 1500 
-ops["subpixel"]=20
+# ops['maxregshift']  = 0.03
+ops["nimg_init"] = n_time//2 
+ops["subpixel"] = 100
 print(ops)
 
 ops['data_path'] = filepath
@@ -42,11 +42,14 @@ output_ops = suite2p.run_s2p(ops, db)
 #%% show i mage
 plt.imshow(output_ops["refImg"])
 #%% suite2p output shifts (movementper frame fromregistration)
-plt.plot(output_ops["yoff"])
-plt.plot(output_ops["xoff"])
-# fiola_full_shifts = np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k37_20160109_AM_150um_65mW_zoom2p2_00001_00001_crop_viola_shifts.npy")
-# plt.plot(fiola_full_shifts[0])
-# plt.plot(fiola_full_shifts[1])
+plt.plot(ops["xoff"][1500:])
+# plt.plot(ops["yoff"][1500:])
+shiftPath= "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001_cm_on_shifts.npy"
+fiola_full_shifts = np.load(shiftPath)
+
+plt.plot(fiola_full_shifts[1500:,0])
+plt.plot(fiola_full_shifts[1500:,1])
+
 #%% metric testing
 ops = suite2p.registration.metrics(ops, use_red=False)
 #%%
