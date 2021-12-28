@@ -977,6 +977,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         http://proceedings.mlr.press/v39/kimura14.pdf
     """
     # smooth the components
+
     dims, T = np.shape(Y)[:-1], np.shape(Y)[-1]
     K = A.shape[1]  # number of neurons
     nb = b.shape[1]  # number of background components
@@ -991,7 +992,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
     ind_A = spr.csc_matrix(ind_A)  # indicator of nonnero pixels
     def HALS4activity(Yr, A, C, iters=2, semi_nmf=False):
         U = A.T.dot(Yr)
-        V = A.T.dot(A) + np.finfo(A.dtype).eps
+        V = (A.T.dot(A)).toarray() + np.finfo(A.dtype).eps        
         for _ in range(iters):
             for m in range(len(U)):  # neurons and background
                 if semi_nmf:
@@ -1015,13 +1016,14 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
                 A[:, K + m] = np.clip(A[:, K + m] + ((U[K + m] - V[K + m].dot(A.T)) /
                                                      V[K + m, K + m]), 0, np.inf)
         return A
-    Ab = np.c_[A, b]
+    Ab = scipy.sparse.hstack((A,b))
     Cf = np.r_[C, f.reshape(nb, -1)]
     count = 0
+    Yr = np.reshape(Y, (np.prod(dims), T), order='F')
     for thr_ in np.linspace(3.5,2.5,maxIter):
         count += 1
         logging.info('Hals Iteration activity:' + str(count))
-        Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf, semi_nmf=semi_nmf)
+        Cf = HALS4activity(Yr, Ab, Cf, semi_nmf=semi_nmf)
         Cf_processed = Cf.copy()
 
         if not update_bg:
@@ -1049,8 +1051,11 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
                     
         Cf = Cf_processed
         logging.info('Hals Iteration shape:' + str(count))
-        Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
-        
+        Ab = HALS4shape(Yr, Ab.toarray(), Cf)
+        if count<maxIter:
+            Ab = scipy.sparse.coo_matrix(Ab)
+    
+    
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
 
 def HALS4activity(Yr, A, C, iters=2, semi_nmf=False):

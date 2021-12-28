@@ -4,8 +4,8 @@ Config.py file is used to load parameters for FIOLA and CaImAn objects
 @author: @caichangjia
 """
 
-def load_fiola_config_voltron(fnames, num_frames_total, num_frames_init=10000, mask=None, ms = [10, 10], fr = 400,
-                              nb = 1, =10000, offline_batch_size = 200,
+def load_fiola_config_voltage(fnames, num_frames_total, num_frames_init=10000, mask=None, ms = [10, 10], fr = 400,
+                              nb = 1, offline_batch_size = 200,
                               batch_size=1, flip = True,  update_bg = True, filt_window=15,
                               minimal_thresh=3.5, template_window=2):
     """
@@ -45,12 +45,12 @@ def load_fiola_config_voltron(fnames, num_frames_total, num_frames_init=10000, m
     option dictionary.
     """
     
-    mode == 'voltage':
+    mode = 'voltage'
     
     options = {
         'fnames': fnames,
         'fr': fr,
-        'ROIs': ROIs,
+        'ROIs': mask,
         'mode': mode,
 #            'init_method':init_method,
         'num_frames_init': num_frames_init, 
@@ -108,6 +108,7 @@ def load_fiola_config_calcium(fnames, num_frames_total, num_frames_init=1500, ma
       option dictionary.
     """
     
+    mode = 'calcium'
     
     options = {
         'fnames': fnames,
