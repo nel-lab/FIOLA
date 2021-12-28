@@ -28,6 +28,9 @@ from skimage.io import imread
 from sklearn.decomposition import NMF
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from scipy.sparse import spdiags
+from past.utils import old_div
+from tifffile import memmap, imread
 
 from fiola.external.cell_magic_wand import cell_magic_wand_single_point
 
@@ -2256,3 +2259,50 @@ def extract_spikes(traces, threshold):
         spk = find_peaks(cc, threshold)[0]
         spikes.append(spk)
     return spikes
+
+#%%
+def compute_residuals(mov, Ain, b_in, f_in, Cin):
+    """
+    Compute the residual to be added to the nonnegative traces
+    """    
+    Yr = np.reshape(mov.transpose([1,2,0]), (Ain.shape[0], mov.shape[0]), order='F')
+    nA = (Ain.power(2).sum(axis=0))
+    nr = nA.size
+    YA = spdiags(old_div(1., nA), 0, nr, nr) * \
+        (Ain.T.dot(Yr) - (Ain.T.dot(b_in)).dot(f_in))
+    AA = spdiags(old_div(1., nA), 0, nr, nr) * (Ain.T.dot(Ain))
+    YrA = YA - AA.T.dot(Cin)
+    return YrA
+
+#% it is possible that this makes the computaiton slower. Not tested 
+def movie_iterator(fname, start_idx, end_idx, batch_size=1):
+    """
+    Parameters
+    ----------
+    fname : str
+        file name to be iterated over.
+    start_idx : int
+        start iteration in index.
+    end_idx : int
+        end iteration on index.
+
+    Yields
+    ------
+    iterator
+        frames and relative indexes
+
+    """
+    if fname.endswith('.tif') or fname.endswith('.tiff'):
+        print('mapping tif file')
+        memmap_image = memmap(fname)
+        for idx in range(start_idx, end_idx):
+            yield (idx, memmap_image[idx:idx+batch_size].astype(np.float32))
+    elif fname.endswith('.h5py') or fname.endswith('.hdf5') :
+        print('mapping CaImAn h5py/hdf5 file')
+        with h5py.File(fname, "r") as f:
+            memmap_image = f['mov']
+            # List all groups
+            for idx in range(start_idx, end_idx):
+                yield (idx, f['mov'][idx:idx+batch_size].astype(np.float32))
+    else:
+        raise FileNotFoundError(fname)

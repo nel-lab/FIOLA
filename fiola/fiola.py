@@ -263,7 +263,7 @@ class FIOLA(object):
      
 
         
-    def fit_hals(self, mov, A_sparse, b):
+    def fit_hals(self, mov, A_sparse):
         """
         optimize binary masks to be weighted masks using HALS algorithm
 
@@ -273,8 +273,6 @@ class FIOLA(object):
             input movie
         A : sparse matrix
             masks for each neuron
-        b: ndarray
-            estimate of background
             
 
         """
