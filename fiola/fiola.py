@@ -260,7 +260,9 @@ class FIOLA(object):
             
         
         return mov, trace_init, mask        
-            
+     
+
+        
     def fit_hals(self, mov, A_sparse, b):
         """
         optimize binary masks to be weighted masks using HALS algorithm
