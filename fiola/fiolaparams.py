@@ -11,8 +11,8 @@ class fiolaparams(object):
     def __init__(self, fnames=None, fr=400, ROIs=None, mode='voltage', init_method='binary_masks', num_frames_init=10000, num_frames_total=20000, 
                  ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
-                 update_bg=True, use_spikes=False, batch_size=1, use_fft=True, normalize_cc=True,
-                 center_dims=None, num_layers=10, n_split=1, initialize_with_gpu=True, 
+                 update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch_size=1, use_fft=True, normalize_cc=True,
+                 center_dims=None, num_layers=10, n_split=1, trace_with_neg=True, initialize_with_gpu=True, 
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
@@ -41,7 +41,7 @@ class fiolaparams(object):
             'semi_nmf': semi_nmf, # whether use semi-nmf (with no constraint in temporal components) instead of normal NMF
             'update_bg': update_bg, # update background components for spatial footprints
             'use_spikes': use_spikes, # whether to use reconstructed signals for the HALS algorithm
-            'estimate_neuron_baseline': True, # whether to use HALS to estimate the baseline of each neuron ater CaImAn (prevents nonnegativity from affecing the signal)
+            'estimate_neuron_baseline': False, # whether to use HALS to estimate the baseline of each neuron ater CaImAn (prevents nonnegativity from affecing the signal)
             'nb': nb                          #number of background components
             }
         
@@ -55,6 +55,7 @@ class fiolaparams(object):
             'center_dims':center_dims, # template dimensions for motion correction. If None, the input will the the shape of the FOV
             'num_layers': num_layers, # number of iterations performed for nnls
             'n_split': n_split, # split neuron spatial footprints into n_split portion before performing matrix multiplication
+            'trace_with_neg':trace_with_neg, # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
             'initialize_with_gpu': initialize_with_gpu # whether to use gpu for performing nnls during initialization 
         }
 

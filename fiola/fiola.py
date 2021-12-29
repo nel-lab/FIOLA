@@ -129,10 +129,11 @@ class FIOLA(object):
             
         else:
             mask_2D = to_2D(mask, order='F') 
+            mask_2D = mask_2D.T
             Ab = mask_2D.copy()
             Ab = Ab / norm(Ab, axis=0)
-            self.Ab = Ab             
- 
+            self.Ab = Ab   
+            
         logging.info('compiling models for extracting signal and spikes')     
         self.Ab = self.Ab.astype(np.float32)
         template = bin_median(mov)       
@@ -464,7 +465,8 @@ class FIOLA(object):
         x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
         x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
         num_components = Ab.shape[-1]
-        nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], self.params.mc_nnls['n_split'])
+        nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
+                                    self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
         nnls_model.compile(optimizer='rmsprop', loss='mse')   
         estimator = tf.keras.estimator.model_to_estimator(nnls_model)
         
@@ -538,7 +540,7 @@ class FIOLA(object):
         index = 0
         dims = mov.shape[1:]
         
-        b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')         
+        b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')    
         C_init = np.dot(Ab.T, b)
         x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
         x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
@@ -548,8 +550,8 @@ class FIOLA(object):
                           ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
                           use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                           center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
-                          num_layers=self.params.mc_nnls['num_layers'], n_split=self.params.mc_nnls['n_split'])
-        
+                          num_layers=self.params.mc_nnls['num_layers'], n_split=self.params.mc_nnls['n_split'], 
+                          trace_with_neg=self.params.mc_nnls['trace_with_neg'])
 
         model.compile(optimizer='rmsprop', loss='mse')   
         estimator = tf.keras.estimator.model_to_estimator(model)
@@ -571,7 +573,7 @@ class FIOLA(object):
         trace = []; 
         for ou in out:
             keys = list(ou.keys())
-            trace.append(ou[keys[0]][0])        
+            trace.append(ou[keys[1]][0])        
         trace = np.hstack(trace)
         
         return trace

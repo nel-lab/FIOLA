@@ -37,7 +37,7 @@ simplefilter(action='ignore', category=FutureWarning)
 def main():
     #%% load movie and masks
     folder = '/home/nel/caiman_data/example_movies/volpy'    
-    file_id = 0   
+    file_id = 3   
     if file_id  == 0:
         fnames = download_demo(folder, 'demo_voltage_imaging.hdf5')
         path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
@@ -53,9 +53,15 @@ def main():
         path_ROIs = None
         mask = None
         mode = 'calcium'
-        
+    elif file_id == 3:
+        fnames = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/multiple_neurons/FOV4_50um/caiman/FOV4_50um._rig__d1_128_d2_512_d3_1_order_F_frames_20000_.mmap'
+        path_ROIs = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/multiple_neurons/FOV4_50um/FOV4_50um_ROI.hdf5'
+        mask = load(path_ROIs)
+        mode = 'voltage'
     
     mov = (load(fnames)).astype(np.float32)    
+    mov = cm.load(fnames).astype(np.float32)
+    mov = mov.transpose([0, 2, 1])
     num_frames_total =  mov.shape[0]    
         
     display_images = True
@@ -156,8 +162,10 @@ def main():
 
     #%% fit online frame by frame 
     start = time()
+    tt = []
     for idx in range(scope[0], scope[1]):
         fio.fit_online_frame(mov[idx:idx+1])   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i
+        tt.append(time()-start)
     logging.info(f'total time online: {time()-start}')
     logging.info(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
         

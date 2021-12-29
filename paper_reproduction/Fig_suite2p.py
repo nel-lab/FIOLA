@@ -16,8 +16,9 @@ import glob
 from tifffile import imread
 
 #%% set up folders
-filepath = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p'
-movpath = glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
+k53_size = ["_256", "_512", "_1024"][2]
+filepath = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p' + k53_size
+movpath = glob.glob('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
 data = imread(movpath[0])
 n_time, Ly, Lx  = data.shape
 
@@ -27,7 +28,7 @@ ops['batch_size'] = 1
 ops['report_timing']  = True
 ops['nonrigid'] = False
 # ops['block_size'] = [548,496]
-# ops['maxregshift']  = 0.03
+ops['maxregshift']  = 0.05
 ops["nimg_init"] = n_time//2 
 ops["subpixel"] = 100
 print(ops)
@@ -42,7 +43,7 @@ output_ops = suite2p.run_s2p(ops, db)
 #%% show i mage
 plt.imshow(output_ops["refImg"])
 #%% suite2p output shifts (movementper frame fromregistration)
-plt.plot(ops["xoff"][1500:])
+plt.plot(output_ops["xoff1"][1500:])
 # plt.plot(ops["yoff"][1500:])
 shiftPath= "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001_cm_on_shifts.npy"
 fiola_full_shifts = np.load(shiftPath)
