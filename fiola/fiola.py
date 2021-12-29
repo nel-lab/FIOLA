@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 import numpy as np
 from numpy.linalg import norm
-import scipy
 from scipy.optimize import nnls  
 import tensorflow as tf
 gpus = tf.config.experimental.list_physical_devices('GPU') 
@@ -39,19 +38,6 @@ class FIOLA(object):
         else:
             self.params = params
         
-    def create_pipeline(self, mov, trace_init, template, Ab, min_mov=0):
-          logging.info('extracting spikes for initialization')
-          saoz = self.fit_spike_extraction(trace_init)
-          self.Ab = Ab
-          logging.info('compiling new models for online analysis')
-          self.pipeline = Pipeline(self.params.data['mode'], mov, template, self.params.mc_nnls['batch_size'], Ab, saoz, 
-                                   ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
-                                   use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
-                                   center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
-                                   num_layers=self.params.mc_nnls['num_layers'])
-         
-          return self
-     
     def fit(self, mov_input, mode, mask=None):
         """
         Offline method for doing motion correction, source extraction and spike detection(if needed).
@@ -260,10 +246,8 @@ class FIOLA(object):
             
         
         return mov, trace_init, mask        
-     
-
-        
-    def fit_hals(self, mov, A_sparse):
+            
+    def fit_hals(self, mov, mask, order='F'):
         """
         optimize binary masks to be weighted masks using HALS algorithm
 
@@ -271,13 +255,10 @@ class FIOLA(object):
         ----------
         mov : ndarray
             input movie
-        A : sparse matrix
+        mask : ndarray (binary)
             masks for each neuron
-            
 
         """
-
-        
         if self.params.spike['flip'] == True:
             logging.info('flipping movie for initialization')
             y = to_2D(-mov).copy() 
@@ -285,55 +266,78 @@ class FIOLA(object):
             logging.info('movie flip not requested')
             y = to_2D(mov).copy() 
             
+        y_filt = signal_filter(y.T,freq=self.params.hals['freq_detrend'], 
+                               fr=self.params.data['fr']).T        
+
         
-        hals_orig = False        
-        if self.params.hals['hals_movie']=='orig':
+        if self.params.hals['nb']>0:
+            mask = mask[:-self.params.hals['nb']]
+        
+        if self.params.hals['do_plot_init']:
+            plt.figure(); plt.imshow(mov.mean(0)); plt.title('Mean Image')
+            plt.figure(); plt.imshow(mask.sum(0)); plt.title('Masks')
+       
+        if self.params.hals['erosion'] > 0:
+            raise ValueError('mask erosion is not currently implemented')
+        
+        hals_orig = False
+        if self.params.hals['hals_movie']=='hp_thresh':
+            y_input = np.maximum(y_filt, 0).T
+        elif self.params.hals['hals_movie']=='hp':
+            y_input = y_filt.T
+        elif self.params.hals['hals_movie']=='orig':
             y_input = -y.T
             hals_orig = True
-        else: 
-            y_filt = signal_filter(y.T,freq=self.params.hals['freq_detrend'], 
-                                   fr=self.params.data['fr']).T        
-
-            if self.params.hals['hals_movie']=='hp_thresh':
-                y_input = np.maximum(y_filt, 0).T
-            elif self.params.hals['hals_movie']=='hp':
-                y_input = y_filt.T
-   
+    
+            
+        mask_2D = to_2D(mask, order=order)        
         if self.params.hals['use_rank_one_nmf']:
             y_seq = y_filt.copy()
             # standard deviation of average signal in each mask
-            std = [np.std(y_filt[:, np.where(A_sparse[:,i].toarray()>0)[0]].mean(1)) for i in A_sparse.shape[-1]]
+            std = [np.std(y_filt[:, np.where(mask_2D[i]>0)[0]].mean(1)) for i in range(len(mask_2D))]
             seq = np.argsort(std)[::-1]
             self.seq = seq                   
-            logging.info(f'sequence of rank1-nmf: {seq}')    
-            mask = np.hstack((A_sparse.toarray(), b)).reshape([mov.shape[1], mov.shape[2], -1], order='F').transpose([2, 0, 1])
+            logging.info(f'sequence of rank1-nmf: {seq}')        
             W, H = nmf_sequential(y_seq, mask=mask, seq=seq, small_mask=True)
             nA = np.linalg.norm(H)
             H = H/nA
             W = W*nA
         else:
             logging.info('regressing matrices')
-            nA = scipy.sparse.linalg.norm(A_sparse)
-            H = (A_sparse/nA).T
-            W = (H.dot(y_input)).T
-            self.seq = np.array(range(A_sparse.shape[-1]))
+            nA = np.linalg.norm(mask_2D)
+            H = mask_2D/nA
+            W = (y_input.T@H.T)
+            self.seq = np.array(range(mask_2D.shape[0]))
 
+        if self.params.hals['do_plot_init']:
+            plt.figure();plt.imshow(H.sum(axis=0).reshape(mov.shape[1:], order='F'));
+            plt.colorbar();plt.title('spatial masks before HALS')
         
         logging.info('computing hals')
         output_nb = np.maximum(self.params.hals['nb'],1)
+         
         A,C,b,f = hals(y_input, H.T, W.T, np.ones((y_filt.shape[1],output_nb ))/y_filt.shape[1],
                          np.random.rand(output_nb ,mov.shape[0]), bSiz=None, maxIter=3, semi_nmf=self.params.hals['semi_nmf'],
                          update_bg=self.params.hals['update_bg'], use_spikes=self.params.hals['use_spikes'],
                          hals_orig=hals_orig, fr=self.params.data['fr'])
+       
+        
+            
+        if self.params.hals['do_plot_init']:
+            plt.figure();plt.imshow(A.sum(axis=1).reshape(mov.shape[1:], order='F'), vmax=np.percentile(A.sum(axis=1), 99));
+            plt.colorbar();plt.title('spatial masks after hals'); plt.show()
+            plt.figure(); plt.imshow(b.reshape((mov.shape[1],mov.shape[2]), order='F')); plt.title('Background components');plt.show()
         
         if self.params.hals['update_bg']:
             Ab = np.hstack((A, b))
         else:
             Ab = A.copy()                    
-        
         Ab = Ab / norm(Ab, axis=0)
         self.Ab = Ab 
-
+        # if self.params.spike['flip'] == True:
+        #     self.Cf = HALS4activity(-y.T, Ab, C=np.zeros_like(np.vstack((C, f))))
+        # else:
+        #     self.Cf = HALS4activity(y.T, A, C=np.zeros_like(np.vstack((C, f))))
         return self
         
     def fit_gpu_motion_correction(self, mov, template, batch_size, min_mov):

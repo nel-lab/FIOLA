@@ -1,257 +1,193 @@
 #!/usr/bin/env python
 """
-Illustration of the usage of FIOLA with calcium and voltage imaging data. 
-For Calcium USE THE demo_initialize_calcium.py FILE TO GENERATE THE HDF5 files necessary for 
-initialize FIOLA. 
-For voltage this demo is self contained.   
-copyright in license file
-authors: @agiovann @changjia
+Pipeline for online analysis of fluorescence imaging data
+Voltage dataset courtesy of Karel Svoboda Lab (Janelia Research Campus).
+Calcium dataset courtesy of Sue Ann Koay and David Tank (Princeton University)
+@author: @agiovann, @caichangjia, @cynthia
 """
-#%%
+import glob
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
-from tensorflow.python.client import device_lib
-from time import time
-import scipy
+from numpy.linalg import norm
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
-from fiola.config import load_fiola_config_calcium, load_fiola_config_voltage
+from tensorflow.python.client import device_lib
+from threading import Thread
+from time import time
+
+from fiola.config import load_fiola_config, load_caiman_config
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
-from caiman.source_extraction.cnmf.utilities import get_file_size
-import caiman as cm
-from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
+from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations
 
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
                     "[%(process)d] %(message)s",
                     level=logging.INFO)
-    
+
 logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.4.1
+# import warnings filter
+from warnings import simplefilter
+# ignore all future warnings
+simplefilter(action='ignore', category=FutureWarning)
 
-#%% 
-fnames_exp  = None  
-mode = 'voltage'         
-#%% Parameter setting
-if mode == 'voltage':
-    folder = '/home/nel/caiman_data/example_movies/volpy'
-    fnames = [download_demo(folder, 'demo_voltage_imaging.hdf5')]
-    path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
-    mask = load(path_ROIs)
-    mode = 'voltage'   
-     
-    fnames_exp  = None           
-    mode = 'voltage'                                           # 'voltage' or 'calcium 'fluorescence indicator
-    if fnames_exp is not None:
-        num_frames_total = get_file_size(fnames_exp)[-1]
-    else:
-        num_frames_total = get_file_size(fnames)[-1]         # number of total frames including initialization
-
-    # maximum shift in x and y axis respectively. Will not perform motion correction if None. 
-    ms = [10, 10]   
-    # number of frames used for initialization
-    num_frames_init =  num_frames_total//2
-
-    #number of neurons
-    num_nr = mask.shape[0]
-    
-    logging.info('Loading Movie')
-    mov = cm.load(fnames, subindices=range(num_frames_init))
-    
-    
-    #estimated motion shifts from the initialization
-    logging.info('Motion correcting')
-    mc_mov, shift_caiman, xcorrs, template = mov.copy().motion_correct(ms[0], ms[1])              
-    Cn = mc_mov.local_correlations(eight_neighbours=True)
-    plt.plot(shift_caiman)
-    plt.figure()
-    plt.imshow(template)
-
-    min_mov = mov.min()
-    
-    
-elif mode == 'calcium':
-    #small file used for initialization purposes (see demo_initialize calcium)
-    fnames = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/dandi_deconding_data/mov_R2_20190219T210000_3000.hdf5']  
-    # output of the demo_initialize _calcium.py file. (alert, motion correction will be run on this whole file, although CNMF will only be run on num_frames_init frames)
-    caiman_file = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/dandi_deconding_data/memmap__d1_796_d2_512_d3_1_order_C_frames_1500_.hdf5' 
-    # file associated to a long experiments. If none the same file is used for both 
-    fnames_exp = '/home/nel/mov_R2_20190219T210000.hdf5'
-
-    # caiman_file = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/dandi_deconding_data/memmap__d1_100_d2_100_d3_1_order_C_frames_750_.hdf5'
-    # fnames = ['/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/dandi_deconding_data/mov_R2_20190219T210000_3000-crop.hdf5']
-
-    # caiman_file = '/home/nel/caiman_data/example_movies/memmap__d1_60_d2_80_d3_1_order_C_frames_1000_.hdf5'
-    # fnames = ['/home/nel/caiman_data/example_movies/demoMovie.tif']  # filename to be processed
-
-    # caiman_file = '/home/nel/caiman_data/example_movies/memmap__d1_170_d2_170_d3_1_order_C_frames_1500_.hdf5'
-    # fnames = ['/home/nel/caiman_data/example_movies/Sue_2x_3000_40_-46.tif']
-
-    # load results of initialization
-    cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
-    estimates = cnm2.estimates
-    mode = 'calcium'                                           # 'voltage' or 'calcium 'fluorescence indicator
-    if fnames_exp is not None:
-        num_frames_total = get_file_size(fnames_exp)[-1]
-    else:
-        num_frames_total = get_file_size(fnames)[-1]         # number of total frames including initialization
-
-    # maximum shift in x and y axis respectively. Will not perform motion correction if None. 
-    ms = [10, 10]   
-
-    #number of neurons
-    num_nr = estimates.nr
-    #estimated motion shifts from the initialization
-    shift_caiman = cnm2.estimates.shifts
-    # number of frames used for initialization
-    num_frames_init =  cnm2.estimates.C.shape[1]         
-    # loading initialization movie, this should not be too big
-    mov = cm.load(fnames,subindices=range(num_frames_init), in_memory=True)
-    min_mov = mov.min()
-    # template for motion correction obtained from initialization
-    template = cnm2.estimates.template
-
-else: 
-    raise Exception('mode must be either calcium or voltage')
-      
 #%%
-#example motion correction
-motion_correct = True
-#example source separation
-do_nnls = True
-#%% Mot corr only
-if motion_correct:
-    plt.close('all')
-    if mode == 'calcium':
-       options = load_fiola_config_calcium(fnames, num_frames_total=num_frames_total,
-                                       num_frames_init=num_frames_init, 
-                                       batch_size=1, ms=ms)
-   
-    else:
-       options = load_fiola_config_voltage(fnames, num_frames_total=num_frames_total,
-                                       num_frames_init=num_frames_init, 
-                                       batch_size=1, ms=ms)
-    
-    params = fiolaparams(params_dict=options)
-    fio = FIOLA(params=params)
-    # run motion correction on GPU on the initialization movie
-    mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], min_mov=min_mov)             
-    # compare shifts of CaImAn and FIOLA
-    plt.plot(shift_caiman)
-    plt.plot(shifts_fiola)
-else:    
-    mc_nn_mov = mov
-
-#%% NNLS Only
-if do_nnls:
-    if mode == 'calcium':
-        options = load_fiola_config_calcium(fnames, num_frames_total=num_frames_total,
-                                        num_frames_init=num_frames_init, 
-                                        batch_size=1, ms=ms)
-    
-    else:
-        options = load_fiola_config_voltage(fnames, num_frames_total=num_frames_total,
-                                        num_frames_init=num_frames_init, 
-                                        batch_size=1, ms=ms)
-    
-    params = fiolaparams(params_dict=options)
-    fio = FIOLA(params=params)
-    if mode == 'voltage':
-        A = scipy.sparse.coo_matrix(to_2D(mask, order='F')).T
-        fio.fit_hals(mc_nn_mov, A)
-        Ab = fio.Ab
-    else:
-        Ab = np.hstack((estimates.A.toarray(), estimates.b))
+def main():
+    #%% load movie and masks
+    folder = '/home/nel/caiman_data/example_movies/volpy'    
+    file_id = 0   
+    if file_id  == 0:
+        fnames = download_demo(folder, 'demo_voltage_imaging.hdf5')
+        path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
+        mask = load(path_ROIs)
+        mode = 'voltage'    
+    elif file_id == 1:
+        fnames = download_demo(folder, 'k53.tif')
+        path_ROIs = download_demo(folder, 'k53_ROIs.hdf5')
+        mask = load(path_ROIs)
+        mode = 'calcium'
+    elif file_id  == 2:
+        fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
+        path_ROIs = None
+        mask = None
+        mode = 'calcium'
         
-    # run NNLS and obtain nonnegative traces
-    trace_fiola_no_hals = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
     
-    if mode == 'calcium':
+    mov = (load(fnames)).astype(np.float32)    
+    num_frames_total =  mov.shape[0]    
         
-        # compute the residual to add the non-explained portion of the signal  (as YrA in CNMF)
-        YrA = compute_residuals(mc_nn_mov,  estimates.A, estimates.b, trace_fiola_no_hals[num_nr:], trace_fiola_no_hals[:num_nr])
-        trace_fiola_nohals_resid = np.vstack((YrA + trace_fiola_no_hals[:num_nr], trace_fiola_no_hals[num_nr:]))
-        #compare with caiman traces
-        trace_caiman = np.vstack((estimates.C[:,:num_frames_init] + estimates.YrA[:,:num_frames_init],estimates.f[:,:num_frames_init]))
-        
-        for idx in range(len(trace_caiman)//3):
-            plt.cla();
-            plt.plot(trace_caiman[idx]); 
-            plt.plot(trace_fiola_nohals_resid[idx])
-            plt.plot(trace_fiola_no_hals[idx])
-            plt.ginput()
-        plt.close()
-        cc = [np.corrcoef(s1,s2)[0,1] for s1,s2 in zip(trace_caiman,trace_fiola_nohals_resid)]
-        plt.hist(cc,30)
+    display_images = True
+    if display_images:
         plt.figure()
-        plt.scatter(cnm2.estimates.SNR_comp,cc[:-1])
+        plt.imshow(mov.mean(0), vmax=np.percentile(mov.mean(0), 99.9))
+        plt.title('Mean img')
+        if mask is not None:
+            plt.figure()
+            plt.imshow(mask.mean(0))
+            plt.title('Masks')
+    
+    #%% load configuration; set up FIOLA object
+    # In the first part, we will first show each part (motion correct, source separation and spike extraction) of 
+    # FIOLA separately in an offline manner. 
+    # Then in the second part, we will show the full pipeline and its real time frame-by-frame analysis performance
+    # Note one needs to installed CaImAn beforehand to perform CaImAn initialization
 
+    
+    #%% offline GPU motion correction example
+    options = load_fiola_config(fnames, num_frames_total, mode, mask) 
+    params = fiolaparams(params_dict=options)
+    fio = FIOLA(params=params)
+    fio.dims = mov.shape[1:]
+    template = bin_median(mov) 
+    mc_mov, shifts, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], mov.min())
+    # template = bin_median(mc_mov)
+    # mc_mov, shifts_2, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], mov.min())
+    if display_images:
+        plt.figure()
+        plt.plot(shifts)
+        # plt.plot(shifts_2)
+        plt.legend(['x shifts', 'y shifts'])
+        plt.title('shifts')
+        plt.show()
+        moviehandle = mc_mov.copy().reshape((-1, template.shape[0], template.shape[1]), order='F')
+        play(moviehandle, gain=1, q_min=5, q_max=99.99, fr=400)
+    #%%  offline GPU source separation
+    options = load_fiola_config(fnames, num_frames_total, mode, mask) 
+    params = fiolaparams(params_dict=options)
+    fio = FIOLA(params=params)
+    estimate_neuron_baseline = False
+    if mask is not None:
+        pass
+    else:        
+        if mode == 'voltage':
+            raise Exception('Automatic initialization method not implemented for Voltage. please provide a binary mask')
+        elif mode == 'calcium':
+            #initialize with CaImAn
+            fio.params.mc_dict, fio.params.opts_dict, fio.params.quality_dict = load_caiman_config(fnames)
+            _, _ , mask = fio.fit_caiman_init(mc_mov[:fio.params.data['num_frames_init']], 
+                                                fio.params.mc_dict, 
+                                                fio.params.opts_dict, 
+                                                fio.params.quality_dict)
+    
+    if estimate_neuron_baseline or mode == 'voltage':
+        fio.fit_hals(mc_mov, mask, order='F') # transform binary masks into weighted masks  
     else:
-        plt.plot(trace_fiola_no_hals.T)
+        mask_2D = to_2D(mask, order='F')
+        Ab = mask_2D.T
+        fio.Ab = Ab / norm(Ab, axis=0)
     
-#%% Full Pipeline
-# set up the parameters
-if mode == 'calcium':
-    options = load_fiola_config_calcium(fnames, num_frames_total=num_frames_total,
-                                    num_frames_init=num_frames_init, 
-                                    batch_size=1, ms=ms)
+    #%%
+    t,w,h = mc_mov.shape   
+    plt.figure()
+    plt.imshow(fio.Ab[:,-1].reshape((w,h), order='F'))           
+    trace = fio.fit_gpu_nnls(mc_mov[:30000], fio.Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
+    plt.figure()
+    plt.plot(trace[:].T) 
+    #%%
+    import caiman as cm
+    bcg = (fio.Ab[:,:-2].dot(trace[:-2])).astype(np.float32)
+    bcg = np.reshape(bcg.astype(np.float32),(h,w,t)).transpose([2,1,0])
+    cm.movie(bcg).resize(1,1,.2).play(gain=1,fr=100, magnification=1)
+    #%% offline spike detection (only available for voltage currently)
+    fio.saoz = fio.fit_spike_extraction(trace)
+    #%% put the result in fio.estimates object
+    fio.compute_estimates()
+    #%% show results
+    # bcg = fio.Ab[:,-2:].dot(trace[-2:])
+    # bcg = np.reshape(bcg.astype(np.float32),(h,w,t)).transpose([2,1,0])    
+    fio.corr = local_correlations(mc_mov-bcg, swap_dim=False)
+    if display_images:
+        fio.view_components(fio.corr)
+    
+    #%% ID USING CAIMAN INSTALLATION RESTART 
+    #%% Now we start the second part. It uses fit method to perform initialization 
+    # which prepare parameters, spatial footprints etc for real-time analysis
+    # Then we call fit_online to perform real-time analysis
+    options = load_fiola_config(fnames, num_frames_total, mode, mask) 
+    params = fiolaparams(params_dict=options)
+    fio = FIOLA(params=params)
+    if mask is None and mode == 'calcium':
+        fio.params.mc_dict, fio.params.opts_dict, fio.params.quality_dict = load_caiman_config(fnames)
 
-else:
-    options = load_fiola_config_voltage(fnames, num_frames_total=num_frames_total,
-                                    num_frames_init=num_frames_init, 
-                                    batch_size=1, ms=ms)
-    
+    scope = [fio.params.data['num_frames_init'], fio.params.data['num_frames_total']]
+    fio.fit(mov[:scope[0]], mode, mask)
 
-params = fiolaparams(params_dict=options)
-fio = FIOLA(params=params)
-if mode == 'voltage': # not thoroughly tested and computationally intensive for large files, it will estimate the baseline
-    fio.fit_hals(mc_nn_mov, A)
-    Ab = fio.Ab
-else:
-    Ab = np.hstack((estimates.A.toarray(), estimates.b))
+    #%% fit online frame by frame 
+    start = time()
+    for idx in range(scope[0], scope[1]):
+        fio.fit_online_frame(mov[idx:idx+1])   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i
+    logging.info(f'total time online: {time()-start}')
+    logging.info(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
+        
+    #%% fit online with a thread loading frames
+    # fio.pipeline.load_frame_thread = Thread(target=fio.pipeline.load_frame, 
+    #                                         daemon=True, 
+    #                                         args=(mov[scope[0]:scope[1], :, :],))
+    # fio.pipeline.load_frame_thread.start()
     
-fio = fio.create_pipeline(mc_nn_mov, trace_fiola_no_hals, template, Ab, min_mov=min_mov)
+    # start = time()
+    # fio.fit_online()
+    # logging.info(f'total time online: {time()-start}')
+    # logging.info(f'time per frame online: {(time()-start)/(scope[1]-scope[0])}')
+    
+    #%% put the result in fio.estimates object
+    fio.compute_estimates()
+    
+    #%% visualize the result, the last component is the background
+    if display_images:
+        fio.view_components(fio.corr)
+            
+    #%% save the result
+    save_name = f'{fnames.split(".")[0]}_fiola_result'
+    np.save(save_name, fio.estimates)
+    
+    #%%
+    log_files = glob.glob('*_LOG_*')
+    for log_file in log_files:
+        os.remove(log_file)
+        
 #%%
-time_per_step = np.zeros(num_frames_total-num_frames_init)
-traces = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
-start = time()
-if fnames_exp is not None:
-    name_movie = fnames_exp
-else:
-    name_movie = fnames[0]
-    
-for idx, memmap_image in movie_iterator(name_movie, num_frames_init, num_frames_total):
-    # List all groups       
-
-    if idx%100 == 0:
-        print(idx)        
-    fio.fit_online_frame(memmap_image)   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i        
-    traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
-    time_per_step[idx-num_frames_init] = (time()-start)
-
-traces = traces.T
-logging.info(f'total time online: {time()-start}')
-logging.info(f'time per frame online: {(time()-start)/(num_frames_total-num_frames_init)}')
-plt.plot(np.diff(time_per_step),'.')
-#%%#%% add residuals 
-fio.compute_estimates()
-# if suing a single movie we can compute the residual (this might be very expensive for large movies)
-# TODO: it should be an output of FIOLA
-if fnames_exp is None and mode == 'calcium':
-    mov = cm.load(cnm2.mmap_F, subindices=range(num_frames_init, num_frames_total), in_memory=True)
-    YrA = compute_residuals(mov,  estimates.A, estimates.b, traces[num_nr:], traces[:num_nr])
-    trace_fiola_nohals_resid = np.vstack((YrA + traces[:num_nr], traces[num_nr:]))
-    fio.estimates.trace[:,num_frames_init:] = trace_fiola_nohals_resid
-    fio.view_components(estimates.Cn)
-else:
-    fio.view_components(Cn)
-#%% uncomment for demo movies to compare the resuls on the full movie
-# cnm_total = cm.source_extraction.cnmf.cnmf.load_CNMF('/home/nel/caiman_data/example_movies/memmap__d1_60_d2_80_d3_1_order_C_frames_2000_.hdf5')
-# cnm_total.estimates.view_components()
-#%% save some interesting data
-if False:
-    np.savez(fnames[:-4]+'_rtx_2080ti.npz', time_per_step=time_per_step, traces=traces, 
-         caiman_file = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/dandi_deconding_data/memmap__d1_796_d2_512_d3_1_order_C_frames_1500_.hdf5', 
-         fnames_exp = '/home/nel/mov_R2_20190219T210000.hdf5', 
-         estimates = fio.estimates)
-
+if __name__ == "__main__":
+    main()
