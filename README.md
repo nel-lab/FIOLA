@@ -19,13 +19,17 @@ conda activate fiola
 pip install -r requirements.txt
 pip install -e.
 
-### mamba installation
+### mamba installation (suggested)
 In your base environment install mamba
 ``` conda install mamba ```
 
 then proceed to install fiola
 
-``` mamba install caiman -c conda-forge ```
+``` 
+mamba env create -f environment.yml -n fiola 
+conda activate fiola
+pip install -e . 
+```
 
 ## Demo
 It takes less than 5 mins to run the demo on a normal desktop computer
