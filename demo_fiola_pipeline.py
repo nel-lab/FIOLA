@@ -37,7 +37,7 @@ simplefilter(action='ignore', category=FutureWarning)
 def main():
     #%% load movie and masks
     folder = ''    
-    file_id = 1   
+    file_id = 2   
     if file_id  == 0:
         fnames = download_demo(folder, 'demo_voltage_imaging.hdf5')
         path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
@@ -49,7 +49,7 @@ def main():
         mask = load(path_ROIs)
         mode = 'calcium'
     elif file_id  == 2:
-        fnames = '/home/nel/software/CaImAn/example_movies/demoMovie.tif'
+        fnames = '/Users/joe/repos/CaImAn/example_movies/demoMovie.tif'
         path_ROIs = None
         mask = None
         mode = 'calcium'
@@ -134,15 +134,14 @@ def main():
     plt.plot(trace[:].T)
     #%%
     import caiman as cm
-    bcg = (fio.Ab[:,:-2].dot(trace[:-2])).astype(np.float32)
-    cm.movie(np.reshape(bcg.astype(np.float32),(h,w,t)).transpose([2,1,0])).resize(1,1,.2).play(gain=1,fr=100, magnification=1)
+    nb = params.get('opts_dict','nb')
+    bcg = (fio.Ab[:,-nb:].dot(trace[-nb:])).astype(np.float32).reshape(h,w,t).transpose([2,1,0])
+    cm.movie(bcg).resize(1,1,.2).play(gain=1,fr=100, magnification=1)
     #%% offline spike detection (only available for voltage currently)
     fio.saoz = fio.fit_spike_extraction(trace)
     #%% put the result in fio.estimates object
     fio.compute_estimates()
     #%% show results
-    # bcg = fio.Ab[:,-2:].dot(trace[-2:])
-    # bcg = np.reshape(bcg.astype(np.float32),(h,w,t)).transpose([2,1,0])    
     fio.corr = local_correlations(mc_mov-bcg, swap_dim=False)
     if display_images:
         fio.view_components(fio.corr)

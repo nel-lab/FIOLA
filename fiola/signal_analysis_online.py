@@ -124,7 +124,18 @@ class SignalAnalysisOnlineZ(object):
             self.trace = np.zeros((nn, num_frames), dtype=np.float32)
             self.trace[:, :tm] = trace_in.copy()      
             # todo: add calcium deconvolution
-            
+            from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
+            from caiman.source_extraction.cnmf.oasis import OASIS
+            # todo: provide p,nb as parameter; maybe parallelize
+            p, nb = 1, 2
+            results = map(lambda t: constrained_foopsi(t, p=p), trace_in[:-nb])
+            self.OASISinstances = [OASIS(
+                g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
+                for _, bl, _, gam, sn, _, lam in results]
+            for o, t in zip(self.OASISinstances, trace_in):
+                o.fit(t)
+                # self.estimates.C_on[i, :init_batch] = o.c
+
         return self
 
     def fit_next(self, trace_in, n):
