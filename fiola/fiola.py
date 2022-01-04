@@ -208,9 +208,11 @@ class FIOLA(object):
             self.estimates.seq = self.seq
         if self.params.data['mode'] == 'voltage':
             self.estimates.reconstruct_signal()
-            
+        elif self.params.data['mode'] == 'calcium':
+            self.estimates.trace_denoised, self.estimates.trace_deconvolved = \
+                np.transpose([[o.c, o.s] for o in self.estimates.OASISinstances], (1,0,2))
         return self
-    
+
     def fit_caiman_init(self, mov, mc_dict, opts_dict, quality_dict, save_movie=True):
         """
         run caiman initialization for FIOLA
