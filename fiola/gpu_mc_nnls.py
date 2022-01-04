@@ -20,10 +20,10 @@ from threading import Thread
 import timeit
 from fiola.utilities import HALS4activity
 
-def _parallel_oasis(args):
-    o, t = args
-    o.fit_next(t)
-    return o
+# def _parallel_oasis(args):
+#     o, t = args
+#     o.fit_next(t)
+#     return o
 
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, batch_size=1, ms_h=5, ms_w=5, min_mov=0, 
@@ -602,11 +602,12 @@ class Pipeline(object):
                 elif self.mode == 'calcium':
                     for i in range(len(traces_input)):
                         self.saoz.trace[:, self.n:(self.n+1)] = traces_input[i:i+1].T
-                        self.saoz.OASISinstances = self.saoz.pool.map(_parallel_oasis,
-                            zip(self.saoz.OASISinstances, traces_input[i]))
-                        # # w/o parallelization
-                        # for o, t in zip(self.saoz.OASISinstances, traces_input[i]):
-                        #     o.fit_next(t)
+                        # w/o parallelization
+                        for o, t in zip(self.saoz.OASISinstances, traces_input[i]):
+                            o.fit_next(t)
+                        # w/ parallelization
+                        # self.saoz.OASISinstances = self.saoz.pool.map(_parallel_oasis,
+                        #     zip(self.saoz.OASISinstances, traces_input[i]))
                         self.n += 1                               
                         if self.n % 1000 == 0:
                             logging.info(f'{self.n} frames processed')

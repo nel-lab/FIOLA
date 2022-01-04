@@ -13,14 +13,14 @@ from time import time
 
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
 
-from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
-def _parallel_foopsi(args):
-    t, p = args
-    return constrained_foopsi(t, p=p)
-def _parallel_oasis(args):
-    o, t = args
-    o.fit(t)
-    return o
+# from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
+# def _parallel_foopsi(args):
+#     t, p = args
+#     return constrained_foopsi(t, p=p)
+# def _parallel_oasis(args):
+#     o, t = args
+#     o.fit(t)
+#     return o
 
 class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
@@ -133,25 +133,26 @@ class SignalAnalysisOnlineZ(object):
             self.trace = np.zeros((nn, num_frames), dtype=np.float32)
             self.trace[:, :tm] = trace_in.copy()      
             # calcium deconvolution
+            from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
             from caiman.source_extraction.cnmf.oasis import OASIS
-            from multiprocessing import Pool
-            self.pool = Pool()
             # todo: provide p,nb as parameter
             p, nb = 1, 2
-            results_foopsi = self.pool.map(_parallel_foopsi,
-                zip(trace_in[:-nb], [p]*len(trace_in)))
+            # w/o parallelization
+            results_foopsi = map(lambda t: constrained_foopsi(t, p=p), trace_in[:-nb])
             self.OASISinstances = [OASIS(
                 g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
                 for _, bl, _, gam, sn, _, lam in results_foopsi]
-            self.OASISinstances = self.pool.map(_parallel_oasis, zip(self.OASISinstances, trace_in))
-
-            # # w/o parallelization
-            # results_foopsi = map(_parallel_foopsi, zip(trace_in[:-nb], [p]*len(trace_in)))
+            for o, t in zip(self.OASISinstances, trace_in):
+                o.fit(t)
+            # w/ parallelization
+            # from multiprocessing.pool import ThreadPool
+            # self.pool = ThreadPool()       
+            # results_foopsi = self.pool.map(_parallel_foopsi,
+            #     zip(trace_in[:-nb], [p]*len(trace_in)))
             # self.OASISinstances = [OASIS(
             #     g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
             #     for _, bl, _, gam, sn, _, lam in results_foopsi]
-            # for o, t in zip(self.OASISinstances, trace_in):
-            #     o.fit(t)
+            # self.OASISinstances = self.pool.map(_parallel_oasis, zip(self.OASISinstances, trace_in))
             
         return self
 
