@@ -48,8 +48,10 @@ plt.imshow(output_ops["refImg"])
 shiftPath= "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/k53_256_cm_on_shifts.npy"
 fiola_full_shifts = np.load(shiftPath)
 #%%  plot
-plt.plot(fiola_full_shifts[1500:,0])
-plt.plot(-(output_ops["yoff1"][1500:][:, 0] + output_ops["yoff"][1500:]))
+diff=
+mean =  np.mean(fiola_full_shifts[1500:,1])
+plt.plot(fiola_full_shifts[1500:,1]-mean)
+plt.plot(-2*(output_ops["xoff1"][1500:][:, 0] + output_ops["xoff"][1500:]))
 # plt.plot(output_ops["yoff1"][1500:]*2+1)
 # plt.plot(fiola_full_shifts[1500:,1])
 

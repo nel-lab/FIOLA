@@ -32,7 +32,7 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 #%% 
 def main():
 #%%
-    mode = 'voltage'                    # 'voltage' or 'calcium 'fluorescence indicator
+    mode = 'calcium'                    # 'voltage' or 'calcium 'fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
         folder = '/home/nel/caiman_data/example_movies/volpy'
@@ -81,6 +81,7 @@ def main():
     #    
     elif mode == 'calcium':
         fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
+        mask = None
         
         fr = 30                         # sample rate of the movie
         ROIs = mask                     # a 3D matrix contains all region of interests
