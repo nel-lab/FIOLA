@@ -48,7 +48,8 @@ class FIOLA(object):
                                    ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
                                    use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                                    center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
-                                   num_layers=self.params.mc_nnls['num_layers'])
+                                   num_layers=self.params.mc_nnls['num_layers'], n_split=self.params.mc_nnls['n_split'], 
+                                   trace_with_neg=self.params.mc_nnls['trace_with_neg'])
          
           return self
      

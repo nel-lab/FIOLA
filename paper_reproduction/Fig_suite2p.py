@@ -16,7 +16,7 @@ import glob
 from tifffile import imread
 
 #%% set up folders
-k53_size = ["_256", "_512", "_1024"][2]
+k53_size = ["_256", "_512", "_1024"][0]
 filepath = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p' + k53_size
 movpath = glob.glob('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.tif')
 data = imread(movpath[1])
@@ -45,11 +45,11 @@ output_ops = suite2p.run_s2p(ops, db)
 #%% show i mage
 plt.imshow(output_ops["refImg"])
 #%% suite2p output shifts (movementper frame fromregistration)
-shiftPath= "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001_cm_on_shifts.npy"
+shiftPath= "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/k53_256_cm_on_shifts.npy"
 fiola_full_shifts = np.load(shiftPath)
 #%%  plot
-   plt.plot(fiola_full_shifts[1500:,0])
-plt.plot(output_ops["xoff1"][1500:])
+plt.plot(fiola_full_shifts[1500:,0])
+plt.plot(-(output_ops["yoff1"][1500:][:, 0] + output_ops["yoff"][1500:]))
 # plt.plot(output_ops["yoff1"][1500:]*2+1)
 # plt.plot(fiola_full_shifts[1500:,1])
 

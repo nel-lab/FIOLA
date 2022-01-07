@@ -15,7 +15,6 @@ from tensorflow.python.client import device_lib
 from time import time
 import scipy
 
-from fiola.config import load_fiola_config_calcium, load_fiola_config_voltage
 from fiola.demo_initialize_calcium import run_caiman_init
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA

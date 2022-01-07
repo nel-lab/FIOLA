@@ -57,6 +57,9 @@ logging.basicConfig(format=
 def run_caiman_init(fnames):
     c, dview, n_processes = cm.cluster.setup_cluster(
             backend='local', n_processes=None, single_thread=False)
+    
+    timing = {}
+    timing['start'] = time()
 
     # dataset dependent parameters
     display_images = False
@@ -120,7 +123,7 @@ def run_caiman_init(fnames):
     plt.imshow(Cn,vmax=0.5)
     #   parameters for source extraction and deconvolution
     p = 1                    # order of the autoregressive system
-    gnb = 1                  # number of global background components
+    gnb = 2                  # number of global background components
     merge_thr = 0.85         # merging threshold, max correlation allowed
     rf = 15
     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
@@ -186,7 +189,7 @@ def run_caiman_init(fnames):
     cnm2.params.set('quality', {'decay_time': decay_time,
                                'min_SNR': min_SNR,
                                'rval_thr': rval_thr,
-                               'use_cnn': True,
+                               'use_cnn': False,
                                'min_cnn_thr': cnn_thr,
                                'cnn_lowest': cnn_lowest})
     cnm2.estimates.evaluate_components(images, cnm2.params, dview=dview)
@@ -211,13 +214,16 @@ def run_caiman_init(fnames):
     cnm2.estimates.Cn = Cn
     cnm2.estimates.template = mc.total_template_rig
     cnm2.estimates.shifts = mc.shifts_rig
-    cnm2.save(cnm2.mmap_file[:-4] + 'hdf5')
-    print(cnm2.mmap_file[:-4] + 'hdf5')
-    output_file = cnm2.mmap_file[:-4] + 'hdf5'
+    save_name = cnm2.mmap_file[:-5] + '_new.hdf5'
+    cnm2.save(save_name)
+    print(save_name)
+    output_file = save_name
     # STOP CLUSTER and clean up log files
     cm.stop_server(dview=dview)
     log_files = glob.glob('*_LOG_*')
     for log_file in log_files:
         os.remove(log_file)
+        
+    timing['end'] = time()
         
     return output_file
