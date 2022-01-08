@@ -292,12 +292,29 @@ class SignalAnalysisOnlineZ(object):
         return self
             
     def reconstruct_signal(self):
-        self.t_rec = np.zeros(self.trace.shape)
-        for idx in range(self.trace.shape[0]):
-            spikes = np.array(list(set(self.index[idx])-set([0])))
-            if spikes.size > 0:
-                self.t_rec[idx, spikes] = 1
-                self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]   
+        if self.mode == 'voltage':
+            self.t_rec = np.zeros(self.trace.shape)
+            for idx in range(self.trace.shape[0]):
+                spikes = np.array(list(set(self.index[idx])-set([0])))
+                if spikes.size > 0:
+                    self.t_rec[idx, spikes] = 1
+                    self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
+        elif self.mode == 'calcium':
+            if self.p==1: # use new faster parallelized Numba implementation
+                T = int(self._l[0,:self._i[0]].sum())
+                self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
+                self._v /= self._w
+                self._v[self._v < 0] = 0
+                for k, ii in enumerate(self._i):
+                    t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
+                    self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
+                self.trace_denoised = self.trace_deconvolved.copy()
+                g = np.exp(self._lg)
+                for j in range(T-1):
+                    self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
+            else: # use exisiting Cython implementation
+                self.trace_denoised, self.trace_deconvolved = \
+                    np.transpose([[o.c, o.s] for o in self.OASISinstances], (1,0,2))       
         return self
                 
     def reconstruct_movie(self, A, shape, scope):
