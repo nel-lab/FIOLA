@@ -13,19 +13,12 @@ from time import time
 
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
 
-# from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
-# def _parallel_foopsi(args):
-#     t, p = args
-#     return constrained_foopsi(t, p=p)
-# def _parallel_oasis(args):
-#     o, t = args
-#     o.fit(t)
-#     return o
 
 class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
-                 minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False):
+                 minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False,
+                 p=1):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -66,6 +59,8 @@ class SignalAnalysisOnlineZ(object):
                                             removing the median of the current frame)                 
             do_plot: bool
                 Whether to plot or not.
+            p: int
+                order of the AR process for calcium deconvolution
                 
         '''
         for name, value in locals().items():
@@ -134,26 +129,26 @@ class SignalAnalysisOnlineZ(object):
             self.trace[:, :tm] = trace_in.copy()      
             # calcium deconvolution
             from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
-            from caiman.source_extraction.cnmf.oasis import OASIS
-            # todo: provide p,nb as parameter
-            p, nb = 1, 2
-            # w/o parallelization
-            results_foopsi = map(lambda t: constrained_foopsi(t, p=p), trace_in[:-nb])
-            self.OASISinstances = [OASIS(
-                g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
-                for _, bl, _, gam, sn, _, lam in results_foopsi]
-            for o, t in zip(self.OASISinstances, trace_in):
-                o.fit(t)
-            # w/ parallelization
-            # from multiprocessing.pool import ThreadPool
-            # self.pool = ThreadPool()       
-            # results_foopsi = self.pool.map(_parallel_foopsi,
-            #     zip(trace_in[:-nb], [p]*len(trace_in)))
-            # self.OASISinstances = [OASIS(
-            #     g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
-            #     for _, bl, _, gam, sn, _, lam in results_foopsi]
-            # self.OASISinstances = self.pool.map(_parallel_oasis, zip(self.OASISinstances, trace_in))
-            
+            # todo: provide nb as parameter
+            nb = 2
+            results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:-nb])
+            if self.p==1: # use new faster parallelized Numba implementation
+                from fiola.oasis import par_fit_next
+                self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
+                                                    results_foopsi], dtype=np.float32).T
+                self._lg = np.log(self.g)
+                self._bl = self.b + self.lam*(1-self.g)
+                self._v, self._w, self._l = np.zeros((3, nn-nb, 1000), dtype=np.float32)
+                self._i = np.zeros(nn-nb, dtype=np.int32)  # index of last pool
+                for y in trace_in[:-nb].T:
+                    par_fit_next(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
+            else: # use exisiting Cython implementation
+                from caiman.source_extraction.cnmf.oasis import OASIS
+                self.OASISinstances = [OASIS(
+                    g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
+                    for _, bl, _, gam, sn, _, lam in results_foopsi]
+                for o, t in zip(self.OASISinstances, trace_in):
+                    o.fit(t)
         return self
 
     def fit_next(self, trace_in, n):

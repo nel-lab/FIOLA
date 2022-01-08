@@ -209,8 +209,22 @@ class FIOLA(object):
         if self.params.data['mode'] == 'voltage':
             self.estimates.reconstruct_signal()
         elif self.params.data['mode'] == 'calcium':
-            self.estimates.trace_denoised, self.estimates.trace_deconvolved = \
-                np.transpose([[o.c, o.s] for o in self.estimates.OASISinstances], (1,0,2))
+            if self.estimates.p==1: # use new faster parallelized Numba implementation
+                e = self.estimates
+                T = int(e._l[0,:e._i[0]].sum())
+                e.trace_deconvolved = np.zeros((len(e._v), T), dtype=np.float32)
+                e._v /= e._w
+                e._v[e._v < 0] = 0
+                for k, ii in enumerate(e._i):
+                    t = np.cumsum(e._l[k,:ii-1]).astype(np.uint32)
+                    e.trace_deconvolved[k,t] = e._v[k,1:ii] - e._v[k,:ii-1] * np.exp(e._lg[k] * e._l[k,:ii-1])
+                e.trace_denoised = e.trace_deconvolved.copy()
+                g = np.exp(e._lg)
+                for j in range(T-1):
+                    e.trace_denoised[:,j+1] += g*e.trace_denoised[:,j]
+            else: # use exisiting Cython implementation
+                self.estimates.trace_denoised, self.estimates.trace_deconvolved = \
+                    np.transpose([[o.c, o.s] for o in self.estimates.OASISinstances], (1,0,2))
         return self
 
     def fit_caiman_init(self, mov, mc_dict, opts_dict, quality_dict, save_movie=True):

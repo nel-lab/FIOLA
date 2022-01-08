@@ -19,6 +19,7 @@ from tensorflow.signal import fft3d, ifft3d, ifftshift
 from threading import Thread
 import timeit
 from fiola.utilities import HALS4activity
+from fiola.oasis import par_fit_next
 
 # def _parallel_oasis(args):
 #     o, t = args
@@ -602,12 +603,12 @@ class Pipeline(object):
                 elif self.mode == 'calcium':
                     for i in range(len(traces_input)):
                         self.saoz.trace[:, self.n:(self.n+1)] = traces_input[i:i+1].T
-                        # w/o parallelization
-                        for o, t in zip(self.saoz.OASISinstances, traces_input[i]):
-                            o.fit_next(t)
-                        # w/ parallelization
-                        # self.saoz.OASISinstances = self.saoz.pool.map(_parallel_oasis,
-                        #     zip(self.saoz.OASISinstances, traces_input[i]))
+                        if self.saoz.p==1: # use new faster parallelized Numba implementation
+                            par_fit_next(traces_input[i,:len(self.saoz._bl)]-self.saoz._bl, self.saoz._lg,
+                                        self.saoz._v, self.saoz._w, self.saoz._l, self.saoz._i)
+                        else: # use exisiting Cython implementation
+                            for o, t in zip(self.saoz.OASISinstances, traces_input[i]):
+                                o.fit_next(t)                            
                         self.n += 1                               
                         if self.n % 1000 == 0:
                             logging.info(f'{self.n} frames processed')
