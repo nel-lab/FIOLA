@@ -606,6 +606,11 @@ class Pipeline(object):
                         if self.saoz.p==1: # use new faster parallelized Numba implementation
                             par_fit_next(traces_input[i,:len(self.saoz._bl)]-self.saoz._bl, self.saoz._lg,
                                         self.saoz._v, self.saoz._w, self.saoz._l, self.saoz._i)
+                            tmp = self.saoz._v.shape[1]
+                            if self.saoz._i.max() >= tmp:
+                                vwl = np.zeros((3, len(self.saoz._bl), tmp+50), dtype=np.float32)
+                                vwl[:,:,:tmp] = self.saoz._v, self.saoz._w, self.saoz._l
+                                self.saoz._v, self.saoz._w, self.saoz._l = vwl
                         else: # use exisiting Cython implementation
                             for o, t in zip(self.saoz.OASISinstances, traces_input[i]):
                                 o.fit_next(t)                            

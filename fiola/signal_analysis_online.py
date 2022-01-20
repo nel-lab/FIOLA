@@ -138,10 +138,15 @@ class SignalAnalysisOnlineZ(object):
                                                     results_foopsi], dtype=np.float32).T
                 self._lg = np.log(self.g)
                 self._bl = self.b + self.lam*(1-self.g)
-                self._v, self._w, self._l = np.zeros((3, nn-nb, 1000), dtype=np.float32)
+                self._v, self._w, self._l = np.zeros((3, nn-nb, 50), dtype=np.float32)
                 self._i = np.zeros(nn-nb, dtype=np.int32)  # index of last pool
                 for y in trace_in[:-nb].T:
                     par_fit_next(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
+                    tmp = self._v.shape[1]
+                    if self._i.max() >= tmp:
+                        vwl = np.zeros((3, nn-nb, tmp+50), dtype=np.float32)
+                        vwl[:,:,:tmp] = self._v, self._w, self._l
+                        self._v, self._w, self._l = vwl
             else: # use exisiting Cython implementation
                 from caiman.source_extraction.cnmf.oasis import OASIS
                 self.OASISinstances = [OASIS(

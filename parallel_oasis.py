@@ -28,7 +28,7 @@ def par_fit_next(y,lg, v,w,l,i):
         v[k],w[k],l[k],i[k] = fit_next(y[k],lg[k], v[k],w[k],l[k],i[k])
 
 # generate data
-N, T = 400, 1000
+N, T = 400, 10000
 g, sn = .95, .1
 lg = np.log(g)
 firerate, framerate = .2, 30
@@ -43,11 +43,16 @@ reps = 2
 print('Process 1 frame at a time\nNumba')
 for _ in range(reps):
     lg = np.log(g)
-    v, w, l, s = np.zeros((4, N, T), dtype=np.float32)#'f4')
+    v, w, l = np.zeros((3, N, 50), dtype=np.float32)
     i = np.zeros(N, dtype=np.int32)  # index of last pool
     t = -time() 
     for y in Y.T:
         par_fit_next(y,lg*np.ones(N, dtype=np.float32), v,w,l,i)
+        tmp = v.shape[1]
+        if i.max()>=tmp:
+            vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
+            vwl[:,:,:tmp] = v,w,l
+            v, w, l = vwl
     t += time()
     print('Time per frame %.4fμs' % (t/T*1e6))
     print('Time per frame per neuron %.4fμs' % (t/T/N*1e6))
@@ -65,6 +70,7 @@ for _ in range(reps):
 
 
 # construct s and c
+s = np.zeros((N, T), dtype=np.float32)
 v /= w
 v[v < 0] = 0
 for k,ii in enumerate(i):
