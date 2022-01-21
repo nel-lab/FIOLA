@@ -1,4 +1,3 @@
-from multiprocessing.pool import Pool, ThreadPool
 from math import exp, log, sqrt
 import matplotlib.pyplot as plt
 from numba import njit, prange
@@ -28,7 +27,7 @@ def par_fit_next(y,lg, v,w,l,i):
         v[k],w[k],l[k],i[k] = fit_next(y[k],lg[k], v[k],w[k],l[k],i[k])
 
 # generate data
-N, T = 400, 1000
+N, T = 400, 10000
 g, sn = .95, .1
 lg = np.log(g)
 firerate, framerate = .2, 30
@@ -115,23 +114,26 @@ plt.show()
 @njit('f4[:], f4, f4[:], f4[:], f4[:], f4[:], f4[:], f4[:], i4[:], i4[:], i4, i4', cache=True)
 def fit_next_AR2(y,d,g11,g12,g11g11,g11g12, v,w,t,l,i,tt):
     # [first value, last value, start time, length] of pool
-    v[i], w[i], t[i], l[i] = y[tt], y[tt], tt, 1 
+    v[i], w[i], t[i], l[i] = y[tt], y[tt], tt, 1
+    ld = log(d)
     while (i > 0 and  # backtrack until violations fixed
-            ((g11[l[i-1]] * v[i-1] + g12[l[i-1]] * w[i-2] > v[i]) if i > 1
+            ((((g11[l[i-1]] * v[i-1] + g12[l[i-1]] * w[i-2]) if l[i-1] < 1000
+            else exp(ld*(l[i-1]+1)) * v[i-1] / (2*d-g11[1])) > v[i]) if i > 1
             else (w[i-1] * d > v[i]))):
         i -= 1
         # merge two pools
         l[i] += l[i+1]
-        ll = l[i] - 1
         if i > 0:
-            v[i] = (g11[:ll + 1].dot(y[t[i]:t[i] + l[i]])
+            ll = min(l[i] - 1, 999)  # precomputed kernel shorter than ISI -> simply truncate
+            v[i] = (np.ascontiguousarray(g11[:ll + 1]).dot(
+                    np.ascontiguousarray(y[t[i]:t[i]+ll+1]))
                         - g11g12[ll] * w[i-1]) / g11g11[ll]
             w[i] = (g11[ll] * v[i] + g12[ll] * w[i-1])
         else:  # update first pool too instead of taking it granted as true
-            ld = log(d)
-            v[i] = max(0, np.exp(ld * np.arange(ll+1)).
-                            dot(y[:l[i]]) * (1-d*d) / (1 - exp(ld*2*(ll+1))))
-            w[i] = exp(ld*ll) * v[i]
+            ll = min(l[i], 1000)
+            v[i] = max(0, np.exp(ld * np.arange(ll)).
+                            dot(y[:ll]) * (1-d*d) / (1 - exp(ld*2*ll)))
+            w[i] = exp(ld*(ll-1)) * v[i]
     i += 1
     return v,w,t,l,i
 
@@ -142,7 +144,7 @@ def par_fit_next_AR2(y,d,g11,g12,g11g11,g11g12, v,w,t,l,i,tt):
         v[k],w[k],t[k],l[k],i[k] = fit_next_AR2(y[k],d[k],g11[k],g12[k],g11g11[k],g11g12[k], v[k],w[k],t[k],l[k],i[k],tt)
 
 # generate data
-N, T = 400, 1000
+N, T = 400, 10000
 g1, g2, sn = 1.85, -.855, .3 # d,r = .95,.9
 firerate, framerate = .2, 30
 np.random.seed(0)
@@ -166,10 +168,10 @@ reps = 2
 print('\n\nAR2\n1 neuron\nNumba')
 for _ in range(reps):
     tt = 0
-    y = np.zeros(1000, dtype=np.float32)
+    y = np.zeros(T, dtype=np.float32)
     v, w = np.zeros((2, T), dtype=np.float32)
     t, l = np.zeros((2, T), dtype=np.int32)
-    i = 0 # np.zeros(N, dtype=np.int32)  # index of last pool
+    i = 0  # index of last pool
     t_ = -time() 
     for yt in Y[0]:
         y[tt] = yt 
@@ -195,15 +197,28 @@ g11g11_ = np.outer(np.ones(N, dtype=np.float32), g11g11)
 g11g12_ = np.outer(np.ones(N, dtype=np.float32), g11g12)
 for _ in range(reps):
     tt = 0
-    y = np.zeros((N, T), dtype=np.float32)
-    v, w = np.zeros((2, N, T), dtype=np.float32)
-    t, l = np.zeros((2, N, T), dtype=np.int32)
+    y = np.empty((N, 1000), dtype=np.float32)
+    v, w = np.zeros((2, N, 50), dtype=np.float32)
+    t, l = np.zeros((2, N, 50), dtype=np.int32)
     i = np.zeros(N, dtype=np.int32)  # index of last pool
     t_ = -time() 
     for yt in Y.T:
         y[:,tt] = yt 
         par_fit_next_AR2(y,d_, g11_,g12_,g11g11_,g11g12_, v,w,t,l,i,tt)
         tt +=1
+        tmp = v.shape[1]
+        if i.max()>=tmp:
+            vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+            tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+            vw[:,:,:tmp] = v,w
+            tl[:,:,:tmp] = t,l
+            v,w = vw
+            t,l = tl
+        tmp = y.shape[1]
+        if tt>=tmp:
+            yy = np.empty((N, tmp+1000), dtype=np.float32)
+            yy[:,:tmp] = y
+            y = yy
     t_ += time()
     print('Time per frame %.4fμs' % (t_/T*1e6))
     print('Time per frame per neuron %.4fμs' % (t_/T/N*1e6))
