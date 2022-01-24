@@ -19,7 +19,7 @@ from tensorflow.signal import fft3d, ifft3d, ifftshift
 from threading import Thread
 import timeit
 from fiola.utilities import HALS4activity
-from fiola.oasis import par_fit_next
+from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
 
 # def _parallel_oasis(args):
 #     o, t = args
@@ -601,19 +601,41 @@ class Pipeline(object):
                         self.n += 1
 
                 elif self.mode == 'calcium':
+                    sz = self.saoz
                     for i in range(len(traces_input)):
-                        self.saoz.trace[:, self.n:(self.n+1)] = traces_input[i:i+1].T
-                        if self.saoz.p==1: # use new faster parallelized Numba implementation
-                            par_fit_next(traces_input[i,:len(self.saoz._bl)]-self.saoz._bl, self.saoz._lg,
-                                        self.saoz._v, self.saoz._w, self.saoz._l, self.saoz._i)
-                            tmp = self.saoz._v.shape[1]
-                            if self.saoz._i.max() >= tmp:
-                                vwl = np.zeros((3, len(self.saoz._bl), tmp+50), dtype=np.float32)
-                                vwl[:,:,:tmp] = self.saoz._v, self.saoz._w, self.saoz._l
-                                self.saoz._v, self.saoz._w, self.saoz._l = vwl
-                        else: # use exisiting Cython implementation
-                            for o, t in zip(self.saoz.OASISinstances, traces_input[i]):
-                                o.fit_next(t)                            
+                        sz.trace[:, self.n:(self.n+1)] = traces_input[i:i+1].T
+                        if sz.p>0: # deconvolve/denoise
+                            if sz.use_numba:
+                                if sz.p==1: # use new faster parallelized Numba implementation
+                                    par_fit_next_AR1(traces_input[i,:len(sz._bl)]-sz._bl, sz._lg,
+                                                sz._v, sz._w, sz._l, sz._i)
+                                    tmp = sz._v.shape[1]
+                                    if sz._i.max() >= tmp:
+                                        vwl = np.zeros((3, len(sz._bl), tmp+50), dtype=np.float32)
+                                        vwl[:,:,:tmp] = sz._v, sz._w, sz._l
+                                        sz._v, sz._w, sz._l = vwl
+                                elif sz.p==2:
+                                    N = len(sz._bl)
+                                    sz._y[:,self.n] = traces_input[i,:N]-sz._bl
+                                    par_fit_next_AR2(sz._y,sz._d,
+                                                    sz._g11,sz._g12,sz._g11g11,sz._g11g12,
+                                                    sz._v,sz._w,sz._t,sz._l,sz._i,self.n)
+                                    tmp = sz._v.shape[1]
+                                    if sz._i.max()>=tmp:
+                                        vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                                        tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                                        vw[:,:,:tmp] = sz._v,sz._w
+                                        tl[:,:,:tmp] = sz._t,sz._l
+                                        sz._v,sz._w = vw
+                                        sz._t,sz._l = tl
+                                    tmp = sz._y.shape[1]
+                                    if self.n+1>=tmp:
+                                        yy = np.empty((N, tmp+1000), dtype=np.float32)
+                                        yy[:,:tmp] = sz._y
+                                        sz._y = yy                       
+                            else: # use exisiting Cython implementation
+                                for o, t in zip(sz.OASISinstances, traces_input[i]):
+                                    o.fit_next(t)                            
                         self.n += 1                               
                         if self.n % 1000 == 0:
                             logging.info(f'{self.n} frames processed')

@@ -18,7 +18,7 @@ class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False,
-                 p=1):
+                 p=1, use_numba=True):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -127,33 +127,76 @@ class SignalAnalysisOnlineZ(object):
         elif self.mode == 'calcium':
             self.trace = np.zeros((nn, num_frames), dtype=np.float32)
             self.trace[:, :tm] = trace_in.copy()      
-            # calcium deconvolution
-            from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
-            # todo: provide nb as parameter
-            nb = 2
-            results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:-nb])
-            if self.p==1: # use new faster parallelized Numba implementation
-                from fiola.oasis import par_fit_next
-                self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
-                                                    results_foopsi], dtype=np.float32).T
-                self._lg = np.log(self.g)
-                self._bl = self.b + self.lam*(1-self.g)
-                self._v, self._w, self._l = np.zeros((3, nn-nb, 50), dtype=np.float32)
-                self._i = np.zeros(nn-nb, dtype=np.int32)  # index of last pool
-                for y in trace_in[:-nb].T:
-                    par_fit_next(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
-                    tmp = self._v.shape[1]
-                    if self._i.max() >= tmp:
-                        vwl = np.zeros((3, nn-nb, tmp+50), dtype=np.float32)
-                        vwl[:,:,:tmp] = self._v, self._w, self._l
-                        self._v, self._w, self._l = vwl
-            else: # use exisiting Cython implementation
-                from caiman.source_extraction.cnmf.oasis import OASIS
-                self.OASISinstances = [OASIS(
-                    g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
-                    for _, bl, _, gam, sn, _, lam in results_foopsi]
-                for o, t in zip(self.OASISinstances, trace_in):
-                    o.fit(t)
+            if self.p>0: # calcium deconvolution
+                from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
+                # todo: provide nb as parameter
+                nb = 2
+                results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:-nb])
+                if self.use_numba: # use new faster parallelized Numba implementation
+                    from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
+                    if self.p==1:
+                        self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
+                                                            results_foopsi], dtype=np.float32).T
+                        self._lg = np.log(self.g)
+                        self._bl = self.b + self.lam*(1-self.g)
+                        self._v, self._w, self._l = np.zeros((3, nn-nb, 50), dtype=np.float32)
+                        self._i = np.zeros(nn-nb, dtype=np.int32)  # index of last pool
+                        for y in trace_in[:-nb].T:
+                            par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
+                            tmp = self._v.shape[1]
+                            if self._i.max() >= tmp:
+                                vwl = np.zeros((3, nn-nb, tmp+50), dtype=np.float32)
+                                vwl[:,:,:tmp] = self._v, self._w, self._l
+                                self._v, self._w, self._l = vwl
+                    elif self.p==2:
+                        self.b, self.lam, g1, g2 = np.array([[r[1], r[-1], *r[3]] for r in
+                                                            results_foopsi], dtype=np.float32).T
+                        self.g = np.transpose([g1,g2])
+                        self._bl = self.b + self.lam*(1-self.g.sum(1))
+                        # precompute
+                        self._d = (g1 + np.sqrt(g1*g1 + 4*g2)) / 2
+                        self._r = (g1 - np.sqrt(g1*g1 + 4*g2)) / 2
+                        self._g11 = ((np.exp(np.outer(np.log(self._d), np.arange(1, 1001))) -
+                                      np.exp(np.outer(np.log(self._r), np.arange(1, 1001)))) / 
+                                      (self._d - self._r)[:,None]).astype(np.float32)
+                        self._g12 = np.zeros_like(self._g11)
+                        self._g12[:,1:] = g2[:,None] * self._g11[:,:-1]
+                        self._g11g11 = np.cumsum(self._g11 * self._g11, axis=1)
+                        self._g11g12 = np.cumsum(self._g11 * self._g12, axis=1)
+                        N = nn-nb
+                        n = 0
+                        # initialize
+                        self._y = np.empty((N, 1000), dtype=np.float32)
+                        self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
+                        self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
+                        self._i = np.zeros(N, dtype=np.int32)  # index of last pool
+                        # process
+                        for yt in trace_in[:-nb].T:
+                            self._y[:,n] = yt-self._bl
+                            par_fit_next_AR2(self._y,self._d,
+                                             self._g11,self._g12,self._g11g11,self._g11g12,
+                                             self._v,self._w,self._t,self._l,self._i,n)
+                            n +=1
+                            tmp = self._v.shape[1]
+                            if self._i.max()>=tmp:
+                                vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                                tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                                vw[:,:,:tmp] = self._v,self._w
+                                tl[:,:,:tmp] = self._t,self._l
+                                self._v,self._w = vw
+                                self._t,self._l = tl
+                            tmp = self._y.shape[1]
+                            if n>=tmp:
+                                yy = np.empty((N, tmp+1000), dtype=np.float32)
+                                yy[:,:tmp] = self._y
+                                self._y = yy
+                else: # use exisiting Cython implementation
+                    from caiman.source_extraction.cnmf.oasis import OASIS
+                    self.OASISinstances = [OASIS(
+                        g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
+                        for _, bl, _, gam, sn, _, lam in results_foopsi]
+                    for o, t in zip(self.OASISinstances, trace_in):
+                        o.fit(t)
         return self
 
     def fit_next(self, trace_in, n):
@@ -304,19 +347,40 @@ class SignalAnalysisOnlineZ(object):
                 if spikes.size > 0:
                     self.t_rec[idx, spikes] = 1
                     self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
-        elif self.mode == 'calcium':
-            if self.p==1: # use new faster parallelized Numba implementation
+        elif self.mode == 'calcium' and self.p > 0:
+            if self.use_numba: # use new faster parallelized Numba implementation
                 T = int(self._l[0,:self._i[0]].sum())
-                self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
-                self._v /= self._w
-                self._v[self._v < 0] = 0
-                for k, ii in enumerate(self._i):
-                    t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
-                    self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
-                self.trace_denoised = self.trace_deconvolved.copy()
-                g = np.exp(self._lg)
-                for j in range(T-1):
-                    self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
+                if self.p==1:
+                    self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
+                    self._v /= self._w
+                    self._v[self._v < 0] = 0
+                    for k, ii in enumerate(self._i):
+                        t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
+                        self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
+                    self.trace_denoised = self.trace_deconvolved.copy()
+                    g = np.exp(self._lg)
+                    for j in range(T-1):
+                        self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
+                elif self.p==2:
+                    # construct c
+                    N = len(self._v)
+                    c = np.empty((N, T), dtype=np.float32)
+                    for n in range(N):
+                        tmp = max(self._v[n,0], 0)
+                        for j in range(self._l[n,0]):
+                            c[n,j] = tmp
+                            tmp *= self._d[n]
+                    for n in range(N):
+                        for k in range(1, self._i[n]+1):
+                            c[n,self._t[n,k]] = self._v[n,k]
+                            for j in range(self._t[n,k]+1, self._t[n,k]+self._l[n,k]-1):
+                                c[n,j] = self.g[n,0] * c[n,j-1] + self.g[n,1] * c[n,j-2]
+                            c[n,self._t[n,k]+self._l[n,k]-1] = self._w[n,k]
+                    # construct s
+                    self.trace_deconvolved = c.copy()
+                    self.trace_deconvolved[:,:2] = 0
+                    self.trace_deconvolved[:,2:] -= (self.g[:,:1] * c[:,1:-1] + self.g[:,1:] * c[:,:-2])
+                    self.trace_denoised = c
             else: # use exisiting Cython implementation
                 self.trace_denoised, self.trace_deconvolved = \
                     np.transpose([[o.c, o.s] for o in self.OASISinstances], (1,0,2))       
