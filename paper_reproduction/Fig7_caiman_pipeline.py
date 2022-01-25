@@ -24,6 +24,7 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+from time import time
 
 try:
     cv2.setNumThreads(0)
@@ -59,28 +60,18 @@ logging.basicConfig(format=
                     level=logging.WARNING)
 
 #%%
-def main():
-    pass  # For compatibility between running under Spyder and the CLI
-
-#%% Select file(s) to be processed (download if not present)
-#    fnames = ['Sue_2x_3000_40_-46.tif']  # filename to be processed
-#    if fnames[0] in ['Sue_2x_3000_40_-46.tif', 'demoMovie.tif']:
-#        fnames = [download_demo(fnames[1])]
-    # fnames = ['/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000.hdf5']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/7000/mov_R2_20190219T210000_7000.hdf5']
-    # # fnames = ['/media/nel/DATA/fiola/R2_20190219/full/mov_R2_20190219T210000.hdf5']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/full_nonrigid/mov_R2_20190219T210000.hdf5']
-    # #fnames = ['/media/nel/DATA/fiola/R2_20190219/3000/mov_R2_20190219T210000_3000.hdf5']
-    # fnames = ['/media/nel/DATA/fiola/R2_20190219/test/test.hdf5']
-    #fnames = ['/media/nel/DATA/fiola/R2_20190219/1000/mov_R2_20190219T210000_1000.hdf5']
-    from time import time
+def run_caiman_fig7(fnames, pw_rigid=False, motion_correction_only=False, K=5):
     start = time()    
-    fnames = ['/media/nel/DATA/fiola/R2_20190219/3000/mov_R2_20190219T210000_3000.hdf5']
-    #folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/calcium_data/images_J123'
+    # fnames = ['/media/nel/DATA/fiola/R2_20190219/3000/mov_R2_20190219T210000_3000.hdf5']
+    # fnames = ['/media/nel/storage/fiola/R6_20200210T2100/mov_R6_20200210T2100.hdf5']
+    # mm = cm.load(fnames, subindices=slice(0, 3000, 1))
+    # mm.play(fr=100, gain=0.1)
+    # mm.save('/media/nel/storage/fiola/R6_20200210T2100/3000/mov_R6_20200210T2100_3000.hdf5')
+    # fnames = ['/media/nel/storage/fiola/R6_20200210T2100/3000/mov_R6_20200210T2100_3000.hdf5']
+    # fnames = ['/media/nel/storage/fiola/R6_20200210T2100/mov_R6_20200210T2100.hdf5']
+    # #folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/calcium_data/images_J123'
     #fnames = ['/media/nel/DATA/fiola/dandi_3000.tif']
 #%% First setup some parameters for data and motion correction
-
     # dataset dependent parameters
     fr = 30             # imaging rate in frames per second
     decay_time = 0.4    # length of a typical transient in seconds
@@ -90,7 +81,7 @@ def main():
     patch_motion_um = (100., 100.)  # patch size for non-rigid correction in um
 
     # motion correction parameters
-    pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
+    #pw_rigid = False       # flag to select rigid vs pw_rigid motion correction
     # maximum allowed rigid shift in pixels
     max_shifts = [int(a/b) for a, b in zip(max_shift_um, dxy)]
     # start a new patch for pw-rigid motion correction every x pixels
@@ -137,6 +128,9 @@ def main():
 
 # %% Run (piecewise-rigid motion) correction using NoRMCorre
     mc.motion_correct(save_movie=True)
+    
+    if motion_correction_only:
+        return 1
 
 # %% compare with original movie
     if display_images:
@@ -169,12 +163,12 @@ def main():
 
 # %%  parameters for source extraction and deconvolution    
     p = 1                    # order of the autoregressive system
-    gnb = 1                 # number of global background components
+    gnb = 2                 # number of global background components
     merge_thr = 0.95         # merging tWhreshold, max correlation allowed
     rf = 15
     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 10         # amount of overlap between the patches in pixels
-    K = 5                    # number of components per patch
+    #K = 5                    # number of components per patch
     gSig = [4, 4]            # expected half size of neurons in pixels
     # initialization method (if analyzing dendritic data using 'sparse_nmf')
     method_init = 'greedy_roi'
@@ -222,8 +216,8 @@ def main():
                                            dview=dview)
     Cn = Cns.max(axis=0)
     Cn[np.isnan(Cn)] = 0
-    cnm.estimates.plot_contours(img=Cn)
-    plt.title('Contour plots of found components')
+    # cnm.estimates.plot_contours(img=Cn)
+    # plt.title('Contour plots of found components')
 #%% save results
     cnm.estimates.Cn = Cn
     #cnm.save(fname_new[:-5]+'_5_5_K_8_init.hdf5')
@@ -263,28 +257,31 @@ def main():
     #%% update object with selected components
     #cnm2.estimates.select_components(use_object=True)
     #%% Extract DF/F values
-    cnm2.estimates.detrend_df_f(quantileMin=8, frames_window=250)
+    #cnm2.estimates.detrend_df_f(quantileMin=8, frames_window=250)
 
     #%% Show final traces
-    cnm2.estimates.view_components(img=Cn)
+    #cnm2.estimates.view_components(img=Cn)
     #%%
     cnm2.estimates.Cn = Cn
     cnm2.save(cnm2.mmap_file[:-5] + 'non_rigid_K_5.hdf5')
     end = time()
     print(end-start)
+    print(cnm2.estimates.A.shape)
+    print(len(cnm2.estimates.idx_components))
     #%% reconstruct denoised movie (press q to exit)
-    if display_images:
-        rec = cnm2.estimates.play_movie(images, q_max=99.9, gain_res=1,frame_range=slice(0, 1000, 1),
-                                  magnification=0.5,
-                                  bpx=0, 
-                                  include_bck=False, 
-                                  display=False)  # background not shown
+    # if display_images:
+    #     rec = cnm2.estimates.play_movie(images, q_max=99.9, gain_res=1,frame_range=slice(0, 1000, 1),
+    #                               magnification=0.5,
+    #                               bpx=0, 
+    #                               include_bck=False, 
+    #                               display=False)  # background not shown
 
 
-    #%%
-    from caiman.source_extraction.cnmf.cnmf import load_CNMF
-    cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8.hdf5')
-    cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/3000/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_3000_non_rigid_K_5.hdf5')
+    # #%%
+    # from caiman.source_extraction.cnmf.cnmf import load_CNMF
+    # cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8.hdf5')
+    # cnm2 = load_CNMF('/media/nel/DATA/fiola/R2_20190219/3000/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_3000_non_rigid_K_5.hdf5')
+    # cnm2 = load_CNMF('/media/nel/storage/fiola/R6_20200210T2100/3000/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_3000_non_rigid_K_5.hdf5')
     #%% STOP CLUSTER and clean up log files
     cm.stop_server(dview=dview)
     log_files = glob.glob('*_LOG_*')
@@ -294,5 +291,5 @@ def main():
 # %%
 # This is to mask the differences between running this demo in Spyder
 # versus from the CLI
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

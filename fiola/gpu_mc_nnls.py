@@ -21,11 +21,6 @@ import timeit
 from fiola.utilities import HALS4activity
 from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
 
-# def _parallel_oasis(args):
-#     o, t = args
-#     o.fit_next(t)
-#     return o
-
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, batch_size=1, ms_h=5, ms_w=5, min_mov=0, 
                  strides=[1,1,1,1], padding='VALID',use_fft=True, 
@@ -308,6 +303,44 @@ class compute_theta2(keras.layers.Layer):
         base_config = super().get_config().copy()
         return {**base_config, "A":self.A, "n_AtA":self.n_AtA}
     
+class compute_trace_with_noise(keras.layers.Layer):
+    def __init__(self, AtA, n_AtA,  **kwargs): 
+        super().__init__(**kwargs)
+        self.n_AtA = n_AtA
+        self.AtA = AtA
+                
+    def call(self, th2, trace):
+        YA = tf.multiply(th2, self.n_AtA)
+        YrA = YA - tf.matmul(self.AtA.T, trace[0])
+        trace_with_noise = YrA + trace
+        return trace_with_noise    
+    
+    def get_config(self):
+        base_config = super().get_config().copy()
+        return {**base_config, "n_AtA":self.n_AtA, "AtA":self.AtA}
+    
+class compute_theta2_split(keras.layers.Layer):
+    def __init__(self, A, n_AtA, n_split=1, **kwargs): 
+        super().__init__(**kwargs)
+        self.A = A
+        self.n_AtA = n_AtA
+        self.n_split = n_split
+        
+    def call(self, X):
+        if self.n_split == 1:
+            Y = tf.matmul(X, self.A)
+        else:
+            size = np.ceil(self.A.shape[1] / self.n_split).astype(np.int32)
+            aa = [self.A[:, n * size : (n + 1) * size] for n in range(self.n_split)]
+            Y = tf.concat([tf.matmul(X, a) for a in aa], axis=1)
+        Y = tf.divide(Y, self.n_AtA)
+        Y = tf.transpose(Y)
+        return Y    
+    
+    def get_config(self):
+        base_config = super().get_config().copy()
+        return {**base_config, "A":self.A, "n_AtA":self.n_AtA, "n_split": self.n_split}
+    
 class Empty(keras.layers.Layer):
     def call(self,  fr):
         fr = fr[0, ..., 0]
@@ -332,7 +365,7 @@ def get_mc_model(template, batch_size, **kwargs):
     model = keras.Model(inputs=[fr_in], outputs=[mc, shifts])   
     return model
 
-def get_nnls_model(dims, Ab, batch_size, num_layers=10):
+def get_nnls_model(dims, Ab, batch_size, num_layers=10, n_split=1, trace_with_neg=True):
     """
     build gpu nnls model
     """
@@ -355,7 +388,7 @@ def get_nnls_model(dims, Ab, batch_size, num_layers=10):
     mc = mc_layer(fr_in)
     
     # chains motion correction layer to weight-calculation layer
-    c_th2 = compute_theta2(Ab, n_AtA)
+    c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
     th2 = c_th2(mc)
     
     # connects weights, to the NNLS layer
@@ -365,12 +398,19 @@ def get_nnls_model(dims, Ab, batch_size, num_layers=10):
     # stacks NNLS 
     for j in range(1, num_layers):
         x_kk = nnls(x_kk)
-   
-    #create final model
-    model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
+        
+    if trace_with_neg:
+        # add layer to compute trace with noise
+        c_trace_with_noise = compute_trace_with_noise(AtA=AtA, n_AtA=n_AtA)
+        tt = c_trace_with_noise(th2, x_kk[0])       
+        #create final model
+        model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[tt])           
+    else:
+        model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk[1]])   
+        
     return model  
 
-def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
+def get_model(template, Ab, batch_size, num_layers=10, n_split=1, trace_with_neg=True, **kwargs):
     """
     build full gpu mc-nnls model
     """
@@ -391,7 +431,7 @@ def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
     mc = mc_layer(fr_in)
 
     # chains motion correction layer to weight-calculation layer
-    c_th2 = compute_theta2(Ab, n_AtA)
+    c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
     th2 = c_th2(mc)
     
     # connects weights, calculated from the motion correction, to the NNLS layer
@@ -400,9 +440,15 @@ def get_model(template, Ab, batch_size, num_layers=10, **kwargs):
     # stacks NNLS 
     for j in range(1, num_layers):
         x_kk = nnls(x_kk)
-   
-    # create final model, returns it and the first weight
-    model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
+        
+    if trace_with_neg:
+        c_trace_with_noise = compute_trace_with_noise(AtA=AtA, n_AtA=n_AtA)
+        tt = c_trace_with_noise(th2, x_kk[0])
+        # create final model
+        model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk[0], tt, x_kk[2], x_kk[3]])   
+    else:
+        model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk])   
+
     return model
 
     
@@ -488,12 +534,13 @@ class Pipeline_mc_nnls(object):
         for idx in range(self.batch_size, bound, self.batch_size):
             out = self.nnls_output_q.get()
             i = (idx-1)//self.batch_size
-            output[i] = out["nnls_1"]
+            values = list(out.values())
+            output[i] = values[1]
             self.frame_input_q.put(self.mov[idx:idx+self.batch_size, :, :, None][None, :])
-            self.nnls_input_q.put((out["nnls"], out["nnls_1"]))
+            self.nnls_input_q.put((values[0], values[1]))
             times[i]  = timeit.default_timer()-start
 #            output.append(timeit.default_timer()-st)
-        output[-1] = self.nnls_output_q.get()["nnls_1"]
+        output[-1] = values[1]
         times[-1] = timeit.default_timer() - start
         logging.info(timeit.default_timer()-start)
         return output
@@ -641,7 +688,7 @@ class Pipeline(object):
                             logging.info(f'{self.n} frames processed')
 
             self.flag = self.flag + 1
-        
+       
     def extract(self):
         for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
             self.nnls_output_q.put(i)
@@ -649,9 +696,10 @@ class Pipeline(object):
     def get_spikes(self):
         #to be called separately. Input "bound" represents the number of frames. Starts at one because of initial values put on queue.
         while self.frame_input_q.qsize() > 0:
-            out = self.nnls_output_q.get().copy()    
-            self.nnls_input_q.put((out["nnls"], out["nnls_1"]))
-            traces_input = np.array(out["nnls_1"]).squeeze().T
+            out = self.nnls_output_q.get().copy()
+            values = list(out.values())
+            self.nnls_input_q.put((values[0], values[1]))
+            traces_input = np.array(values[1]).squeeze().T
             self.saoz_input_q.put(traces_input)
 
 

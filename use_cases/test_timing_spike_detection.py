@@ -15,7 +15,7 @@ from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 #%%
 frate=400
 img = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron/test_timing.npy')
-trace_all = np.stack([img for i in range(100)])
+trace_all = np.stack([img for i in range(500)])
 saoz = SignalAnalysisOnlineZ(fr=frate, robust_std=False, do_scale=True)
 saoz.fit(trace_all[:,:20000], len(img))
 for n in range(20000, trace_all.shape[1]):
@@ -24,10 +24,10 @@ for n in range(20000, trace_all.shape[1]):
 #%%
 plt.figure()
 #plt.plot(saoz.t_detect)
-plt.plot(saoz1.t_detect, label='500 neurons')
-plt.plot(saoz2.t_detect, label='100 neurons')
+plt.plot(np.array(saoz2.t_detect)[20000:]*1000, label='100 neurons', color='orange')
+plt.plot(np.array(saoz1.t_detect)[20000:]*1000, label='500 neurons', color='blue')
 plt.legend()
-#plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/timing/timing_spikes_detection_50neurons.pdf')
+#plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/timing_spikes_detection_50neurons.pdf')
 
 #%%
 """

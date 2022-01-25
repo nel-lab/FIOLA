@@ -7,9 +7,11 @@ is based on template matching method
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+from queue import Queue
 from scipy.ndimage import median_filter
 from scipy import signal
 from time import time
+from threading import Thread
 
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
 
@@ -73,6 +75,11 @@ class SignalAnalysisOnlineZ(object):
                 logging.debug(f'{name}, {value}')
         self.t_detect = []
         
+        self.update_q = Queue()
+        self.update_q.put(0)
+        self.update_thread = Thread(target=self.update_statistics_thread, daemon=True)
+        self.update_thread.start()
+        
     def fit(self, trace_in, num_frames):
         """
         Method for computing spikes in offline mode, and initializer for the online mode
@@ -85,6 +92,10 @@ class SignalAnalysisOnlineZ(object):
         nn, tm = trace_in.shape # number of neurons and time steps for initialization
         self.nn = nn
         self.frames_init = tm
+        self.n = tm        
+        
+        if self.step < 3 * self.nn:
+            raise Exception('too many neurons for updating statistics, please increase parameter step')
         
         if self.mode == 'voltage':
             # contains all the extracted fluorescence traces
@@ -126,7 +137,6 @@ class SignalAnalysisOnlineZ(object):
                         self.thresh_factor[idx], self.median2[idx], self.std[idx], \
                             self.peak_to_std[idx, :self.index_track[idx]], self.peak_level[idx] = output_list
                                     
-            #self.filt.fit(self.t0[:, :tm])
             self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1]         
         elif self.mode == 'calcium':
             self.trace = np.zeros((nn, num_frames), dtype=np.float32)
@@ -210,20 +220,7 @@ class SignalAnalysisOnlineZ(object):
             n: time step    
         '''        
         self.n = n
-        t_start = time()                                  
-        
-        # Update running statistics
-        res = n % self.step        
-        if ((n > 3.0 * self.window) and (res < 3 * self.nn)):
-            idx = int(res / 3)
-            temp = res - 3 * idx
-            if temp == 0:
-                self.update_median(idx)
-            elif temp == 1:
-                if self.do_scale:
-                    self.update_scale(idx)
-            elif temp == 2:
-                self.update_thresh(idx)
+        t_start = time() 
 
         # Detrend, normalize 
         if self.flip:
@@ -286,8 +283,35 @@ class SignalAnalysisOnlineZ(object):
                 self.index_track[idx_list] +=1
          
         self.t_detect.append(time() - t_start)
-        return self
         
+        self.update_q.put(n)
+        return self
+    
+    def update_statistics(self, n):
+        res = n % self.step        
+        if ((n > 3.0 * self.window) and (res < 3 * self.nn)):
+            idx = int(res / 3)   # index of neuron waiting for updating
+            temp = res - 3 * idx
+            if temp == 0:
+                self.update_median(idx)
+            elif temp == 1:
+                if self.do_scale:
+                    self.update_scale(idx)
+            elif temp == 2:
+                self.update_thresh(idx)
+        return self
+    
+    def update_statistics_thread(self):
+        self.flag_update=0        
+        while True:
+            n = self.update_q.get() 
+            #print(n)
+            if self.flag_update > 0:
+                self.update_statistics(n)                     
+            self.flag_update = self.flag_update + 1
+            import time
+            time.sleep(0.00001)
+    
     def update_median(self, idx):
         tt = self.t_d[idx, self.n - np.int(self.window*2.5):self.n]
         if idx == 0:
@@ -301,7 +325,7 @@ class SignalAnalysisOnlineZ(object):
             self.scale = np.append(self.scale, self.scale[:, -1:], axis=1)
         self.scale[idx, -1] = - np.percentile(tt, 1)
         return self
-
+        
     def update_thresh(self, idx):
         # add a new column of threshold
         if idx == 0:
