@@ -18,7 +18,7 @@ class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False,
-                 p=1, use_numba=True):
+                 p=1, use_numba=True, nb=1):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -61,7 +61,11 @@ class SignalAnalysisOnlineZ(object):
                 Whether to plot or not.
             p: int
                 order of the AR process for calcium deconvolution
-                
+                no deconvolution is performed if p=0
+            use_numba: bool
+                whether to use Numba (True) or Cython (False) to compile Oasis
+            nb: int
+                number of background components
         '''
         for name, value in locals().items():
             if name != 'self':
@@ -129,9 +133,8 @@ class SignalAnalysisOnlineZ(object):
             self.trace[:, :tm] = trace_in.copy()      
             if self.p>0: # calcium deconvolution
                 from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
-                # todo: provide nb as parameter
-                nb = 2
-                results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:-nb])
+                N = nn-self.nb # deconvolve only neural traces, not background
+                results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:N])
                 if self.use_numba: # use new faster parallelized Numba implementation
                     from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
                     if self.p==1:
@@ -139,13 +142,13 @@ class SignalAnalysisOnlineZ(object):
                                                             results_foopsi], dtype=np.float32).T
                         self._lg = np.log(self.g)
                         self._bl = self.b + self.lam*(1-self.g)
-                        self._v, self._w, self._l = np.zeros((3, nn-nb, 50), dtype=np.float32)
-                        self._i = np.zeros(nn-nb, dtype=np.int32)  # index of last pool
-                        for y in trace_in[:-nb].T:
+                        self._v, self._w, self._l = np.zeros((3, N, 50), dtype=np.float32)
+                        self._i = np.zeros(N, dtype=np.int32)  # index of last pool
+                        for y in trace_in[:N].T:
                             par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
                             tmp = self._v.shape[1]
                             if self._i.max() >= tmp:
-                                vwl = np.zeros((3, nn-nb, tmp+50), dtype=np.float32)
+                                vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
                                 vwl[:,:,:tmp] = self._v, self._w, self._l
                                 self._v, self._w, self._l = vwl
                     elif self.p==2:
@@ -163,7 +166,6 @@ class SignalAnalysisOnlineZ(object):
                         self._g12[:,1:] = g2[:,None] * self._g11[:,:-1]
                         self._g11g11 = np.cumsum(self._g11 * self._g11, axis=1)
                         self._g11g12 = np.cumsum(self._g11 * self._g12, axis=1)
-                        N = nn-nb
                         n = 0
                         # initialize
                         self._y = np.empty((N, 1000), dtype=np.float32)
@@ -171,7 +173,7 @@ class SignalAnalysisOnlineZ(object):
                         self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
                         self._i = np.zeros(N, dtype=np.int32)  # index of last pool
                         # process
-                        for yt in trace_in[:-nb].T:
+                        for yt in trace_in[:N].T:
                             self._y[:,n] = yt-self._bl
                             par_fit_next_AR2(self._y,self._d,
                                              self._g11,self._g12,self._g11g11,self._g11g12,
@@ -383,7 +385,12 @@ class SignalAnalysisOnlineZ(object):
                     self.trace_denoised = c
             else: # use exisiting Cython implementation
                 self.trace_denoised, self.trace_deconvolved = \
-                    np.transpose([[o.c, o.s] for o in self.OASISinstances], (1,0,2))       
+                    np.transpose([[o.c, o.s] for o in self.OASISinstances], (1,0,2))
+                if self.p==1:
+                    self.g = np.array([o.g for o in self.OASISinstances], dtype=np.float32)
+                elif self.p==2:
+                    self.g = np.array([[o.g, o.g2] for o in self.OASISinstances], dtype=np.float32)
+                self.b, self.lam = np.array([[o.b, o.lam] for o in self.OASISinstances], dtype=np.float32).T     
         return self
                 
     def reconstruct_movie(self, A, shape, scope):
