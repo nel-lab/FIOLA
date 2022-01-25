@@ -5,7 +5,9 @@ is based on template matching method
 @author: @caichangjia @andrea.giovannucci
 """
 import logging
+from math import exp, log
 import matplotlib.pyplot as plt
+from numba import njit, prange
 import numpy as np
 from queue import Queue
 from scipy.ndimage import median_filter
@@ -143,17 +145,17 @@ class SignalAnalysisOnlineZ(object):
             self.trace[:, :tm] = trace_in.copy()      
             if self.p>0: # calcium deconvolution
                 from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
+                t_start = time()
                 N = nn-self.nb # deconvolve only neural traces, not background
                 results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:N])
                 if self.use_numba: # use new faster parallelized Numba implementation
-                    from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
                     if self.p==1:
                         self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
                                                             results_foopsi], dtype=np.float32).T
                         self._lg = np.log(self.g)
                         self._bl = self.b + self.lam*(1-self.g)
                         self._v, self._w, self._l = np.zeros((3, N, 50), dtype=np.float32)
-                        self._i = np.zeros(N, dtype=np.int32)  # index of last pool
+                        self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
                         for y in trace_in[:N].T:
                             par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
                             tmp = self._v.shape[1]
@@ -181,7 +183,7 @@ class SignalAnalysisOnlineZ(object):
                         self._y = np.empty((N, 1000), dtype=np.float32)
                         self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
                         self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
-                        self._i = np.zeros(N, dtype=np.int32)  # index of last pool
+                        self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
                         # process
                         for yt in trace_in[:N].T:
                             self._y[:,n] = yt-self._bl
@@ -209,6 +211,7 @@ class SignalAnalysisOnlineZ(object):
                         for _, bl, _, gam, sn, _, lam in results_foopsi]
                     for o, t in zip(self.OASISinstances, trace_in):
                         o.fit(t)
+                self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1] 
         return self
 
     def fit_next(self, trace_in, n):
@@ -222,65 +225,101 @@ class SignalAnalysisOnlineZ(object):
         self.n = n
         t_start = time() 
 
-        # Detrend, normalize 
-        if self.flip:
-            self.trace[:, n:(n + 1)] = - trace_in.copy()
-        else:
-            self.trace[:, n:(n + 1)] = trace_in.copy()
-        if self.detrend:
-            self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)] - self.trace[:, (n - 1):n] + 0.995 * self.t_d[:, (n - 1):n]
-        else:
-            self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)]
-        temp = self.t_d[:, n:(n+1)].copy()        
-        temp -= self.median[:, -1:]
-        if self.do_scale == True:
-            temp /= self.scale[:, -1:]
-        self.t0[:, n:(n + 1)] = temp.copy()        
+        if self.mode == 'voltage':
+            # Detrend, normalize 
+            if self.flip:
+                self.trace[:, n:(n + 1)] = - trace_in.copy()
+            else:
+                self.trace[:, n:(n + 1)] = trace_in.copy()
+            if self.detrend:
+                self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)] - self.trace[:, (n - 1):n] + 0.995 * self.t_d[:, (n - 1):n]
+            else:
+                self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)]
+            temp = self.t_d[:, n:(n+1)].copy()        
+            temp -= self.median[:, -1:]
+            if self.do_scale == True:
+                temp /= self.scale[:, -1:]
+            self.t0[:, n:(n + 1)] = temp.copy()        
 
-        # remove subthreshold
-        if self.online_filter_method == 'median_filter':
-            if type(self.filt_window) is int:
-                sub_index = self.n - int((self.filt_window - 1) / 2)        
-                lag = int((self.filt_window - 1) / 2)  
-                if self.n >= self.frames_init + lag:
-                    temp = self.t0[:, self.n - self.filt_window + 1: self.n + 1]
+            # remove subthreshold
+            if self.online_filter_method == 'median_filter':
+                if type(self.filt_window) is int:
+                    sub_index = self.n - int((self.filt_window - 1) / 2)        
+                    lag = int((self.filt_window - 1) / 2)  
+                    if self.n >= self.frames_init + lag:
+                        temp = self.t0[:, self.n - self.filt_window + 1: self.n + 1]
+                        self.t_sub[:, sub_index] = np.median(temp, 1)
+                        self.t[:, sub_index:sub_index + 1] = self.t0[:, sub_index:sub_index + 1] - self.t_sub[:, sub_index:sub_index + 1]
+                elif type(self.filt_window) is list:
+                    sub_index = self.n - self.filt_window[1]
+                    lag = self.filt_window[1]  
+                    if self.n >= self.frames_init + lag:
+                        temp = self.t0[:, self.n - sum(self.filt_window) : self.n + 1]
+                        self.t_sub[:, sub_index] = np.median(temp, 1)
+                        self.t[:, sub_index:sub_index + 1] = self.t0[:, sub_index:sub_index + 1] - self.t_sub[:, sub_index:sub_index + 1]
+                    
+            elif self.online_filter_method == 'median_filter_no_lag':
+                sub_index = self.n        
+                lag = 0
+                if self.n >= self.frames_init:
+                    temp = np.zeros((self.nn, self.filt_window))
+                    temp[:, :int((self.filt_window - 1) / 2) + 1] = self.t0[:, self.n - int((self.filt_window - 1) / 2): self.n + 1]
+                    temp[:, int((self.filt_window - 1) / 2) + 1:] = np.flip(self.t0[:, self.n - int((self.filt_window - 1) / 2): self.n])
                     self.t_sub[:, sub_index] = np.median(temp, 1)
                     self.t[:, sub_index:sub_index + 1] = self.t0[:, sub_index:sub_index + 1] - self.t_sub[:, sub_index:sub_index + 1]
-            elif type(self.filt_window) is list:
-                sub_index = self.n - self.filt_window[1]
-                lag = self.filt_window[1]  
-                if self.n >= self.frames_init + lag:
-                    temp = self.t0[:, self.n - sum(self.filt_window) : self.n + 1]
-                    self.t_sub[:, sub_index] = np.median(temp, 1)
-                    self.t[:, sub_index:sub_index + 1] = self.t0[:, sub_index:sub_index + 1] - self.t_sub[:, sub_index:sub_index + 1]
-                
-        elif self.online_filter_method == 'median_filter_no_lag':
-            sub_index = self.n        
-            lag = 0
-            if self.n >= self.frames_init:
-                temp = np.zeros((self.nn, self.filt_window))
-                temp[:, :int((self.filt_window - 1) / 2) + 1] = self.t0[:, self.n - int((self.filt_window - 1) / 2): self.n + 1]
-                temp[:, int((self.filt_window - 1) / 2) + 1:] = np.flip(self.t0[:, self.n - int((self.filt_window - 1) / 2): self.n])
-                self.t_sub[:, sub_index] = np.median(temp, 1)
-                self.t[:, sub_index:sub_index + 1] = self.t0[:, sub_index:sub_index + 1] - self.t_sub[:, sub_index:sub_index + 1]
-           
-        if self.template_window > 0:
-            if self.n >= self.frames_init + lag + self.template_window:                                      
-                temp = self.t[:, sub_index - 2*self.template_window : sub_index + 1]                         
-                self.t_s[:, sub_index - self.template_window] = (temp * self.PTA).sum(axis=1)
-                self.t_s[:, sub_index - self.template_window] = self.t_s[:, sub_index - self.template_window] - self.median2[:, -1]
-        else:
-            if self.n >= self.frames_init + lag + self.template_window:                                      
-                self.t_s[:, sub_index] = self.t[:, sub_index]
-                
-        # Find spikes above threshold
-        if self.n >= self.frames_init + lag + self.template_window + 1:
-            temp = self.t_s[:, sub_index - self.template_window - 2: sub_index -self.template_window + 1].copy()
-            idx_list = np.where((temp[:, 1] > temp[:, 0]) * (temp[:, 1] > temp[:, 2]) * (temp[:, 1] > self.thresh[:, -1]))[0]
-            if idx_list.size > 0:
-                self.index[idx_list, self.index_track[idx_list]] = sub_index - self.template_window - 1
-                self.peak_to_std[idx_list, self.index_track[idx_list]] = self.t_s[idx_list, sub_index - self.template_window - 1] /self.std[idx_list, -1]
-                self.index_track[idx_list] +=1
+            
+            if self.template_window > 0:
+                if self.n >= self.frames_init + lag + self.template_window:                                      
+                    temp = self.t[:, sub_index - 2*self.template_window : sub_index + 1]                         
+                    self.t_s[:, sub_index - self.template_window] = (temp * self.PTA).sum(axis=1)
+                    self.t_s[:, sub_index - self.template_window] = self.t_s[:, sub_index - self.template_window] - self.median2[:, -1]
+            else:
+                if self.n >= self.frames_init + lag + self.template_window:                                      
+                    self.t_s[:, sub_index] = self.t[:, sub_index]
+                    
+            # Find spikes above threshold
+            if self.n >= self.frames_init + lag + self.template_window + 1:
+                temp = self.t_s[:, sub_index - self.template_window - 2: sub_index -self.template_window + 1].copy()
+                idx_list = np.where((temp[:, 1] > temp[:, 0]) * (temp[:, 1] > temp[:, 2]) * (temp[:, 1] > self.thresh[:, -1]))[0]
+                if idx_list.size > 0:
+                    self.index[idx_list, self.index_track[idx_list]] = sub_index - self.template_window - 1
+                    self.peak_to_std[idx_list, self.index_track[idx_list]] = self.t_s[idx_list, sub_index - self.template_window - 1] /self.std[idx_list, -1]
+                    self.index_track[idx_list] +=1
+
+        elif self.mode == 'calcium':
+            self.trace[:, n:(n+1)] = trace_in
+            if self.p>0: # deconvolve/denoise
+                if self.use_numba:
+                    N = len(self._bl)
+                    if self.p==1: # use new faster parallelized Numba implementation
+                        par_fit_next_AR1(trace_in[:N,0]-self._bl, self._lg,
+                                    self._v, self._w, self._l, self._i)
+                        tmp = self._v.shape[1]
+                        if self._i.max() >= tmp:
+                            vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
+                            vwl[:,:,:tmp] = self._v, self._w, self._l
+                            self._v, self._w, self._l = vwl
+                    elif self.p==2:
+                        self._y[:,n] = trace_in[:N,0]-self._bl
+                        par_fit_next_AR2(self._y,self._d,
+                                        self._g11,self._g12,self._g11g11,self._g11g12,
+                                        self._v,self._w,self._t,self._l,self._i,n)
+                        tmp = self._v.shape[1]
+                        if self._i.max()>=tmp:
+                            vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                            tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                            vw[:,:,:tmp] = self._v,self._w
+                            tl[:,:,:tmp] = self._t,self._l
+                            self._v,self._w = vw
+                            self._t,self._l = tl
+                        tmp = self._y.shape[1]
+                        if n+1>=tmp:
+                            yy = np.empty((N, tmp+1000), dtype=np.float32)
+                            yy[:,:tmp] = self._y
+                            self._y = yy                       
+                else: # use exisiting Cython implementation
+                    for o, t in zip(self.OASISinstances, trace_in.ravel()):
+                        o.fit_next(t)     
          
         self.t_detect.append(time() - t_start)
         
@@ -384,6 +423,7 @@ class SignalAnalysisOnlineZ(object):
                         t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
                         self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
                     self.trace_denoised = self.trace_deconvolved.copy()
+                    self.trace_denoised[:,0] = self._v[:,0]
                     g = np.exp(self._lg)
                     for j in range(T-1):
                         self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
@@ -397,7 +437,7 @@ class SignalAnalysisOnlineZ(object):
                             c[n,j] = tmp
                             tmp *= self._d[n]
                     for n in range(N):
-                        for k in range(1, self._i[n]+1):
+                        for k in range(1, self._i[n]):
                             c[n,self._t[n,k]] = self._v[n,k]
                             for j in range(self._t[n,k]+1, self._t[n,k]+self._l[n,k]-1):
                                 c[n,j] = self.g[n,0] * c[n,j-1] + self.g[n,1] * c[n,j-2]
@@ -595,3 +635,57 @@ def find_spikes_tm(img, freq, fr, do_scale=False, filt_window=15, template_windo
     peak_level = np.percentile(peak_level, 95)
 
     return index, thresh2, PTA, t0, t, t_s, sub, median, scale, thresh_factor, median2, std, peak_to_std, peak_level 
+
+
+@njit('f4, f4, f4[:], f4[:], f4[:], i4', cache=True)
+def fit_next_AR1(y,lg, v,w,l,i):
+    v[i], w[i], l[i] = y, 1, 1
+    f = exp(lg * l[i-1])
+    while (i > 0 and  # backtrack until violations fixed
+            v[i-1] / w[i-1] * f > v[i] / w[i]):
+        i -= 1
+        # merge two pools
+        v[i] += v[i+1] * f
+        w[i] += w[i+1] * f*f
+        l[i] += l[i+1]
+        f = exp(lg * l[i-1])
+    i += 1
+    return v,w,l,i
+
+@njit(['f4[:], f4[:], f4[:,:], f4[:,:], f4[:,:], i4[:]'], parallel=True, cache=True)
+def par_fit_next_AR1(y,lg, v,w,l,i):
+    N = len(y)
+    for k in prange(N):
+        v[k],w[k],l[k],i[k] = fit_next_AR1(y[k],lg[k], v[k],w[k],l[k],i[k])
+
+@njit('f4[:], f4, f4[:], f4[:], f4[:], f4[:], f4[:], f4[:], i4[:], i4[:], i4, i4', cache=True)
+def fit_next_AR2(y,d,g11,g12,g11g11,g11g12, v,w,t,l,i,tt):
+    # [first value, last value, start time, length] of pool
+    v[i], w[i], t[i], l[i] = max(0,y[tt]), max(0,y[tt]), tt, 1
+    ld = log(d)
+    while (i > 0 and  # backtrack until violations fixed
+            ((((g11[l[i-1]] * v[i-1] + g12[l[i-1]] * w[i-2]) if l[i-1] < 1000
+            else exp(ld*(l[i-1]+1)) * v[i-1] / (2*d-g11[1])) > v[i]) if i > 1
+            else (w[i-1] * d > v[i]))):
+        i -= 1
+        # merge two pools
+        l[i] += l[i+1]
+        if i > 0:
+            ll = min(l[i] - 1, 999)  # precomputed kernel shorter than ISI -> simply truncate
+            v[i] = (np.ascontiguousarray(g11[:ll + 1]).dot(
+                    np.ascontiguousarray(y[t[i]:t[i]+ll+1]))
+                        - g11g12[ll] * w[i-1]) / g11g11[ll]
+            w[i] = (g11[ll] * v[i] + g12[ll] * w[i-1])
+        else:  # update first pool too instead of taking it granted as true
+            ll = min(l[i], 1000)
+            v[i] = max(0, np.exp(ld * np.arange(ll)).
+                            dot(y[:ll]) * (1-d*d) / (1 - exp(ld*2*ll)))
+            w[i] = exp(ld*(ll-1)) * v[i]
+    i += 1
+    return v,w,t,l,i
+
+@njit('f4[:,:], f4[:], f4[:,:], f4[:,:], f4[:,:], f4[:,:], f4[:,:], f4[:,:], i4[:,:], i4[:,:], i4[:], i4', parallel=True, cache=True)
+def par_fit_next_AR2(y,d,g11,g12,g11g11,g11g12, v,w,t,l,i,tt):
+    N = len(y)
+    for k in prange(N):
+        v[k],w[k],t[k],l[k],i[k] = fit_next_AR2(y[k],d[k],g11[k],g12[k],g11g11[k],g11g12[k], v[k],w[k],t[k],l[k],i[k],tt)
