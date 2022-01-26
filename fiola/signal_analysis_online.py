@@ -148,7 +148,7 @@ class SignalAnalysisOnlineZ(object):
                 t_start = time()
                 N = nn-self.nb # deconvolve only neural traces, not background
                 results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:N])
-                if self.use_numba: # use new faster parallelized Numba implementation
+                if self.use_numba: # use new parallelized Numba implementation
                     if self.p==1:
                         self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
                                                             results_foopsi], dtype=np.float32).T
@@ -413,7 +413,7 @@ class SignalAnalysisOnlineZ(object):
                     self.t_rec[idx, spikes] = 1
                     self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
         elif self.mode == 'calcium' and self.p > 0:
-            if self.use_numba: # use new faster parallelized Numba implementation
+            if self.use_numba: # use new parallelized Numba implementation
                 T = int(self._l[0,:self._i[0]].sum())
                 if self.p==1:
                     self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
