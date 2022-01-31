@@ -7,7 +7,6 @@ is based on template matching method
 import logging
 from math import exp, log
 import matplotlib.pyplot as plt
-from numba import njit, prange
 import numpy as np
 from queue import Queue
 from scipy.ndimage import median_filter
@@ -16,13 +15,14 @@ from time import time
 from threading import Thread
 
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
+from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
 
 
 class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False,
-                 p=1, use_numba=True, nb=1):
+                 p=1, nb=0):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -66,8 +66,6 @@ class SignalAnalysisOnlineZ(object):
             p: int
                 order of the AR process for calcium deconvolution
                 no deconvolution is performed if p=0
-            use_numba: bool
-                whether to use Numba (True) or Cython (False) to compile Oasis
             nb: int
                 number of background components
         '''
@@ -148,69 +146,61 @@ class SignalAnalysisOnlineZ(object):
                 t_start = time()
                 N = nn-self.nb # deconvolve only neural traces, not background
                 results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), trace_in[:N])
-                if self.use_numba: # use new parallelized Numba implementation
-                    if self.p==1:
-                        self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
-                                                            results_foopsi], dtype=np.float32).T
-                        self._lg = np.log(self.g)
-                        self._bl = self.b + self.lam*(1-self.g)
-                        self._v, self._w, self._l = np.zeros((3, N, 50), dtype=np.float32)
-                        self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
-                        for y in trace_in[:N].T:
-                            par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
-                            tmp = self._v.shape[1]
-                            if self._i.max() >= tmp:
-                                vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
-                                vwl[:,:,:tmp] = self._v, self._w, self._l
-                                self._v, self._w, self._l = vwl
-                    elif self.p==2:
-                        self.b, self.lam, g1, g2 = np.array([[r[1], r[-1], *r[3]] for r in
-                                                            results_foopsi], dtype=np.float32).T
-                        self.g = np.transpose([g1,g2])
-                        self._bl = self.b + self.lam*(1-self.g.sum(1))
-                        # precompute
-                        self._d = (g1 + np.sqrt(g1*g1 + 4*g2)) / 2
-                        self._r = (g1 - np.sqrt(g1*g1 + 4*g2)) / 2
-                        self._g11 = ((np.exp(np.outer(np.log(self._d), np.arange(1, 1001))) -
-                                      np.exp(np.outer(np.log(self._r), np.arange(1, 1001)))) / 
-                                      (self._d - self._r)[:,None]).astype(np.float32)
-                        self._g12 = np.zeros_like(self._g11)
-                        self._g12[:,1:] = g2[:,None] * self._g11[:,:-1]
-                        self._g11g11 = np.cumsum(self._g11 * self._g11, axis=1)
-                        self._g11g12 = np.cumsum(self._g11 * self._g12, axis=1)
-                        n = 0
-                        # initialize
-                        self._y = np.empty((N, 1000), dtype=np.float32)
-                        self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
-                        self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
-                        self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
-                        # process
-                        for yt in trace_in[:N].T:
-                            self._y[:,n] = yt-self._bl
-                            par_fit_next_AR2(self._y,self._d,
-                                             self._g11,self._g12,self._g11g11,self._g11g12,
-                                             self._v,self._w,self._t,self._l,self._i,n)
-                            n +=1
-                            tmp = self._v.shape[1]
-                            if self._i.max()>=tmp:
-                                vw = np.zeros((2, N, tmp+50), dtype=np.float32)
-                                tl = np.zeros((2, N, tmp+50), dtype=np.int32)
-                                vw[:,:,:tmp] = self._v,self._w
-                                tl[:,:,:tmp] = self._t,self._l
-                                self._v,self._w = vw
-                                self._t,self._l = tl
-                            tmp = self._y.shape[1]
-                            if n>=tmp:
-                                yy = np.empty((N, tmp+1000), dtype=np.float32)
-                                yy[:,:tmp] = self._y
-                                self._y = yy
-                else: # use exisiting Cython implementation
-                    from caiman.source_extraction.cnmf.oasis import OASIS
-                    self.OASISinstances = [OASIS(
-                        g=gam[0], lam=lam, b=bl, g2=0 if len(gam) < 2 else gam[1])
-                        for _, bl, _, gam, sn, _, lam in results_foopsi]
-                    for o, t in zip(self.OASISinstances, trace_in):
-                        o.fit(t)
+                if self.p==1:
+                    self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
+                                                        results_foopsi], dtype=np.float32).T
+                    self._lg = np.log(self.g)
+                    self._bl = self.b + self.lam*(1-self.g)
+                    self._v, self._w, self._l = np.zeros((3, N, 50), dtype=np.float32)
+                    self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
+                    for y in trace_in[:N].T:
+                        par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
+                        tmp = self._v.shape[1]
+                        if self._i.max() >= tmp:
+                            vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
+                            vwl[:,:,:tmp] = self._v, self._w, self._l
+                            self._v, self._w, self._l = vwl
+                elif self.p==2:
+                    self.b, self.lam, g1, g2 = np.array([[r[1], r[-1], *r[3]] for r in
+                                                        results_foopsi], dtype=np.float32).T
+                    self.g = np.transpose([g1,g2])
+                    self._bl = self.b + self.lam*(1-self.g.sum(1))
+                    # precompute
+                    self._d = (g1 + np.sqrt(g1*g1 + 4*g2)) / 2
+                    self._r = (g1 - np.sqrt(g1*g1 + 4*g2)) / 2
+                    self._g11 = ((np.exp(np.outer(np.log(self._d), np.arange(1, 1001))) -
+                                    np.exp(np.outer(np.log(self._r), np.arange(1, 1001)))) / 
+                                    (self._d - self._r)[:,None]).astype(np.float32)
+                    self._g12 = np.zeros_like(self._g11)
+                    self._g12[:,1:] = g2[:,None] * self._g11[:,:-1]
+                    self._g11g11 = np.cumsum(self._g11 * self._g11, axis=1)
+                    self._g11g12 = np.cumsum(self._g11 * self._g12, axis=1)
+                    n = 0
+                    # initialize
+                    self._y = np.empty((N, 1000), dtype=np.float32)
+                    self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
+                    self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
+                    self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
+                    # process
+                    for yt in trace_in[:N].T:
+                        self._y[:,n] = yt-self._bl
+                        par_fit_next_AR2(self._y,self._d,
+                                            self._g11,self._g12,self._g11g11,self._g11g12,
+                                            self._v,self._w,self._t,self._l,self._i,n)
+                        n +=1
+                        tmp = self._v.shape[1]
+                        if self._i.max()>=tmp:
+                            vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                            tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                            vw[:,:,:tmp] = self._v,self._w
+                            tl[:,:,:tmp] = self._t,self._l
+                            self._v,self._w = vw
+                            self._t,self._l = tl
+                        tmp = self._y.shape[1]
+                        if n>=tmp:
+                            yy = np.empty((N, tmp+1000), dtype=np.float32)
+                            yy[:,:tmp] = self._y
+                            self._y = yy
                 self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1] 
         return self
 
@@ -289,37 +279,33 @@ class SignalAnalysisOnlineZ(object):
         elif self.mode == 'calcium':
             self.trace[:, n:(n+1)] = trace_in
             if self.p>0: # deconvolve/denoise
-                if self.use_numba:
-                    N = len(self._bl)
-                    if self.p==1: # use new faster parallelized Numba implementation
-                        par_fit_next_AR1(trace_in[:N,0]-self._bl, self._lg,
-                                    self._v, self._w, self._l, self._i)
-                        tmp = self._v.shape[1]
-                        if self._i.max() >= tmp:
-                            vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
-                            vwl[:,:,:tmp] = self._v, self._w, self._l
-                            self._v, self._w, self._l = vwl
-                    elif self.p==2:
-                        self._y[:,n] = trace_in[:N,0]-self._bl
-                        par_fit_next_AR2(self._y,self._d,
-                                        self._g11,self._g12,self._g11g11,self._g11g12,
-                                        self._v,self._w,self._t,self._l,self._i,n)
-                        tmp = self._v.shape[1]
-                        if self._i.max()>=tmp:
-                            vw = np.zeros((2, N, tmp+50), dtype=np.float32)
-                            tl = np.zeros((2, N, tmp+50), dtype=np.int32)
-                            vw[:,:,:tmp] = self._v,self._w
-                            tl[:,:,:tmp] = self._t,self._l
-                            self._v,self._w = vw
-                            self._t,self._l = tl
-                        tmp = self._y.shape[1]
-                        if n+1>=tmp:
-                            yy = np.empty((N, tmp+1000), dtype=np.float32)
-                            yy[:,:tmp] = self._y
-                            self._y = yy                       
-                else: # use exisiting Cython implementation
-                    for o, t in zip(self.OASISinstances, trace_in.ravel()):
-                        o.fit_next(t)     
+                N = len(self._bl)
+                if self.p==1:
+                    par_fit_next_AR1(trace_in[:N,0]-self._bl, self._lg,
+                                self._v, self._w, self._l, self._i)
+                    tmp = self._v.shape[1]
+                    if self._i.max() >= tmp:
+                        vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
+                        vwl[:,:,:tmp] = self._v, self._w, self._l
+                        self._v, self._w, self._l = vwl
+                elif self.p==2:
+                    self._y[:,n] = trace_in[:N,0]-self._bl
+                    par_fit_next_AR2(self._y,self._d,
+                                    self._g11,self._g12,self._g11g11,self._g11g12,
+                                    self._v,self._w,self._t,self._l,self._i,n)
+                    tmp = self._v.shape[1]
+                    if self._i.max()>=tmp:
+                        vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                        tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                        vw[:,:,:tmp] = self._v,self._w
+                        tl[:,:,:tmp] = self._t,self._l
+                        self._v,self._w = vw
+                        self._t,self._l = tl
+                    tmp = self._y.shape[1]
+                    if n+1>=tmp:
+                        yy = np.empty((N, tmp+1000), dtype=np.float32)
+                        yy[:,:tmp] = self._y
+                        self._y = yy
          
         self.t_detect.append(time() - t_start)
         
@@ -413,48 +399,39 @@ class SignalAnalysisOnlineZ(object):
                     self.t_rec[idx, spikes] = 1
                     self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
         elif self.mode == 'calcium' and self.p > 0:
-            if self.use_numba: # use new parallelized Numba implementation
-                T = int(self._l[0,:self._i[0]].sum())
-                if self.p==1:
-                    self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
-                    self._v /= self._w
-                    self._v[self._v < 0] = 0
-                    for k, ii in enumerate(self._i):
-                        t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
-                        self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
-                    self.trace_denoised = self.trace_deconvolved.copy()
-                    self.trace_denoised[:,0] = self._v[:,0]
-                    g = np.exp(self._lg)
-                    for j in range(T-1):
-                        self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
-                elif self.p==2:
-                    # construct c
-                    N = len(self._v)
-                    c = np.empty((N, T), dtype=np.float32)
-                    for n in range(N):
-                        tmp = max(self._v[n,0], 0)
-                        for j in range(self._l[n,0]):
-                            c[n,j] = tmp
-                            tmp *= self._d[n]
-                    for n in range(N):
-                        for k in range(1, self._i[n]):
-                            c[n,self._t[n,k]] = self._v[n,k]
-                            for j in range(self._t[n,k]+1, self._t[n,k]+self._l[n,k]-1):
-                                c[n,j] = self.g[n,0] * c[n,j-1] + self.g[n,1] * c[n,j-2]
-                            c[n,self._t[n,k]+self._l[n,k]-1] = self._w[n,k]
-                    # construct s
-                    self.trace_deconvolved = c.copy()
-                    self.trace_deconvolved[:,:2] = 0
-                    self.trace_deconvolved[:,2:] -= (self.g[:,:1] * c[:,1:-1] + self.g[:,1:] * c[:,:-2])
-                    self.trace_denoised = c
-            else: # use exisiting Cython implementation
-                self.trace_denoised, self.trace_deconvolved = \
-                    np.transpose([[o.c, o.s] for o in self.OASISinstances], (1,0,2))
-                if self.p==1:
-                    self.g = np.array([o.g for o in self.OASISinstances], dtype=np.float32)
-                elif self.p==2:
-                    self.g = np.array([[o.g, o.g2] for o in self.OASISinstances], dtype=np.float32)
-                self.b, self.lam = np.array([[o.b, o.lam] for o in self.OASISinstances], dtype=np.float32).T     
+            T = int(self._l[0,:self._i[0]].sum())
+            if self.p==1:
+                self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
+                self._v /= self._w
+                self._v[self._v < 0] = 0
+                for k, ii in enumerate(self._i):
+                    t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
+                    self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
+                self.trace_denoised = self.trace_deconvolved.copy()
+                self.trace_denoised[:,0] = self._v[:,0]
+                g = np.exp(self._lg)
+                for j in range(T-1):
+                    self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
+            elif self.p==2:
+                # construct c
+                N = len(self._v)
+                c = np.empty((N, T), dtype=np.float32)
+                for n in range(N):
+                    tmp = max(self._v[n,0], 0)
+                    for j in range(self._l[n,0]):
+                        c[n,j] = tmp
+                        tmp *= self._d[n]
+                for n in range(N):
+                    for k in range(1, self._i[n]):
+                        c[n,self._t[n,k]] = self._v[n,k]
+                        for j in range(self._t[n,k]+1, self._t[n,k]+self._l[n,k]-1):
+                            c[n,j] = self.g[n,0] * c[n,j-1] + self.g[n,1] * c[n,j-2]
+                        c[n,self._t[n,k]+self._l[n,k]-1] = self._w[n,k]
+                # construct s
+                self.trace_deconvolved = c.copy()
+                self.trace_deconvolved[:,:2] = 0
+                self.trace_deconvolved[:,2:] -= (self.g[:,:1] * c[:,1:-1] + self.g[:,1:] * c[:,:-2])
+                self.trace_denoised = c
         return self
                 
     def reconstruct_movie(self, A, shape, scope):
@@ -635,57 +612,3 @@ def find_spikes_tm(img, freq, fr, do_scale=False, filt_window=15, template_windo
     peak_level = np.percentile(peak_level, 95)
 
     return index, thresh2, PTA, t0, t, t_s, sub, median, scale, thresh_factor, median2, std, peak_to_std, peak_level 
-
-
-@njit('f4, f4, f4[:], f4[:], f4[:], i4', cache=True)
-def fit_next_AR1(y,lg, v,w,l,i):
-    v[i], w[i], l[i] = y, 1, 1
-    f = exp(lg * l[i-1])
-    while (i > 0 and  # backtrack until violations fixed
-            v[i-1] / w[i-1] * f > v[i] / w[i]):
-        i -= 1
-        # merge two pools
-        v[i] += v[i+1] * f
-        w[i] += w[i+1] * f*f
-        l[i] += l[i+1]
-        f = exp(lg * l[i-1])
-    i += 1
-    return v,w,l,i
-
-@njit(['f4[:], f4[:], f4[:,:], f4[:,:], f4[:,:], i4[:]'], parallel=True, cache=True)
-def par_fit_next_AR1(y,lg, v,w,l,i):
-    N = len(y)
-    for k in prange(N):
-        v[k],w[k],l[k],i[k] = fit_next_AR1(y[k],lg[k], v[k],w[k],l[k],i[k])
-
-@njit('f4[:], f4, f4[:], f4[:], f4[:], f4[:], f4[:], f4[:], i4[:], i4[:], i4, i4', cache=True)
-def fit_next_AR2(y,d,g11,g12,g11g11,g11g12, v,w,t,l,i,tt):
-    # [first value, last value, start time, length] of pool
-    v[i], w[i], t[i], l[i] = max(0,y[tt]), max(0,y[tt]), tt, 1
-    ld = log(d)
-    while (i > 0 and  # backtrack until violations fixed
-            ((((g11[l[i-1]] * v[i-1] + g12[l[i-1]] * w[i-2]) if l[i-1] < 1000
-            else exp(ld*(l[i-1]+1)) * v[i-1] / (2*d-g11[1])) > v[i]) if i > 1
-            else (w[i-1] * d > v[i]))):
-        i -= 1
-        # merge two pools
-        l[i] += l[i+1]
-        if i > 0:
-            ll = min(l[i] - 1, 999)  # precomputed kernel shorter than ISI -> simply truncate
-            v[i] = (np.ascontiguousarray(g11[:ll + 1]).dot(
-                    np.ascontiguousarray(y[t[i]:t[i]+ll+1]))
-                        - g11g12[ll] * w[i-1]) / g11g11[ll]
-            w[i] = (g11[ll] * v[i] + g12[ll] * w[i-1])
-        else:  # update first pool too instead of taking it granted as true
-            ll = min(l[i], 1000)
-            v[i] = max(0, np.exp(ld * np.arange(ll)).
-                            dot(y[:ll]) * (1-d*d) / (1 - exp(ld*2*ll)))
-            w[i] = exp(ld*(ll-1)) * v[i]
-    i += 1
-    return v,w,t,l,i
-
-@njit('f4[:,:], f4[:], f4[:,:], f4[:,:], f4[:,:], f4[:,:], f4[:,:], f4[:,:], i4[:,:], i4[:,:], i4[:], i4', parallel=True, cache=True)
-def par_fit_next_AR2(y,d,g11,g12,g11g11,g11g12, v,w,t,l,i,tt):
-    N = len(y)
-    for k in prange(N):
-        v[k],w[k],t[k],l[k],i[k] = fit_next_AR2(y[k],d[k],g11[k],g12[k],g11g11[k],g11g12[k], v[k],w[k],t[k],l[k],i[k],tt)

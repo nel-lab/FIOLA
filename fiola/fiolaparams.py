@@ -16,7 +16,7 @@ class fiolaparams(object):
                  window = 10000, step = 5000, detrend=True, flip=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
-                 filt_window = 15, do_plot=False, nb=1, p=1, use_numba=True, params_dict={}):
+                 filt_window = 15, do_plot=False, nb=1, p=1, params_dict={}):
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -73,7 +73,6 @@ class fiolaparams(object):
             'filt_window': filt_window, # window size for removing the subthreshold activities 
             'do_plot': do_plot, # whether to plot or not
             'p': p, # order of the AR process for calcium deconvolution
-            'use_numba': use_numba # whether to use Numba (True) or Cython (False) to compile Oasis
         }
 
         self.change_params(params_dict)

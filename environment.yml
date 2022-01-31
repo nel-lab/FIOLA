@@ -12,5 +12,4 @@ dependencies:
 - matplotlib
 - peakutils
 - spyder
-- numba
 - caiman

@@ -592,7 +592,7 @@ class FIOLA(object):
                                      fr=self.params.data['fr'], freq=self.params.spike['freq'],
                                      minimal_thresh=self.params.spike['minimal_thresh'], online_filter_method = self.params.spike['online_filter_method'],                                        
                                      filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'],
-                                     p=self.params.spike['p'], use_numba=self.params.spike['use_numba'], nb=self.params.hals['nb'])
+                                     p=self.params.spike['p'], nb=self.params.hals['nb'])
         saoz.fit(trace, num_frames=self.params.data['num_frames_total'])    
         times.append(timeit.default_timer()-start)
         logging.info('spike extraction complete')
