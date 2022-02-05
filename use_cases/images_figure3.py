@@ -537,7 +537,7 @@ F1 = F1.reshape([3,8])
 
 
 #%%
-result_all = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neuron/viola_F1_v2.1.npy', 
+result_all = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neuron/viola_F1_v2.1.npy', 
                      allow_pickle=True).item()
 F1 = np.zeros([3,8])
 
@@ -563,7 +563,7 @@ for keys, values in result_all.items():
         F1[row, col] = vv['f1']
         col = col + 1
         
-result = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy',
+result = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy',
                  allow_pickle=True).item()
 rr = result['viola']['f1'].copy()
 F1[0,0] = rr[0]
@@ -613,7 +613,98 @@ ax.yaxis.set_tick_params(length=8)
 ax.set_ylim([0,1])
 ax.legend(ncol=4, frameon=False, loc='upper center')
 plt.tight_layout()
-plt.savefig(os.path.join(save_folder, 'overlapping_neurons_F1_v2.1.pdf' ))
+#plt.savefig(os.path.join(save_folder, 'overlapping_neurons_F1_v2.1.pdf' ))
+
+
+
+#%%
+result_all = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neuron/meanroi_F1_v3.0.npy', allow_pickle=True).item()
+F2 = np.zeros([3,8])
+
+for keys, values in result_all.items():
+    print(keys)
+    if '0&1' in keys:
+        row = 0        
+    if '0&2' in keys:
+        row = 1
+    if '1&2' in keys:
+        row = 2
+    print(row)
+    
+    if '_25percent' in keys:
+        col = 6
+    if '_10percent' in keys:
+        col = 4
+    if '_0percent' in keys:
+        col = 2
+    print(col)
+        
+    for kk, vv in values.items():
+        F2[row, col] = vv['f1']
+        col = col + 1
+        
+result = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/mean_roi_online_v3.0.npy',
+                 allow_pickle=True).item()
+rr = result['meanroi_online']['f1'].copy()
+F2[0,0] = rr[0]
+F2[1,0] = rr[0]
+F2[0,1] = rr[1]
+F2[1,1] = rr[2]
+F2[2,0] = rr[1]
+F2[2,1] = rr[2]
+
+ff1 = F2[0].reshape((2,4), order='F')
+
+
+#%%
+save_folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/'
+label = ['Cell1', 'Cell2']
+#x = np.arange(len(label))  # the label locations
+x = np.array([0, 1])
+width = 0.1  # the width of the bars
+
+ff = F1[0].reshape((2,4), order='F')
+colors=['blue', 'yellow', 'red', 'green']
+methods = ['seperate', '0%', '10%', '25%']
+
+fig = plt.figure()
+ax = plt.subplot(121)
+ax1 = plt.subplot(122)
+
+for idx in range(4):
+    ax.bar(x+width*(idx-1.5), ff[:, idx], width, color=colors[idx], label=methods[idx])
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+#ax.spines['bottom'].set_visible(False)
+ax.set_ylabel('F1 Score')
+ax.set_xticks(x)
+ax.set_xticklabels(label)
+ax.xaxis.set_ticks_position('none') 
+ax.yaxis.set_tick_params(length=8)
+ax.set_ylim([0.5,1])
+ax.legend(frameon=False,  loc='upper center')
+
+
+#x = np.array([0, 1])
+#width = 0.1  # the width of the bars
+      
+colors=['blue', 'orange']
+methods = ['FIOLA', 'meanroi online']
+for idx in range(2):
+    ax1.bar(x+width*(idx-0.5), [ff.mean(1), ff1.mean(1)][idx], width, color=colors[idx], label=methods[idx])
+ax1.spines['top'].set_visible(False)
+ax1.spines['right'].set_visible(False)
+#ax1.spines['bottom'].set_visible(False)
+ax1.set_ylabel('F1 Score')
+ax1.set_xticks(x)
+ax1.set_xticklabels(label)
+ax1.xaxis.set_ticks_position('none') 
+ax1.yaxis.set_tick_params(length=8)
+ax1.set_ylim([0.5,1])
+ax1.legend(frameon=False)
+fig.tight_layout()
+
+plt.savefig(save_folder+'v3.0/real_data_overlapping.pdf')
 
 ################################################################################################
 #%%
