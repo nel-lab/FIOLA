@@ -156,3 +156,22 @@ class MotionCorrect(keras.layers.Layer):
         return {**base_config, "template": self.template_0,"strides": self.strides, "center_dims": self.center_dims,
                 "padding": self.padding, "epsilon": self.epsilon, 
                                         "ms_h": self.ms_h,"ms_w": self.ms_w }
+#%%
+def get_mc_model(template, center_dims, ms_h=10, ms_w=10):
+    """
+    takes as input a template (median) of the movie, A_sp object, and b object from caiman.
+    outputs the model: {Motion_Correct layer => Compute_Theta2 layer => NNLS * numlayer}
+    """
+    shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+    template = template.astype(np.float32)
+
+    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
+
+    #Initialization of the motion correction layer, initialized with the template
+    mc_layer = MotionCorrect(template, center_dims, ms_h=ms_h, ms_w=ms_w)   
+    mc, shifts = mc_layer(fr_in)
+
+   
+    #create final model, returns it and the first weight
+    model = keras.Model(inputs=[fr_in], outputs=[mc, shifts])   
+    return model

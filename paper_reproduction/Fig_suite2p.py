@@ -45,20 +45,22 @@ else:
     print(movies[idx], n_time, Lx, Ly)
 
 # %% set suite2 pparameters
+file_folder = "/media/nel/storage/fiola/R2_20190219"
+Lx, Ly = (796, 512)
 ops = suite2p.default_ops()
-ops['batch_size'] = 100
+ops['batch_size'] = 1
 ops['report_timing'] = True
 # basedon the suite2p source  code, only nonrigid will generate subpixel shifts
 ops['nonrigid'] = True
 ops['block_size'] = [Lx, Ly]
 ops['maxregshift'] = 0.1
-ops["nimg_init"] = n_time//2
+ops["nimg_init"] = 5000
 ops["subpixel"] = 1000
 # ops['maxregshiftNR'] = 15
 # ops['snr_thresh']= 1.0
 # if idx == 3:
-#     ops["h5py"] = file_folder
-#     ops["h5py_key"] = "mov"
+ops["h5py"] = file_folder
+ops["h5py_key"] = "mov"
 #     idx = -1
 print(ops)
 
@@ -108,17 +110,19 @@ plt.plot(-s2p_shifts+np.mean(s2p_shifts))
 # plt.plot(output_ops["yoff1"][1500:]*2+1)
 # plt.plot(fiola_full_shifts[1500:,1])
 # %%  error  calculation  using cm online  as the  reference  point
+files_voltage = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/*cm_on_shifts.npy"))
+files = files_cm + files_voltage
 dataset_x = {"alg": [], "dset": [], "err": []}
 dataset_y = {"alg": [], "dset": [], "err": []}
-for i, f in enumerate(files_cm):
+for i, f in enumerate(files):
     base_file = f[:-16]
-    names = ["1MP", "YST", "K37", "K53", "Meso"]
+    names = ["1MP", "YST", "K37", "K53", "Meso", "FOV1_35", "FOV_3_35", "403106"]
     cm = np.load(f)
     ff = np.squeeze(np.load(base_file + "viola_full_shifts.npy"))
     fc = np.squeeze(np.load(base_file + "viola_small_shifts.npy"))
     # if i==2:
     #     ff= np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k37_20160109_AM_150um_65mW_zoom2p2_00001_00001_crop_viola_shifts_exp_f.npy")
-    s2p_ops = np.load(files_ops[i],  allow_pickle=True)[()]
+
     leng = len(cm[:, 0])
     start = leng//2  # leng//2
 
@@ -129,15 +133,23 @@ for i, f in enumerate(files_cm):
     # else:
     ffx, ffy = ff[start:, 0]-np.mean(ff[:, 0]), ff[start:, 1]-np.mean(ff[:, 1])
     fcx, fcy = fc[start:, 0]-np.mean(fc[:, 0]), fc[start:, 1]-np.mean(fc[:, 1])
-    s2px, s2py = (s2p_ops["yoff1"][start:, 0] + s2p_ops["yoff"][start:]
-                  ), (s2p_ops["xoff1"][start:, 0] + s2p_ops["xoff"][start:])
+    try:
+        s2p_ops = np.load(files_ops[i],  allow_pickle=True)[()]
+        s2px, s2py = (s2p_ops["yoff1"][start:, 0] + s2p_ops["yoff"][start:]
+                      ), (s2p_ops["xoff1"][start:, 0] + s2p_ops["xoff"][start:])
+    except:
+        s2px, s2py = -cmx, -cmy
+    
+    errffx, errffy = (np.subtract(ffx, cmx)), (np.subtract(ffy, cmy))
+    errfcx, errfcy = (np.subtract(fcx, cmx)), (np.subtract(fcy, cmy))
+    errs2x, errs2y = (np.subtract(-s2px, cmx)), (np.subtract(-s2py, cmy))
 
-    dataset_x["err"] += list(np.subtract(ffx, cmx)) \
-        + list(np.subtract(fcx, cmx)) \
-        + list(np.subtract(-s2px, cmx))
-    dataset_y["err"] += list(np.subtract(ffy, cmy)) \
-        + list(np.subtract(fcy, cmy)) \
-        + list(np.subtract(-s2py, cmy))
+    dataset_x["err"] += list(errffx - np.median(errffx)) \
+        + list(errfcx - np.median(errfcx)) \
+        + list(errs2x - np.median(errs2x))
+    dataset_y["err"] += list(errffy - np.median(errffy)) \
+        + list(errfcy - np.median(errfcy)) \
+        + list(errs2y - np.median(errs2y))
     dataset_x["alg"] += ["full_fiola"]*start + \
         ["crop_fiola"]*start + ["suite2p"]*start
     dataset_x["dset"] += [names[i]]*3*start
@@ -145,12 +157,14 @@ for i, f in enumerate(files_cm):
         ["crop_fiola"]*start + ["suite2p"]*start
     dataset_y["dset"] += [names[i]]*3*start
     # if i==2:
-    #     break
+        # break
 # %% box plot generation
 df = pd.DataFrame(dataset_x)
-sns.boxplot(x=df["dset"],
+ax = sns.boxplot(x=df["dset"],
             y=df["err"],
-            hue=df["alg"])
+            hue=df["alg"],
+            whis=[1,99])
+ax.set_ylim([-2,2])
 
 # %% timing  calculations (k53 only)
 fr = 1024
@@ -181,7 +195,7 @@ t3 = batchTimes[0]
 # %%  save
 save = False
 if save:
-    np.save("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_1024_ff.npy",
+    np.save("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_512_ff.npy",
             output_ops, allow_pickle=True)
 # %% generate timings dataset
 dataset = {"alg": [], "typ": [], "time": []}
@@ -189,6 +203,8 @@ dataset_fr = {"alg": [], "time": []}
 timed = list()
 
 for i, f in enumerate(["fc", "fi", "cm", "s2"]):
+    # if i == 1: 
+        # break
     base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_"
     dat512 = np.load(base_file + "512_" + f+".npy", allow_pickle=True)[()]
     dat1024 = np.load(base_file + "1024_" + f+".npy", allow_pickle=True)[()]
@@ -224,22 +240,22 @@ for i, f in enumerate(["fc", "fi", "cm", "s2"]):
         dataset_fr["alg"] += [f+"1024"]*30
 
 # %% seaborn plot
-df = pd.DataFrame(dataset)
-df.groupby(["typ", "alg"])["time"].sum().unstack("typ")[
-    ["init", "frames"]].plot(kind="bar", stacked=True)
-# %% seaborn plotfor frame-wise timing NOTINCLUDING INITIALIZATION
-df2 = df.sort_values(["typ"]).groupby(["typ", "alg"])[
-    "time"].sum().unstack("typ")[["init", "frames"]]/1500
-df2.plot(kind="bar", stacked=True)
-# %% more
-df3 = pd.DataFrame(dataset_fr)
-p = sns.boxplot(x=df3["alg"],
-                y=df3["time"]*1000,
-                order=["fi512", "fc512", "cm512", "s2512",
-                       "fi1024", "fc1024", "cm1024", "s21024"],
-                whis=[0.1, 99.9])
-p.set_yscale("log")
-# %%
+# df = pd.DataFrame(dataset)
+# df.groupby(["typ", "alg"])["time"].sum().unstack("typ")[
+#     ["init", "frames"]].plot(kind="bar", stacked=True)
+#  seaborn plotfor frame-wise timing NOTINCLUDING INITIALIZATION
+# df2 = df.sort_values(["typ"]).groupby(["typ", "alg"])[
+#     "time"].sum().unstack("typ")[["init", "frames"]]/1500
+# df2.plot(kind="bar", stacked=True)
+# # %% more
+# df3 = pd.DataFrame(dataset_fr)
+# p = sns.boxplot(x=df3["alg"],
+#                 y=df3["time"]*1000,
+#                 order=["fi512", "fc512", "cm512", "s2512",
+#                        "fi1024", "fc1024", "cm1024", "s21024"],
+#                 whis=[1, 99])
+# p.set_yscale("log")
+
 stats = {}
 data_fr_custom = {}
 nmes = ["512_fi", "512_fc", "512_cm", "512_s2",
@@ -320,6 +336,25 @@ for patch, color in zip(bplot["boxes"], colors):
     print(color)
     patch.set_facecolor(color)
 
+#%% NNLS- pearson's r x number iterations
+files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
+files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy")
+files = sorted(files)
+rscore5, rscore10, rscore30 = [],[],[]
+r5err, r10err, r30err = [],[],[]
+for file in files:
+    nnls_traces = np.load(file);
+    v5_traces = np.load(file[:-8] + "v_nnls_5.npy")
+    v10_traces = np.load(file[:-8]+ "v_nnls_10.npy")
+    v30_traces = np.load(file[:-8] + "v_nnls_30.npy")
+    
+    if "FOV" in file:
+        tempCorr = [np.corrcoef(n,v)[0][1] for n,v in zip(nnls_traces, v5_traces)]
+        rscore5
+    #rscore5.append(np.corrcoef(nnls_traces, v5_traces))
+    
+    
+    
 #%%
 # dims = (512, 512)
 # A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_A.npy",

@@ -17,6 +17,7 @@ gpus = tf.config.experimental.list_physical_devices('GPU')
 for gpu in gpus:
   tf.config.experimental.set_memory_growth(gpu, True) # limit gpu memory
 import timeit
+import time
 
 from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
@@ -217,6 +218,11 @@ class FIOLA(object):
         if self.params.data['mode'] == 'voltage':
             self.estimates.reconstruct_signal()
             
+        try:
+            del self.estimates.update_thread
+            del self.estimates.update_q
+        except:
+            logging.warning('no queue or thread to delete')
         return self
     
     # def fit_caiman_init(self, mov, mc_dict, opts_dict, quality_dict, save_movie=True):
@@ -405,7 +411,7 @@ class FIOLA(object):
         
         return mc_mov, shifts, times
     
-    def fit_gpu_nnls(self, mov, Ab, batch_size=1):
+    def fit_gpu_nnls_test(self, mov, Ab, batch_size=1):
         """
         Run GPU NNLS for source extraction
     
@@ -445,8 +451,8 @@ class FIOLA(object):
                                                                     "k":(1, 1)})
             return dataset
         
-        times = []
-        out = []
+        times = [None]*3001
+        out = [None]*3000
         flag = 1000
         index = 0
         dims = mov.shape[1:]
@@ -458,6 +464,87 @@ class FIOLA(object):
         num_components = Ab.shape[-1]
         nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
                                     self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
+        nnls_model.compile(optimizer='rmsprop', loss='mse')   
+        estimator = tf.keras.estimator.model_to_estimator(nnls_model)
+        
+        logging.info('beginning source extraction')
+        start = timeit.default_timer()
+        for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+            out[index] = i
+            times[index]= (time.time()-start)
+            index += 1    
+            if index * batch_size >= flag:
+                logging.info(f'processed {flag} frames')
+                flag += 1000            
+        
+        logging.info('source extraction complete')
+        # logging.info(f'total timing: {times[-1]}')
+        # logging.info(f'average timing per frame: {times[-1] / len(mov)}')
+        
+        trace = []; 
+        for ou in out:
+            if ou:
+                keys = list(ou.keys())
+                trace.append(ou[keys[0]][0])  
+            else:
+                pass
+        trace = np.hstack(trace)
+        
+        return trace, times
+    
+    def fit_gpu_nnls(self, mov, Ab, batch_size=1):
+        """
+        Run GPU NNLS for source extraction
+    
+        Parameters
+        ----------
+        mov: ndarray
+            motion corrected movie
+        Ab: ndarray (number of pixels * number of spatial footprints)
+            spatial footprints for neurons and background        
+        batch_size: int
+            number of frames used for motion correction each time. The default is 1.
+        num_layers: int
+            number of iterations for performing nnls
+        
+        Returns
+        -------
+        trace: ndarray
+            extracted temporal traces 
+        """
+        
+        def generator():
+            if len(mov) % batch_size != 0 :
+                raise ValueError('batch_size needs to be a factor of frames of the movie')
+            for idx in range(len(mov) // batch_size):
+                yield {"m":mov[None, idx*batch_size:(idx+1)*batch_size,...,None], 
+                        "y":y, "x":x, "k":[[0.0]]}
+                
+        def get_frs():
+            dataset = tf.data.Dataset.from_generator(generator, 
+                                                      output_types={"m": tf.float32,
+                                                                    "y": tf.float32,
+                                                                    "x": tf.float32,
+                                                                    "k": tf.float32}, 
+                                                      output_shapes={"m":(1, batch_size, dims[0], dims[1], 1),
+                                                                    "y":(1, num_components, batch_size),
+                                                                    "x":(1, num_components, batch_size),
+                                                                    "k":(1, 1)})
+            return dataset
+        
+        times = []
+        out = []
+        flag = 1000
+        index = 0
+        dims = mov.shape[1:]
+        
+        b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')       
+        C_init = np.dot(Ab.T, b)
+        x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
+        x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
+        num_components = Ab.shape[-1]
+        
+        nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'])
         nnls_model.compile(optimizer='rmsprop', loss='mse')   
         estimator = tf.keras.estimator.model_to_estimator(nnls_model)
         

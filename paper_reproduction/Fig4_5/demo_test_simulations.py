@@ -37,7 +37,7 @@ from paper_reproduction.Fig4_5.test_run_fiola import run_fiola
 
 
 #%%
-mode = ['overlapping', 'non_overlapping', 'positron'][1]
+mode = ['overlapping', 'non_overlapping', 'positron'][0]
 dropbox_folder = '/media/nel/storage/NEL-LAB Dropbox/'
 #dropbox_folder = '/Users/agiovann/Dropbox/'
 
@@ -60,7 +60,7 @@ elif mode == 'positron':
     names = [f'viola_sim4_{i}' for i in range(1, 13)]
    
 #%%
-for num_layers in [10, 30]:
+#for num_layers in [10, 30]:
     mode = 'voltage'
     num_frames_init = 10000
     num_frames_total = 75000
@@ -81,7 +81,7 @@ for num_layers in [10, 30]:
     step=2500
     template_window=2
     trace_with_neg=False
-    #num_layers = 3
+    num_layers = 30
         
     options = {
         'mode': mode, 
@@ -115,13 +115,13 @@ for num_layers in [10, 30]:
 #%%  
 # for num_layers in [1, 3, 5, 10, 30]:
 #     for trace_with_neg in [True, False]:
-#distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
-#names = [f'viola_sim3_{i}' for i in range(1, 19)]
+distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+names = [f'viola_sim3_{i}' for i in range(1, 19)]
 #names = [f'viola_sim5_{i}' for i in range(1, 8)]
 #names = [f'viola_sim6_{i}' for i in range(2, 20, 3)]
 #names = [f'viola_sim7_{i}' for i in range(2, 9)]
 test = []
-t_range = [10000, 75000]
+t_range = [10000, 20000]
 for idx, dist in enumerate(distance):
     #if idx == 1:
     vi_result_all = []
@@ -140,7 +140,7 @@ for idx, dist in enumerate(distance):
         spikes = gt['ST'][0][0][0]
         
         vi_folder = os.path.join(folder, 'viola')
-        vi_files = sorted([file for file in os.listdir(vi_folder) if 'v3.1' in file and '30_' in file])
+        vi_files = sorted([file for file in os.listdir(vi_folder) if 'v3.1' in file ])
         #vi_files = sorted([file for file in os.listdir(vi_folder) if 'v3.0' in file and 'layers_1' in file])
         #vi_files = sorted([file for file in os.listdir(vi_folder) if 'v3.0' in file and f'layers_{num_layers}_' in file and f'trace_with_neg_{trace_with_neg}' in file])
         if len(vi_files) > 1:
@@ -177,7 +177,7 @@ for idx, dist in enumerate(distance):
             s2 = s2[np.logical_and(s2>t_range[0], s2<t_range[1])]
             t2 = vi_temporal[idx]
             t2 = normalize_piecewise(t2, 5000)
-            ss = np.mean(t2[s2])
+            ss = np.mean(t2[s1])
             spnr.append(ss)        
         spnr_all.append(spnr)
 

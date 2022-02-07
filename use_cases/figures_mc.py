@@ -88,7 +88,7 @@ full = True
 # from mc_batch import MotionCorrect
 from FFT_MOTION import MotionCorrect
 # mask = np.ones_like(template)
-
+mov = io.imread(fp)
 mov  = mov.astype(np.float32)
 # plt.imshow(template)
 # template = np.median(mov[:2000], axis=0)
@@ -129,26 +129,40 @@ def generator():
 def get_frs():
     dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32}, output_shapes={"m":(1,512,512,1)})
     return dataset
-#%%   
-from FFT_MOTION import get_mc_model
-import timeit
+#%% 
+from FFT_MOTION import get_mc_model 
+# fp = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_1024/k53_1024.tif"
+fp = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_512/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001.tif"
+mov= io.imread(fp).astype(np.float32)
+
+#%%
+import time
 import tensorflow.keras as keras
-model = get_mc_model(template[:,:,None,None])
+#%%
+start = time.time()
+template = np.median(mov[:len(mov)//2], axis=0)
+model = get_mc_model(template[:,:,None,None], (512,512))
+t_init= time.time()-start
 model.compile(optimizer='rmsprop', loss='mse')
 estimator = tf.keras.estimator.model_to_estimator(model)
-times = []
-start = timeit.default_timer()
-for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
-    out.append(i)
-    times.append(timeit.default_timer()-start)
+times = [0]*3000
+out = [0]*3000
+count = 0
+for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):    
+    out[count] = i
+    times[count]=time.time() - start#timeit.default_timer()-start
+    count += 1
     # break
-print(timeit.default_timer()-start)
+end = time.time()
+#%%plot
+plt.plot(np.diff(times))
+#%%
 x=[]
 y=[]
 for val in  out:
     x.append(np.squeeze(val["motion_correct_1"]))
     y.append(np.squeeze(val["motion_correct_2"]))
-np.save("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/k37_times", np.diff(times[1:-1]))
+#np.save("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/MC/k37_times", np.diff(times[1:-1]))
 #%%
 times = [0]*500
 out = []

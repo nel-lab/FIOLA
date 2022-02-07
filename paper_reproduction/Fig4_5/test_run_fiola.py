@@ -111,7 +111,8 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
     #          caiman_file = caiman_file, 
     #          fnames_exp = fnames, 
     #          estimates = fio.estimates)
-    save_name = f'fiola_result_num_layers_{fio.params.mc_nnls["num_layers"]}_trace_with_neg_{fio.params.mc_nnls["trace_with_neg"]}_v3.1'
+    #save_name = f'fiola_result_num_layers_{fio.params.mc_nnls["num_layers"]}_trace_with_neg_{fio.params.mc_nnls["trace_with_neg"]}_v3.1'
+    save_name = f'fiola_result_test_v3.1'
     np.save(os.path.join(file_dir, 'viola', save_name), fio.estimates)
     
     
