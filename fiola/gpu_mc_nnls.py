@@ -639,19 +639,11 @@ class Pipeline(object):
                 traces_input = traces_input[None, :]   # make sure dimension is timepoints * # of neurons
 
             if self.flag > 0:
-                if self.mode == 'voltage':
-                    for i in range(len(traces_input)):
-                        self.saoz.fit_next(traces_input[i:i+1].T, self.n)
-                        if (self.n + 1) % 1000 == 0:
-                            logging.info(f'{self.n+1} frames processed')
-                        self.n += 1
-
-                elif self.mode == 'calcium':
-                    for i in range(len(traces_input)):
-                        self.saoz.trace[:, self.n:(self.n+1)] = traces_input[i:i+1].T                                
-                        if (self.n + 1) % 1000 == 0:
-                            logging.info(f'{self.n+1} frames processed')
-                        self.n += 1    
+                for i in range(len(traces_input)):
+                    self.saoz.fit_next(traces_input[i:i+1].T, self.n)
+                    if (self.n + 1) % 1000 == 0:
+                        logging.info(f'{self.n+1} frames processed')
+                    self.n += 1
 
             self.flag = self.flag + 1
        
