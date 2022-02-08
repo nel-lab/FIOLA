@@ -336,9 +336,11 @@ for patch, color in zip(bplot["boxes"], colors):
     print(color)
     patch.set_facecolor(color)
 
+#%% NNLS -- timing for N.... files
+
 #%% NNLS- pearson's r x number iterations
-files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
-files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy")
+# files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
+files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy")
 files = sorted(files)
 rscore5, rscore10, rscore30 = [],[],[]
 r5err, r10err, r30err = [],[],[]
@@ -347,10 +349,7 @@ for file in files:
     v5_traces = np.load(file[:-8] + "v_nnls_5.npy")
     v10_traces = np.load(file[:-8]+ "v_nnls_10.npy")
     v30_traces = np.load(file[:-8] + "v_nnls_30.npy")
-    
-    if "FOV" in file:
-        tempCorr = [np.corrcoef(n,v)[0][1] for n,v in zip(nnls_traces, v5_traces)]
-        rscore5
+
     #rscore5.append(np.corrcoef(nnls_traces, v5_traces))
     
     

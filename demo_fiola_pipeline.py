@@ -11,16 +11,19 @@ authors: @agiovann @changjia
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import pyximport
+pyximport.install()
+import scipy
 from tensorflow.python.client import device_lib
 from time import time
-import scipy
-
+    
 from fiola.demo_initialize_calcium import run_caiman_init
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
 from caiman.source_extraction.cnmf.utilities import get_file_size
 import caiman as cm
 from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
+
 
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\

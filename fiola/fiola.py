@@ -215,8 +215,7 @@ class FIOLA(object):
         self.estimates.Ab = self.Ab
         if hasattr(self, 'seq'):
             self.estimates.seq = self.seq
-        if self.params.data['mode'] == 'voltage':
-            self.estimates.reconstruct_signal()
+        self.estimates.reconstruct_signal()
             
         try:
             del self.estimates.update_thread
@@ -680,7 +679,8 @@ class FIOLA(object):
                                      robust_std=self.params.spike['robust_std'], adaptive_threshold = self.params.spike['adaptive_threshold'],
                                      fr=self.params.data['fr'], freq=self.params.spike['freq'],
                                      minimal_thresh=self.params.spike['minimal_thresh'], online_filter_method = self.params.spike['online_filter_method'],                                        
-                                     filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'])
+                                     filt_window=self.params.spike['filt_window'], do_plot=self.params.spike['do_plot'],
+                                     p=self.params.spike['p'], nb=self.params.hals['nb'])
         saoz.fit(trace, num_frames=self.params.data['num_frames_total'])    
         times.append(timeit.default_timer()-start)
         logging.info('spike extraction complete')
@@ -748,6 +748,18 @@ class FIOLA(object):
                 ax2.cla()
                 if self.params.data['mode'] == 'calcium':
                     ax2.plot(self.estimates.trace[idx][i], alpha=0.8, label='extracted traces')
+                    
+                    try: 
+                        temp = self.estimates.trace.shape[0] - self.estimates.trace_deconvolved.shape[0]
+                        if temp > 0:
+                            ax2.plot(np.vstack((self.estimates.trace_deconvolved, 
+                                               np.zeros((temp, self.estimates.trace.shape[1]))))[idx][i],
+                                               alpha=0.8, label='deconv traces')
+                        else:
+                            ax2.plot(self.estimates.trace_deconvolved[idx][i], alpha=0.8, label='deconv traces')
+                    except:               
+                        pass
+                    
                     if cnm_estimates is not None:
                         ax2.plot(np.vstack((cnm_estimates.C, cnm_estimates.f))[idx][i], label='caiman result')                        
                         #ax2.plot((cnm_estimates.C+cnm_estimates.YrA)[idx][i], label='caiman result')                        
