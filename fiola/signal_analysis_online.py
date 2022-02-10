@@ -15,7 +15,7 @@ from time import time
 from threading import Thread
 
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
-from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2
+from fiola.oasis import par_fit_next_AR1, par_fit_next_AR2, reconstruct_AR1, reconstruct_AR2
 
 
 class SignalAnalysisOnlineZ(object):
@@ -151,15 +151,22 @@ class SignalAnalysisOnlineZ(object):
                                                         results_foopsi], dtype=np.float32).T
                     self._lg = np.log(self.g)
                     self._bl = self.b + self.lam*(1-self.g)
-                    self._v, self._w, self._l = np.zeros((3, N, 50), dtype=np.float32)
+                    self._v, self._w, self.h = np.zeros((3, N, 50), dtype=np.float32)
+                    self.t, self._l = np.zeros((2, N, 50), dtype=np.int32)
                     self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
+                    n = 0
                     for y in trace_in[:N].T:
-                        par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w, self._l, self._i)
+                        par_fit_next_AR1(y-self._bl, self._lg, self._v, self._w,
+                                         self.t, self._l, self.h, self._i, n)
+                        n += 1
                         tmp = self._v.shape[1]
                         if self._i.max() >= tmp:
-                            vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
-                            vwl[:,:,:tmp] = self._v, self._w, self._l
-                            self._v, self._w, self._l = vwl
+                            vwh = np.zeros((3, N, tmp+50), dtype=np.float32)
+                            tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                            vwh[:,:,:tmp] = self._v, self._w, self.h
+                            tl[:,:,:tmp] = self.t, self._l
+                            self._v,self._w,self.h = vwh
+                            self.t,self._l = tl
                 elif self.p==2:
                     self.b, self.lam, g1, g2 = np.array([[r[1], r[-1], *r[3]] for r in
                                                         results_foopsi], dtype=np.float32).T
@@ -178,24 +185,24 @@ class SignalAnalysisOnlineZ(object):
                     n = 0
                     # initialize
                     self._y = np.empty((N, 1000), dtype=np.float32)
-                    self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
-                    self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
+                    self._v, self._w, self.h = np.zeros((3, N, 50), dtype=np.float32)
+                    self.t, self._l = np.zeros((2, N, 50), dtype=np.int32)
                     self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
                     # process
                     for yt in trace_in[:N].T:
                         self._y[:,n] = yt-self._bl
                         par_fit_next_AR2(self._y,self._d,
                                             self._g11,self._g12,self._g11g11,self._g11g12,
-                                            self._v,self._w,self._t,self._l,self._i,n)
+                                            self._v,self._w,self.t,self._l,self.h,self._i,n)
                         n +=1
                         tmp = self._v.shape[1]
                         if self._i.max()>=tmp:
-                            vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                            vwh = np.zeros((3, N, tmp+50), dtype=np.float32)
                             tl = np.zeros((2, N, tmp+50), dtype=np.int32)
-                            vw[:,:,:tmp] = self._v,self._w
-                            tl[:,:,:tmp] = self._t,self._l
-                            self._v,self._w = vw
-                            self._t,self._l = tl
+                            vwh[:,:,:tmp] = self._v,self._w,self.h
+                            tl[:,:,:tmp] = self.t,self._l
+                            self._v,self._w,self.h = vwh
+                            self.t,self._l = tl
                         tmp = self._y.shape[1]
                         if n>=tmp:
                             yy = np.empty((N, tmp+1000), dtype=np.float32)
@@ -282,25 +289,28 @@ class SignalAnalysisOnlineZ(object):
                 N = len(self._bl)
                 if self.p==1:
                     par_fit_next_AR1(trace_in[:N,0]-self._bl, self._lg,
-                                self._v, self._w, self._l, self._i)
+                                     self._v, self._w, self.t, self._l, self.h, self._i, n)
                     tmp = self._v.shape[1]
                     if self._i.max() >= tmp:
-                        vwl = np.zeros((3, N, tmp+50), dtype=np.float32)
-                        vwl[:,:,:tmp] = self._v, self._w, self._l
-                        self._v, self._w, self._l = vwl
+                        vwh = np.zeros((3, N, tmp+50), dtype=np.float32)
+                        tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                        vwh[:,:,:tmp] = self._v, self._w, self.h
+                        tl[:,:,:tmp] = self.t,self._l
+                        self._v, self._w, self.h = vwh
+                        self.t,self._l = tl
                 elif self.p==2:
                     self._y[:,n] = trace_in[:N,0]-self._bl
-                    par_fit_next_AR2(self._y,self._d,
-                                    self._g11,self._g12,self._g11g11,self._g11g12,
-                                    self._v,self._w,self._t,self._l,self._i,n)
+                    par_fit_next_AR2(self._y, self._d,
+                                    self._g11, self._g12, self._g11g11, self._g11g12,
+                                    self._v, self._w, self.t, self._l, self.h, self._i, n)
                     tmp = self._v.shape[1]
                     if self._i.max()>=tmp:
-                        vw = np.zeros((2, N, tmp+50), dtype=np.float32)
+                        vwh = np.zeros((3, N, tmp+50), dtype=np.float32)
                         tl = np.zeros((2, N, tmp+50), dtype=np.int32)
-                        vw[:,:,:tmp] = self._v,self._w
-                        tl[:,:,:tmp] = self._t,self._l
-                        self._v,self._w = vw
-                        self._t,self._l = tl
+                        vwh[:,:,:tmp] = self._v,self._w,self.h
+                        tl[:,:,:tmp] = self.t,self._l
+                        self._v,self._w,self.h = vwh
+                        self.t,self._l = tl
                     tmp = self._y.shape[1]
                     if n+1>=tmp:
                         yy = np.empty((N, tmp+1000), dtype=np.float32)
@@ -389,7 +399,7 @@ class SignalAnalysisOnlineZ(object):
             snr = sg / std
             self.SNR[idx] = snr
         return self
-            
+
     def reconstruct_signal(self):
         if self.mode == 'voltage':
             self.t_rec = np.zeros(self.trace.shape)
@@ -399,41 +409,18 @@ class SignalAnalysisOnlineZ(object):
                     self.t_rec[idx, spikes] = 1
                     self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
         elif self.mode == 'calcium' and self.p > 0:
-            T = int(self._l[0,:self._i[0]].sum())
+            T = self.trace.shape[1]
+            N = len(self._v)
+            self.trace_deconvolved = np.zeros((N, T), dtype=np.float32)
+            self.trace_denoised = np.zeros((N, T), dtype=np.float32)
             if self.p==1:
-                self.trace_deconvolved = np.zeros((len(self._v), T), dtype=np.float32)
-                self._v /= self._w
-                self._v[self._v < 0] = 0
-                for k, ii in enumerate(self._i):
-                    t = np.cumsum(self._l[k,:ii-1]).astype(np.uint32)
-                    self.trace_deconvolved[k,t] = self._v[k,1:ii] - self._v[k,:ii-1] * np.exp(self._lg[k] * self._l[k,:ii-1])
-                self.trace_denoised = self.trace_deconvolved.copy()
-                self.trace_denoised[:,0] = self._v[:,0]
-                g = np.exp(self._lg)
-                for j in range(T-1):
-                    self.trace_denoised[:,j+1] += g*self.trace_denoised[:,j]
+                reconstruct_AR1(self.trace_deconvolved, self.trace_denoised, self.g,
+                                self._v, self._w, self.t, self.h, self._i)
             elif self.p==2:
-                # construct c
-                N = len(self._v)
-                c = np.empty((N, T), dtype=np.float32)
-                for n in range(N):
-                    tmp = max(self._v[n,0], 0)
-                    for j in range(self._l[n,0]):
-                        c[n,j] = tmp
-                        tmp *= self._d[n]
-                for n in range(N):
-                    for k in range(1, self._i[n]):
-                        c[n,self._t[n,k]] = self._v[n,k]
-                        for j in range(self._t[n,k]+1, self._t[n,k]+self._l[n,k]-1):
-                            c[n,j] = self.g[n,0] * c[n,j-1] + self.g[n,1] * c[n,j-2]
-                        c[n,self._t[n,k]+self._l[n,k]-1] = self._w[n,k]
-                # construct s
-                self.trace_deconvolved = c.copy()
-                self.trace_deconvolved[:,:2] = 0
-                self.trace_deconvolved[:,2:] -= (self.g[:,:1] * c[:,1:-1] + self.g[:,1:] * c[:,:-2])
-                self.trace_denoised = c
+                reconstruct_AR2(self.trace_deconvolved, self.trace_denoised, self._d, self.g,
+                                self._v, self._w, self.t, self._l, self.h, self._i)
         return self
-                
+
     def reconstruct_movie(self, A, shape, scope):
         self.A = A.reshape((shape[0], shape[1], -1), order='F')
         self.C = self.t_rec[:, scope[0]:scope[1]]
