@@ -450,8 +450,8 @@ class FIOLA(object):
                                                                     "k":(1, 1)})
             return dataset
         
-        times = [None]*3001
-        out = [None]*3000
+        times = [None]*len(mov)
+        out = [None]*len(mov)
         flag = 1000
         index = 0
         dims = mov.shape[1:]
@@ -461,6 +461,7 @@ class FIOLA(object):
         x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
         x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
         num_components = Ab.shape[-1]
+        print(self.params.mc_nnls['num_layers'], "NUM LAYERS debug")
         nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
                                     self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
         nnls_model.compile(optimizer='rmsprop', loss='mse')   
@@ -472,9 +473,9 @@ class FIOLA(object):
             out[index] = i
             times[index]= (time.time()-start)
             index += 1    
-            if index * batch_size >= flag:
-                logging.info(f'processed {flag} frames')
-                flag += 1000            
+            # if index * batch_size >= flag:
+            #     logging.info(f'processed {flag} frames')
+            #     flag += 1000            
         
         logging.info('source extraction complete')
         # logging.info(f'total timing: {times[-1]}')

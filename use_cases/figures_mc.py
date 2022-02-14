@@ -173,7 +173,7 @@ for i in range(500):
 plt.plot(np.diff(times))
 print(np.mean(np.diff(times)))
 #%%
-from FFT_MOTION import get_nnls_model
+from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
 import timeit
 import time
 import tensorflow.keras as keras

@@ -72,6 +72,7 @@ db = {"data_path": [file_folder]}
 # %% Run suite2p with timing
 output_ops = suite2p.run_s2p(ops, db)
 # %% show i mage
+np.save(file_folder+ "/full_time.npy", output_ops, allow_pickle=True)
 plt.imshow(output_ops["refImg"])
 
 # %% ANALYSIS  &  FIGURE GENERATION
@@ -337,11 +338,82 @@ for patch, color in zip(bplot["boxes"], colors):
     patch.set_facecolor(color)
 
 #%% NNLS -- timing for N.... files
+from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
+import timeit
+import time
+import tensorflow.keras as keras
+from multiprocessing import Queue
+import glob
+import caiman as cm
+import numpy as np
+#%% file load for NNLS timing(Calcium only)
+# get tif +  A,b,C files for N... and  YST  (Calcium Comparison)
+movie_name = ["N00", "N01", "N02", "N03", "N04","YST"][5]
+base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
+A_files = sorted(glob.glob(base_file + "*half_A.npy"))
+b_files = sorted(glob.glob(base_file + "*half_b.npy"))
+C_files = sorted(glob.glob(base_file+ "*half_noisyC.npy"))
+movie_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.00.00/images*/*.tif"))
+#%% load file
+idx = 0
+A = np.load(A_files[idx],allow_pickle=True)[()].toarray()[:,-100:]
+b = np.load(b_files[idx],allow_pickle=True)[()]
+C = np.load(C_files[idx],allow_pickle=True)[()][-102:]
+x0 = C[:,0]
+dims = 512
+neurs = A.shape[1]+b.shape[1]
+Ab = np.concatenate((A,b), axis=1)
+mov = cm.load(movie_files)
+mov = mov[mov.shape[0]//2:]
+fnames = movie_files
+#%% create generator
+out = []
+q = Queue()
+q.put((np.concatenate((x0[None],x0[None]), axis=0)))
+def generator():
+    # print('hi')
+    k=[[0.0]]
+    for fr in  mov:
+        # print(fr.shape)
+        print("stuck?")
+        z = q.get()
+        print(z.shape, "debug1")
+        # print("unstuck")
+        yield{"m":fr[None,:,:,None], "y":z[0,:,None][None], "x":z[1,:,None][None], "k":k}
+             
+def get_frs():
+    dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32, 'y':tf.float32, 'x':tf.float32, 'k':tf.float32}, 
+                                             output_shapes={"m":(1,512,512,1), "y":(1, neurs, 1),"x":(1, neurs, 1), "k":(1, 1)})
+    return dataset
+#%% set up nnls model
+iters = 30
+model = get_nnls_model((dims,dims), Ab.astype(np.float32), 1, iters)
+model.compile(optimizer='rmsprop', loss='mse')
+estimator  = tf.keras.estimator.model_to_estimator(model)
+times = []
+#%% run model
+start = timeit.default_timer()
+for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+    # print(i, "PLES")
+    print(i.keys(), "LOOK HERE")
+    q.put(i['compute_trace_with_noise'])
+    times.append(timeit.default_timer()-start)
+plt.plot(np.diff(times[1:-1]))
+#%%
+into = [mov[0, :, :, None][None, :], x0, x0, [[0.0]]]
+start0 = timeit.default_timer()
+
+for i in range(1, 500):
+    start = timeit.default_timer()
+    out = model(into)[0]
+    times[i] = timeit.default_timer()-start
+    into = [mov[i+1, :, :, None][None, :], out[0], out[1], out[2]]
+    # time.sleep(0.01)
 
 #%% NNLS- pearson's r x number iterations
+from sklearn.metrics import r2_score
 # files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
-files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy")
-files = sorted(files)
+files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
 rscore5, rscore10, rscore30 = [],[],[]
 r5err, r10err, r30err = [],[],[]
 for file in files:
@@ -349,10 +421,36 @@ for file in files:
     v5_traces = np.load(file[:-8] + "v_nnls_5.npy")
     v10_traces = np.load(file[:-8]+ "v_nnls_10.npy")
     v30_traces = np.load(file[:-8] + "v_nnls_30.npy")
-
+    if "02" in  file:
+        break
     #rscore5.append(np.corrcoef(nnls_traces, v5_traces))
     
+#%% graphing 
+files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
+offsets = [2,1,2,3,3,3]
+for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
+    x,y = [],[]
+    xerr,yerr = [],[]
     
+    for t in ["5", "10", "30"]:
+        ti = np.load(base_file + movie_name+ "_nnls_" + t + "_time.npy")
+        ti_mean = np.mean(ti)
+        ti_err = np.std(ti)
+        x.append(ti_mean)
+        xerr.append(ti_err)
+        
+        offset = offsets[i]
+        nn_sp = np.load(files[i])
+        nn_vi = np.load(files[i][:-8]+ "v_nnls_" + t  +  ".npy")[:-offset,-nn_sp.shape[1]:]
+        nn_sp = nn_sp[offset:offset+len(nn_vi)]
+        r2 = []
+        for (s,v) in zip(nn_sp, nn_vi):
+            r2.append(r2_score(s,v))
+        y.append(np.mean(r2))
+        yerr.append(np.std(r2))
+        plt.errorbar(x, y, xerr=xerr,yerr=yerr)
+plt.yscale("log")        
+        
     
 #%%
 # dims = (512, 512)

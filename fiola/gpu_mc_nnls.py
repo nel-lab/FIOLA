@@ -340,10 +340,17 @@ class compute_theta2_split(keras.layers.Layer):
         base_config = super().get_config().copy()
         return {**base_config, "A":self.A, "n_AtA":self.n_AtA, "n_split": self.n_split}
     
+class Empty_test(keras.layers.Layer):
+    def call(self,  fr):
+        fr = tf.reshape(fr, (1,512,512))
+        # print(fr.shape, fr, "LOOK HERE")
+        # print(tf.transpose(fr, perm=[0, 2, 1]).shape)
+        return tf.reshape(tf.transpose(fr, perm=[0, 2, 1]), (fr.shape[0], -1))
+
 class Empty(keras.layers.Layer):
     def call(self,  fr):
-        fr = fr[0, ..., 0]
-        return tf.reshape(tf.transpose(fr, perm=[0, 2, 1]), (fr.shape[0], -1))
+	fr =  fr[0, ..., 0]       
+	return tf.reshape(tf.transpose(fr, perm=[0, 2, 1]), (fr.shape[0], -1))
 
 def get_mc_model(template, batch_size, **kwargs):
     """

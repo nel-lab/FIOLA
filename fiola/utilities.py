@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from scipy.sparse import spdiags
 from past.utils import old_div
 from tifffile import memmap, imread
+import caiman as cm
 
 from fiola.external.cell_magic_wand import cell_magic_wand_single_point
 
@@ -2292,7 +2293,13 @@ def movie_iterator(fname, start_idx, end_idx, batch_size=1):
         frames and relative indexes
 
     """
-    if fname.endswith('.tif') or fname.endswith('.tiff'):
+    if isinstance(fname, list):
+        print('mapping tiff files')
+        memmap_image = cm.load(fname)
+        print(memmap_image.shape)
+        for idx in range(start_idx, end_idx):
+            yield (idx, memmap_image[idx:idx+batch_size].astype(np.float32))
+    elif fname.endswith('.tif') or fname.endswith('.tiff'):
         print('mapping tif file')
         memmap_image = memmap(fname)
         for idx in range(start_idx, end_idx):
