@@ -45,26 +45,27 @@ else:
     print(movies[idx], n_time, Lx, Ly)
 
 # %% set suite2 pparameters
-file_folder = "/media/nel/storage/fiola/R2_20190219"
-Lx, Ly = (796, 512)
+# file_folder = "/media/nel/storage/fiola/R2_20190219/test"
+# Lx, Ly = (796, 512)
 ops = suite2p.default_ops()
-ops['batch_size'] = 1
+ops['batch_size'] = 100
 ops['report_timing'] = True
 # basedon the suite2p source  code, only nonrigid will generate subpixel shifts
-ops['nonrigid'] = True
+ops['nonrigid'] = False
 ops['block_size'] = [Lx, Ly]
 ops['maxregshift'] = 0.1
-ops["nimg_init"] = 5000
+ops["nimg_init"] = 1500
 ops["subpixel"] = 1000
 # ops['maxregshiftNR'] = 15
 # ops['snr_thresh']= 1.0
 # if idx == 3:
-ops["h5py"] = file_folder
-ops["h5py_key"] = "mov"
+# ops["h5py"] = file_folder
+# ops["h5py_key"] = "mov"
 #     idx = -1
 print(ops)
 
 ops['data_path'] = file_folder
+ops['save_path'] = file_folder
 db = {"data_path": [file_folder]}
 # NOTE: apparently they don't support GPU because  they  didn't see ani mprovement i n speed.
 # They  do have GPU  + MATLAB, butnot for their python  code.
@@ -75,6 +76,18 @@ output_ops = suite2p.run_s2p(ops, db)
 np.save(file_folder+ "/full_time.npy", output_ops, allow_pickle=True)
 plt.imshow(output_ops["refImg"])
 
+# %% show dandi spatial footprints
+tr = np.load('/media/nel/storage/fiola/R2_20190219/suite2p/plane0/F.npy', allow_pickle=True)
+stat = np.load('/media/nel/storage/fiola/R2_20190219/suite2p/plane0/stat.npy', allow_pickle=True)
+ops = np.load('/media/nel/storage/fiola/R2_20190219/suite2p/plane0/ops.npy', allow_pickle=True)
+import caiman as cm
+mm = cm.load('/media/nel/storage/fiola/R2_20190219/test/mov_R2_20190219T210000_init_1000.hdf5')
+plt.imshow(mm.mean(0))
+mask = np.zeros((4977, 796, 512))
+
+for i in range(len(mask)):
+    mask[i, stat[i]['ypix'], stat[i]['xpix']] = 1
+
 # %% ANALYSIS  &  FIGURE GENERATION
 # %% file p ath  boondogglery
 files_cm = sorted(glob.glob(
@@ -83,7 +96,7 @@ files_fiola = sorted(glob.glob(
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*viola_full_shifts.npy"))
 
 # %% suite2p output shifts (movementper frame fromregistration)
-cm_shiftpath = files_cm[idx]
+# cm_shiftpath = files_cm[idx]
 #np.save(cm_shiftpath[:-16] + "s2p.npy",output_ops, allow_pickle=True)
 files_ops = sorted(glob.glob(
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*s2p.npy"))
@@ -157,10 +170,10 @@ for i, f in enumerate(files):
     dataset_y["alg"] += ["full_fiola"]*start + \
         ["crop_fiola"]*start + ["suite2p"]*start
     dataset_y["dset"] += [names[i]]*3*start
-    # if i==2:
-        # break
+    if i==2:
+        break
 # %% box plot generation
-df = pd.DataFrame(dataset_x)
+df = pd.DataFrame(dataset_y)
 ax = sns.boxplot(x=df["dset"],
             y=df["err"],
             hue=df["alg"],
@@ -299,14 +312,14 @@ for patch, color in zip(bplot["boxes"], colors):
 #%% NNLS Timing
 stats = {}
 data_fr_custom = {}
-nmes = ["fi_512", "fb_512","cm_512", "s2p_512",
-        "fi_1024", "fb_1024","cm_1024", "s2p_1024"]
+# nmes = ["fi_512", "fb_512","cm_512", #"s2p_512",
+nmes=["fi_1024", "fb_1024","cm_1024"]#, "s2p_1024"]
 for n in nmes:
     if "fb" in n or "s2" in n:
         data_fr_custom[n] = 10 * np.array(np.load(base_file + n +
                                         "_nnls_time.npy"))
     elif "cm" in n:
-        print(n)
+        # print(n)
         data_fr_custom[n] = np.array(np.load(base_file + n + "_nnls_time.npy", allow_pickle= True)[()]["T_track"])
     else:
         data_fr_custom[n] = 1000 * \
@@ -329,9 +342,9 @@ for key in data_fr_custom.keys():
     stats[key]["fliers"] = outliers
     count += 1
 
-colors = ["green", "green", "coral", "blue", "green", "green", "coral", "blue"]
+colors = ["green", "green", "coral","green", "green", "coral"]
 fig, ax = plt.subplots(1, 1)
-bplot = ax.bxp(stats.values(),  positions=range(8),  patch_artist=True)
+bplot = ax.bxp(stats.values(),  positions=range(3),  patch_artist=True)
 ax.set_yscale("log")
 for patch, color in zip(bplot["boxes"], colors):
     print(color)
@@ -348,8 +361,14 @@ import caiman as cm
 import numpy as np
 #%% file load for NNLS timing(Calcium only)
 # get tif +  A,b,C files for N... and  YST  (Calcium Comparison)
-movie_name = ["N00", "N01", "N02", "N03", "N04","YST"][5]
-base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
+# movie_name = ["N00", "N01", "N02", "N03", "N04","YST"][5]
+# base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
+# A_files = sorted(glob.glob(base_file + "*half_A.npy"))
+# b_files = sorted(glob.glob(base_file + "*half_b.npy"))
+# C_files = sorted(glob.glob(base_file+ "*half_noisyC.npy"))
+# movie_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.00.00/images*/*.tif"))
+movie_name = "k53"
+base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/"
 A_files = sorted(glob.glob(base_file + "*half_A.npy"))
 b_files = sorted(glob.glob(base_file + "*half_b.npy"))
 C_files = sorted(glob.glob(base_file+ "*half_noisyC.npy"))
@@ -411,6 +430,7 @@ for i in range(1, 500):
     # time.sleep(0.01)
 
 #%% NNLS- pearson's r x number iterations
+base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
 from sklearn.metrics import r2_score
 # files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
 files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
@@ -426,16 +446,19 @@ for file in files:
     #rscore5.append(np.corrcoef(nnls_traces, v5_traces))
     
 #%% graphing 
+save_r2  = {}
+from scipy.stats import sem
 files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
-offsets = [2,1,2,3,3,3]
+offsets = [2,1,2,3,3,3] # background components
+bad = 0
 for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
     x,y = [],[]
     xerr,yerr = [],[]
     
     for t in ["5", "10", "30"]:
-        ti = np.load(base_file + movie_name+ "_nnls_" + t + "_time.npy")
+        ti = np.load(base_file + f+ "_nnls_" + t + "_time.npy")
         ti_mean = np.mean(ti)
-        ti_err = np.std(ti)
+        ti_err = sem(ti)
         x.append(ti_mean)
         xerr.append(ti_err)
         
@@ -444,15 +467,36 @@ for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
         nn_vi = np.load(files[i][:-8]+ "v_nnls_" + t  +  ".npy")[:-offset,-nn_sp.shape[1]:]
         nn_sp = nn_sp[offset:offset+len(nn_vi)]
         r2 = []
+        count = 0
         for (s,v) in zip(nn_sp, nn_vi):
-            r2.append(r2_score(s,v))
+            r2_indiv = r2_score(s,v)
+            if r2_indiv <= 0.1:
+                print(r2_indiv)
+                print(f, t, count)
+                bad += 1
+                # plt.figure()
+                # plt.plot(s)
+                # plt.plot(v)
+                # plt.show()
+                break
+            else:
+                r2.append(r2_indiv)
+                # yerr.append(sem(r2))
+            count += 1
         y.append(np.mean(r2))
-        yerr.append(np.std(r2))
-        plt.errorbar(x, y, xerr=xerr,yerr=yerr)
-plt.yscale("log")        
+        yerr.append(sem(r2))
+    plt.errorbar(x, y, xerr=xerr,yerr=yerr, marker="o", label=f)
+    plt.legend()
+        # break
+    save_r2[f+t]  = r2
+        # plt.plot(r2)
+# plt.yscale("log")        
         
     
 #%%
+output_ops = np.load('/media/nel/storage/fiola/R2_20190219/full_time.npy', allow_pickle=True)[()]
+fiola_keys = [a for a in output_ops.keys() if 'fiola' in a]
+
 # dims = (512, 512)
 # A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_A.npy",
 #             allow_pickle=True)[()]

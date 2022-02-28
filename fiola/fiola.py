@@ -450,8 +450,8 @@ class FIOLA(object):
                                                                     "k":(1, 1)})
             return dataset
         
-        times = [None]*len(mov)
-        out = [None]*len(mov)
+        times = [None]*(len(mov)//batch_size)
+        out = [None]*(len(mov)//batch_size)
         flag = 1000
         index = 0
         dims = mov.shape[1:]
@@ -470,7 +470,7 @@ class FIOLA(object):
         logging.info('beginning source extraction')
         start = timeit.default_timer()
         for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
-            out[index] = i
+            # out[index] = i
             times[index]= (time.time()-start)
             index += 1    
             # if index * batch_size >= flag:
@@ -488,7 +488,7 @@ class FIOLA(object):
                 trace.append(ou[keys[0]][0])  
             else:
                 pass
-        trace = np.hstack(trace)
+        # trace = np.hstack(trace)
         
         return trace, times
     

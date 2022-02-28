@@ -13,6 +13,9 @@ import numpy as np
 from numpy.linalg import norm
 import os
 from pynwb import NWBHDF5IO
+import pyximport
+pyximport.install()
+from scipy.ndimage import gaussian_filter1d
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import Ridge, LinearRegression, Lasso
 from caiman.source_extraction.cnmf.utilities import fast_prct_filt
@@ -63,7 +66,7 @@ pos_s = StandardScaler().fit_transform(pos_n[:, None])[:, 0]
 spd_s = StandardScaler().fit_transform(speed[:, None])[:, 0]
 
 trace0 = nwbfile_in.processing['ophys'].data_interfaces['Fluorescence'].roi_response_series['Deconvolved'].data[:]
-trace = nwbfile_in.processing['ophys'].data_interfaces['Fluorescence'].roi_response_series['RoiResponseSeries'].data[:]
+trace = nwbfile_in.processing['ophys'].data_interfaces['Fluorescence'].roi_response_series['RoiResponseSeries'].data[:].T
                 
 def remove_neurons_with_sparse_activities(trace, do_remove=True, std_level=5, timepoints=10):
     from sklearn.preprocessing import StandardScaler
@@ -328,13 +331,9 @@ ax1.set_ylabel('neuron index')
 
 
 trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_v3.1.npy', allow_pickle=True).item().trace
-trace1 = trace1.T
 trace2 = np.load('/media/nel/storage/fiola/R2_20190219/1500/fiola_result_v3.1.npy', allow_pickle=True).item().trace
-trace2 = trace2.T
 trace3 = np.load('/media/nel/storage/fiola/R2_20190219/1000/fiola_result_v3.1.npy', allow_pickle=True).item().trace
-trace3 = trace3.T
 trace4 = np.load('/media/nel/storage/fiola/R2_20190219/500/fiola_result_v3.1.npy', allow_pickle=True).item().trace
-trace4 = trace4.T
 
 # trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_v3.1.npy')
 # trace1 = trace1.T
@@ -375,85 +374,79 @@ from sklearn.preprocessing import StandardScaler
 from caiman.source_extraction.cnmf.cnmf import load_CNMF
 #cnm2 = load_CNMF('/media/nel/storage/fiola/R6_20200210T2100/memmap_pw_rigid_True_d1_796_d2_512_d3_1_order_C_frames_31604_non_rigid_K_5.hdf5')
 cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8_K_8.hdf5')
-cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/caiman_online_results.hdf5')
 #cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8_cnn_True.hdf5')
 #cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5_snr_1.8.hdf5')
 #cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp_5_5.hdf5')
 #cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_all_comp.hdf5')
-
 #cnm2 = load_CNMF('/media/nel/storage/fiola/R2_20190219/full/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_.hdf5')
 tracec = cnm2.estimates.C[cnm2.estimates.idx_components] + cnm2.estimates.YrA[cnm2.estimates.idx_components]
-#tracec = cnm2.estimates.C + cnm2.estimates.YrA
-#tracec = tracec[0]
-tracec = tracec.T
+onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/mov_R2_20190219T210000_caiman_online_results_v3.0_new_params.hdf5')
+#onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/caiman_online_results.hdf5')
+traceo = onacid.estimates.C + onacid.estimates.YrA
 
-#tracec = np.vstack([np.zeros((1, 1630)), tracec])
-#tracec_s = StandardScaler().fit_transform(tracec)
 #%%
-trace1_s = StandardScaler().fit_transform(trace1)
-tracem_s = StandardScaler().fit_transform(tracem)
-#%%
-trace = fast_prct_filt(trace.T,20).T
-trace1 = fast_prct_filt(trace1.T,20).T
-trace2 = fast_prct_filt(trace2.T,20).T
-trace3 = fast_prct_filt(trace3.T,20).T
-trace4 = fast_prct_filt(trace4.T,20).T
-tracec = fast_prct_filt(tracec.T,20).T
+[print(t.shape) for t in [trace, trace1, trace2, trace3, trace4, tracec, traceo]]
+trace = fast_prct_filt(trace,20).T
+trace1 = fast_prct_filt(trace1,20).T
+trace2 = fast_prct_filt(trace2,20).T
+trace3 = fast_prct_filt(trace3,20).T
+trace4 = fast_prct_filt(trace4,20).T
+tracec = fast_prct_filt(tracec,20).T
+traceo = fast_prct_filt(traceo,20).T
 
+# remove atificial feature for onacid due to filtering
+for idx in range(traceo.shape[1]):
+    if onacid.time_neuron_added[idx, 1] > 200:
+        traceo[:onacid.time_neuron_added[idx, 1]-100, idx] = np.mean(traceo[onacid.time_neuron_added[idx, 1]-100:, idx])
+
+# trace1 = trace1.T
+# traceo = traceo.T
+
+#%%
+[print(t.shape) for t in [trace, trace1, trace2, trace3, trace4, tracec, traceo]]
 trace_s, _ = remove_neurons_with_sparse_activities(trace)
 trace1_s, _ = remove_neurons_with_sparse_activities(trace1)
-#trace1_s, select = remove_neurons_with_sparse_activities(trace1)
 trace2_s, _ = remove_neurons_with_sparse_activities(trace2)
 trace3_s, _ = remove_neurons_with_sparse_activities(trace3)
 trace4_s, _ = remove_neurons_with_sparse_activities(trace4)
-#tracem_s, _ = remove_neurons_with_sparse_activities(tracem)
-#tracec_s, _ = remove_neurons_with_sparse_activities(tracec, std_level=7, timepoints=15)
 tracec_s, _ = remove_neurons_with_sparse_activities(tracec)
+traceo_s, _ = remove_neurons_with_sparse_activities(traceo)
 
 #%%
-from scipy.ndimage import gaussian_filter1d
+first_act = []
+std_level = 5
+for idx in range(len(traceo_s.T)):
+    t = traceo_s[:, idx]
+    first_act.append(np.where(t>t.std() * std_level)[0][0])
+
+select = np.where(np.array(first_act)<10000)[0]
+traceo_s = traceo_s[:, select]
+#%%
 t_g = trace_s.copy()
 for i in range(t_g.shape[1]):
     t_g[:, i] = gaussian_filter1d(t_g[:, i], sigma=5)
-
 t1_g = trace1_s.copy()
 for i in range(t1_g.shape[1]):
     t1_g[:, i] = gaussian_filter1d(t1_g[:, i], sigma=5)
-
 t2_g = trace2_s.copy()
 for i in range(t2_g.shape[1]):
     t2_g[:, i] = gaussian_filter1d(t2_g[:, i], sigma=5)
-
 t3_g = trace3_s.copy()
 for i in range(t3_g.shape[1]):
-    t3_g[:, i] = gaussian_filter1d(t3_g[:, i], sigma=5)
+    t3_g[:, i] = gaussian_filter1d(t3_g[:, i], sigma=5)    
 t4_g = trace4_s.copy()
 for i in range(t4_g.shape[1]):
     t4_g[:, i] = gaussian_filter1d(t4_g[:, i], sigma=5)
-
-    
-# tm_g = tracem_s.copy()
-# for i in range(tm_g.shape[1]):
-#     tm_g[:, i] = gaussian_filter1d(tm_g[:, i], sigma=5)
-   
-#%%
-from scipy.ndimage import gaussian_filter1d
 tc_g = tracec_s.copy()
 for i in range(tc_g.shape[1]):
     tc_g[:, i] = gaussian_filter1d(tc_g[:, i], sigma=5)
-
-#%% timing
-t_3000 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_timing.npy', allow_pickle=True)
-t_1500 = np.load('/media/nel/storage/fiola/R2_20190219/1500/fiola_timing.npy', allow_pickle=True)
-t_1000 = np.load('/media/nel/storage/fiola/R2_20190219/1000/fiola_timing.npy', allow_pickle=True)
-t_500 = np.load('/media/nel/storage/fiola/R2_20190219/500/fiola_timing.npy', allow_pickle=True)
-
-t_3000 = np.diff(list(t_3000.item().values()))
-t_1500 = np.diff(list(t_1500.item().values()))
-t_1000 = np.diff(list(t_1000.item().values()))
-t_500 = np.diff(list(t_500.item().values()))
-
-
+to_g = traceo_s.copy()
+for i in range(to_g.shape[1]):
+    to_g[:, i] = gaussian_filter1d(to_g[:, i], sigma=5)
+[print(t.shape) for t in [t_g, t1_g, t2_g, t3_g, t4_g, tc_g, to_g]]    
+# tm_g = tracem_s.copy()
+# for i in range(tm_g.shape[1]):
+#     tm_g[:, i] = gaussian_filter1d(tm_g[:, i], sigma=5)
 
 #%% Fig 7c decoding performance through cross-validation
 import numpy as np
@@ -466,25 +459,27 @@ def cross_validation_ridge(X, y, n_splits=5, alpha=500):
         y_train = y[cv_train]
         x_test = X[cv_test]
         y_test = y[cv_test]
-    
         clf = Ridge(alpha=alpha)
         clf.fit(x_train, y_train)  
+
+        # print(cv_train)
+        # print(cv_test)
+        # plt.figure()
+        # plt.plot(y[cv_test])
+        # plt.plot(clf.predict(X[cv_test]))
+        # plt.title(f'{cv_test[0]}, {clf.score(x_test, y_test)}')
+        # plt.show()
         score.append(clf.score(x_test, y_test))
     return score
+# X = to_g
+# idx = 2
 
-#X = t_g[:30000]
-#method = ['Suite2p', 'Fiola', 'MeanROI', 'CaImAn'][0:2]
-#X_list = [t_g, t1_g, tm_g, tc_g][1:2]
-#X_list = [t_g, t1_g, tm_g, tc_g][3:]
-#X_list = [t_g, t1_g]
-#method = ['Suite2p', 'Fiola_30', 'Fiola_10','Fiola_5', 'Fiola_2', 'CaImAn']
-
-X_list = [t_g, tc_g, t1_g, t2_g, t3_g, t4_g]
-method = ['Suite2p', 'CaImAn', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500']
+X_list = [t_g, tc_g, to_g, t1_g, t2_g, t3_g, t4_g]
+method = ['Suite2p', 'CaImAn', 'CaImAn_Online', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500']
 
 t_s = 3000
 t_e = 31500
-dec = [pos_s, spd_s][0]
+dec = [pos_s, spd_s][1]
 
 r = {}
 alpha_list = [100, 500, 1000, 5000, 10000]
@@ -504,48 +499,51 @@ for idx, X in enumerate(X_list):
     r[method[idx]] = score_all[alpha_list[np.argmax(score_m)]]
 
 #%%
-rr = list(r.values())
-fig = plt.figure(figsize=(8, 6)) 
-ax1 = plt.subplot()
-ax1.bar(list(range(len(method))), [np.mean(x) for x in rr], yerr=[np.std(x) for x in rr])
-ax1.legend()
-#ax1.bar(0, np.mean(r), yerr=np.std(r))
-#ax1.bar(0, np.mean(r1), yerr=np.std(r1))
-ax1.spines['top'].set_visible(False)
-ax1.spines['right'].set_visible(False)
-ax1.spines['bottom'].set_visible(False)
-#ax1.spines['left'].set_visible(False)
-ax1.set_xlabel('Method')
-ax1.set_ylabel('Decoding R^2')
+# rr = list(r.values())
+# fig = plt.figure(figsize=(8, 6)) 
+# ax1 = plt.subplot()
+# ax1.bar(list(range(len(method))), [np.mean(x) for x in rr], yerr=[np.std(x) for x in rr])
+# ax1.legend()
+# #ax1.bar(0, np.mean(r), yerr=np.std(r))
+# #ax1.bar(0, np.mean(r1), yerr=np.std(r1))
+# ax1.spines['top'].set_visible(False)
+# ax1.spines['right'].set_visible(False)
+# ax1.spines['bottom'].set_visible(False)
+# #ax1.spines['left'].set_visible(False)
+# ax1.set_xlabel('Method')
+# ax1.set_ylabel('Decoding R^2')
 
-ax1.xaxis.set_ticks_position('none') 
-#ax1.yaxis.set_ticks_position('none') 
-#ax1.set_xticks([0, 1, 2, 3])
-ax1.set_xticklabels(method)
-ax1.set_xticks(list(range(len(method))))
-#ax1.set_yticks([])
-ax1.set_ylim([0,1])
+# ax1.xaxis.set_ticks_position('none') 
+# #ax1.yaxis.set_ticks_position('none') 
+# #ax1.set_xticks([0, 1, 2, 3])
+# ax1.set_xticklabels(method)
+# ax1.set_xticks(list(range(len(method))))
+# #ax1.set_yticks([])
+# ax1.set_ylim([0,1])
 #plt.savefig(savef + 'decoding_cross_validation.pdf')
 
 #%%
 r_onacid = {}
 for tt in [500, 1000, 1500, 3000, 5000, 8000, 10000, 15000, 20000, 25000, 30000]:
-    tracec_s, _ = remove_neurons_with_sparse_activities(tracec)
+    traceo_s, indexes = remove_neurons_with_sparse_activities(traceo)
     first_act = []
     std_level = 5
-    for idx in range(len(tracec_s.T)):
-        t = tracec_s[:, idx]
+    for idx in range(len(traceo_s.T)):
+        t = traceo_s[:, idx]
         first_act.append(np.where(t>t.std() * std_level)[0][0])
         
     #plt.plot(first_act)
     select = np.where(np.array(first_act)<tt)[0]
-    tracec_s = tracec_s[:, select]
+    #select = (onacid.time_neuron_added[:, 1] < tt)[np.array(indexes)]
+    traceo_s = traceo_s[:, select]
     
-    tc_g = tracec_s.copy()
-    for i in range(tc_g.shape[1]):
-        tc_g[:, i] = gaussian_filter1d(tc_g[:, i], sigma=5)
+    to_g = traceo_s.copy()
+    for i in range(to_g.shape[1]):
+        to_g[:, i] = gaussian_filter1d(to_g[:, i], sigma=5)
     
-    X = tc_g; idx=1
+    dec = [pos_s, spd_s][0]
+    
+    X = to_g; idx=1
     print(method[idx])
     X = X[t_s:t_e]
     y = dec[t_s:t_e]
@@ -559,7 +557,7 @@ for tt in [500, 1000, 1500, 3000, 5000, 8000, 10000, 15000, 20000, 25000, 30000]
     print(f'max score:{max(score_m)}')
     print(f'alpha:{alpha_list[np.argmax(score_m)]}')
     
-    r_onacid[tt] = [tc_g.shape[1], score_m]
+    r_onacid[tt] = [to_g.shape[1], score_m]
 
 #%%
 rrr = list(r_onacid.values())
@@ -579,16 +577,17 @@ ax1.locator_params(axis='x', nbins=4)
 #ax1.spines['left'].set_visible(False)
 ax1.set_ylabel('Decoding R square')
 ax1.set_xlabel('Number of neurons selected')
-ax1.set_ylim([0.55, 0.85])
+ax1.set_ylim([0.55, 0.95])
 
-plt.savefig(savef + 'decoding_num_neurons_caiman_online.pdf')
+plt.savefig(savef + 'Fig_supp_caiman_online_pos_v3.1.pdf')
 #%% Wilcoxon test
 from scipy.stats import wilcoxon
 wilcoxon(rr[0], rr[6], alternative='greater')
 
 #%% number of neurons detected
-method = ['Suite2p', 'CaImAn', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500']
-X_list = [t_g, tc_g, t1_g, t2_g, t3_g, t4_g]
+method = ['Suite2p', 'CaImAn', 'CaImAn_Online', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500']
+X_list = [t_g, tc_g, to_g,  t1_g, t2_g, t3_g, t4_g]
+
 fig = plt.figure() 
 ax1 = plt.subplot()
 ax1.bar(list(range(len(method))), [x.shape[1] for x in X_list])
@@ -609,38 +608,39 @@ ax1.set_xticks(list(range(len(method))))
 #%% number of neurons vs decoding performance
 fig = plt.figure() 
 ax1 = plt.subplot()
+rr = list(r.values())
 xx = [x.shape[1] for x in X_list]
 yy = [np.mean(x) for x in rr]
 zz = [np.std(x) for x in rr]
 
 
 #ax1.scatter(xx, yy)
-ax1.errorbar(xx, yy, yerr=zz, fmt='o', capsize=5)
+colors = ['C3', 'C2', 'C1', 'C0', 'C0', 'C0', 'C0']
+
+for idx in [3, 4, 5, 6, 2, 0, 1]:
+    ax1.errorbar(xx[idx], yy[idx], yerr=zz[idx], fmt='o', capsize=5, color=colors[idx], label=method[idx])
 ax1.spines['top'].set_visible(False)
 ax1.spines['right'].set_visible(False)
 ax1.locator_params(axis='y', nbins=8)
 ax1.locator_params(axis='x', nbins=4)
-#ax1.spines['bottom'].set_visible(False)
-#ax1.spines['left'].set_visible(False)
 ax1.set_ylabel('Decoding R square')
 ax1.set_xlabel('Number of neurons')
+ax1.legend(frameon=False)
 
 
-for i in range(len(method)):
-    ax1.annotate(method[i], (xx[i] + 10, yy[i] - 0.03))
+#for i in range(len(method)):
+#    ax1.annotate(method[i], (xx[i] + 10, yy[i] - 0.02))
     
-#plt.savefig(savef + 'decoding_method_neurons.pdf')
-#ax1.yaxis.set_ticks_position('none') 
-#ax1.set_xticks([0, 1, 2, 3])
-
+#plt.savefig(savef + 'Fig7c_pos_v3.1.pdf')
+plt.savefig(savef + 'Fig_supp_spd_v3.1.pdf')
 
 
 #%% Fig 7d decoding performance across time
 r_all = {}
 train = [3000, 13000]
 flag = 0
-X_list = [t_g, tc_g, t1_g, t2_g, t3_g, t4_g][0:3]
-method = ['Suite2p', 'CaImAn', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500'][0:3]
+method = np.array(['Suite2p', 'CaImAn', 'CaImAn_Online', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500'])[np.array([0, 1, 2, 3])]
+X_list = np.array([t_g, tc_g, to_g,  t1_g, t2_g, t3_g, t4_g])[np.array([0, 1, 2, 3])]
 t_s = 3000
 t_e = 31500
 dec = [pos_s, spd_s][0]
@@ -686,9 +686,15 @@ xx = np.array(xx) - 13000
 #fig = plt.figure(figsize=(8, 6)) 
 fig = plt.figure() 
 ax1 = plt.subplot()
-[ax1.plot(xx, x) for x in r_all]
-ax1.plot(xx, np.array(r_all[0]) - np.array(r_all[1])); 
-ax1.legend(method + ['Difference between Suite2p and Fiola_3000'], frameon=False)
+colors = ['C3', 'C2', 'C1', 'C0']
+
+for idx in [3, 2, 0, 1]:
+    #if 'Fiola' in methods[idx]:
+    ax1.plot(xx, r_all[idx], label=method[idx], color=colors[idx])
+
+#[ax1.plot(xx, x) for x in r_all]
+ax1.plot(xx, np.array(r_all[0]) - np.array(r_all[3]), label='diff between Suite2p and FIOLA', color='purple') 
+ax1.legend(frameon=False)
 ax1.spines['top'].set_visible(False)
 ax1.spines['right'].set_visible(False)
 ax1.set_xlabel('Frame')
@@ -700,9 +706,30 @@ ax1.locator_params(axis='x', nbins=4)
 #ax1.set_xticks([])
 #ax1.set_yticks([])
 ax1.set_ylim([-0.1,1])
-plt.savefig(savef + 'decoding_across_time.pdf')
+plt.savefig(savef + 'Fig7d_v3.1.pdf')
 
-#%% Fig 7e Decoding at different speed
+#%% Fig 7d statistical tests
+import numpy as np
+from sklearn.linear_model import LinearRegression
+X = np.array(xx)[:, None]
+y = np.array(r_all[0]) - np.array(r_all[3])
+reg = LinearRegression().fit(X, y)
+reg.score(X, y)
+reg.coef_
+reg.intercept_
+y_pred = reg.predict(X)
+plt.plot(xx, y)
+plt.plot(xx, y_pred)
+
+from scipy import stats
+slope, intercept, r_value, p_value, std_err = stats.linregress(xx,y)
+p_value
+# 0.024347565665464213
+slope
+# 3.284592585227157e-06
+intercept
+#0.03982149638833927
+#%% Fig 7e Decoding speed at different speed group
 low_spd = np.percentile(speed, 33)
 mid_spd = np.percentile(speed, 66)
 t1 = np.where(speed <= low_spd)[0]
@@ -726,8 +753,8 @@ def cross_validation_ridge(X, y, n_splits=5, alpha=500):
         score.append(clf.score(x_test, y_test))
     return score
 
-X_list = [t_g, tc_g, t1_g, t2_g, t3_g, t4_g][0:3]
-method = ['Suite2p', 'CaImAn', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500'][0:3]
+method = np.array(['Suite2p', 'CaImAn', 'CaImAn_Online', 'Fiola_3000', 'Fiola_1500','Fiola_1000', 'Fiola_500'])[np.array([0, 1, 2, 3])]
+X_list = np.array([t_g, tc_g, to_g,  t1_g, t2_g, t3_g, t4_g])[np.array([0, 1, 2, 3])]
 tt = [t1, t2, t3]
 spd_group = ['low', 'mid', 'high']
 
@@ -760,11 +787,12 @@ for idx, X in enumerate(X_list):
 rr = list(r.values())
 fig = plt.figure(figsize=(8, 6)) 
 ax1 = plt.subplot()
-
-for i in range(len(method)):
-    ax1.bar(np.array(range(len(spd_group))) + (i-1) * 0.2, [np.mean(x) for x in list(rr[i].values())], 
-            yerr=[np.std(x) for x in list(rr[i].values())], width=0.2)
-ax1.legend(method)
+colors = ['C3', 'C2', 'C1', 'C0']
+for idx, i in enumerate([3, 2, 0, 1]):
+    #i = r[methodzz][idx]
+    ax1.bar(np.array(range(len(spd_group))) + (idx-1) * 0.2, [np.mean(x) for x in list(rr[i].values())], 
+            yerr=[np.std(x) for x in list(rr[i].values())], width=0.2, label=method[i], color=colors[i])
+ax1.legend(frameon=False)
 #ax1.bar(0, np.mean(r), yerr=np.std(r))
 #ax1.bar(0, np.mean(r1), yerr=np.std(r1))
 ax1.spines['top'].set_visible(False)
@@ -780,7 +808,7 @@ ax1.set_xticklabels(spd_group)
 ax1.set_xticks(list(range(len(spd_group))))
 #ax1.set_yticks([])
 ax1.set_ylim([0,1])
-#plt.savefig(savef + 'decoding_speed_speed_group.pdf')
+plt.savefig(savef + 'Fig7e_speed_v3.1.pdf')
 
 #%% Fig 7f timing for init + acquisition + online exp
 data = np.array([t_3000, t_1500, t_1000, t_500])
@@ -835,6 +863,17 @@ ax1.set_xticklabels(['Fiola 3000', 'Fiola 1500', 'Fiola 1000', 'Fiola 500' ])
 #ax1.set_ylim([0,1])
 plt.savefig(savef + 'init_time_and_online.pdf')
 
+#%%
+#%% timing
+t_3000 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_timing.npy', allow_pickle=True)
+t_1500 = np.load('/media/nel/storage/fiola/R2_20190219/1500/fiola_timing.npy', allow_pickle=True)
+t_1000 = np.load('/media/nel/storage/fiola/R2_20190219/1000/fiola_timing.npy', allow_pickle=True)
+t_500 = np.load('/media/nel/storage/fiola/R2_20190219/500/fiola_timing.npy', allow_pickle=True)
+
+t_3000 = np.diff(list(t_3000.item().values()))
+t_1500 = np.diff(list(t_1500.item().values()))
+t_1000 = np.diff(list(t_1000.item().values()))
+t_500 = np.diff(list(t_500.item().values()))
 
 #%% Decoding performance with different number of neurons
 import numpy as np
@@ -1489,4 +1528,8 @@ ax1.set_ylim([0,1])
 print(np.mean(r))
 print(np.mean(r1))
 print(np.mean(rm))
-print(np.mean(rc))
+print(np.mean(rc))# T = [trace, trace1, trace2, trace3, trace4, tracec, traceo]
+# T = [fast_prct_filt(t,20).T for t in T]
+# T = [remove_neurons_with_sparse_activities(t) for t in T]
+# T = for i in range(t_g.shape[1]):
+#     t_g[:, i] = gaussian_filter1d(t[:, i], sigma=5) for ] for t in T

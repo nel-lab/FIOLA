@@ -11,6 +11,8 @@ authors: @agiovann @changjia
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import pyximport
+pyximport.install()
 from tensorflow.python.client import device_lib
 from time import time
 import scipy
@@ -35,7 +37,7 @@ def main():
 #%%
         
         
-    init_frames = 10000
+    init_frames = 3000
     for init_frames in [1000, 1500, 3000]:
 #    for num_layers in [10]:
         timing = {}
@@ -89,8 +91,8 @@ def main():
         #    
         elif mode == 'calcium':
             #fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
-            #fnames = '/media/nel/DATA/fiola/R2_20190219/mov_R2_20190219T210000.hdf5'
-            fnames = '/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000.hdf5'
+            #fnames = '/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000.hdf5'
+            fnames = '/media/nel/storage/fiola/R2_20190219/test/fiola_deconvolution/mov_3000.hdf5'
             #fnames = '/media/nel/storage/fiola/R6_20200210T2100/mov_raw.hdf5'
             fr = 15                         # sample rate of the movie
             ROIs = None                     # a 3D matrix contains all region of interests
@@ -128,7 +130,8 @@ def main():
                 'trace_with_neg':trace_with_neg, 
                 'num_layers': num_layers}
             
-            folder = fnames.rsplit('/', 1)[0] + f'/{num_frames_init}/'
+            #folder = fnames.rsplit('/', 1)[0] + f'/{num_frames_init}/'
+            folder = '/media/nel/storage/fiola/R2_20190219/test/fiola_deconvolution/'
             print(folder)
             mov = cm.load(fnames, subindices=range(num_frames_init))
             fnames_init = folder + fnames.rsplit('/', 1)[1][:-5] + f'_init_{num_frames_init}.tif'
@@ -190,7 +193,7 @@ def main():
         else:
             Ab = np.hstack((estimates.A.toarray(), estimates.b))
         Ab = Ab.astype(np.float32)
-        fio = fio.create_pipeline(mc_nn_mov, trace_fiola, template, Ab, min_mov=mov.min())
+        fio = fio.create_pipeline(mc_nn_mov, trace_fiola.astype(np.float32), template, Ab, min_mov=mov.min())
         
         timing['init'] = time()
         
@@ -205,6 +208,39 @@ def main():
             fio.fit_online_frame(memmap_image)   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i        
             traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
             time_per_step[idx-num_frames_init] = (time()-start)
+        
+        traces = traces.T
+        logging.info(f'total time online: {time()-start}')
+        logging.info(f'time per frame online: {(time()-start)/(num_frames_total-num_frames_init)}')
+        plt.plot(np.diff(time_per_step),'.')
+        
+        #%% run online
+        time_per_step = np.zeros(num_frames_total-num_frames_init)
+        traces = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
+        traces_deconvolved = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]-nb), dtype=np.float32)
+        start = time()
+        
+        lag = 5
+        s_min = 0
+            
+        for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total):
+            if idx % 100 == 0:
+                print(idx)  
+                # plt.figure()
+                # plt.plot(fio.pipeline.saoz.t[0])
+                # plt.show()
+            fio.fit_online_frame(memmap_image)   
+            sleep(0.0001)
+            traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx] # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i        
+            dec = np.zeros((fio.Ab.shape[-1]-nb))
+            for n in range(len(dec)):
+                tmp = np.where(fio.pipeline.saoz.t[n, :fio.pipeline.saoz._i[n]] == idx-lag)[0]
+                if len(tmp):
+                    if (foo:=fio.pipeline.saoz.h[n, tmp[0]]) > s_min:
+                        dec[n] = foo
+            traces_deconvolved[idx-num_frames_init-lag] = dec
+            time_per_step[idx-num_frames_init] = (time()-start)
+            #plt.figure(); plt.plot(fio.pipeline.saoz.h[0])
         
         traces = traces.T
         logging.info(f'total time online: {time()-start}')
@@ -225,6 +261,6 @@ def main():
             #      estimates = fio.estimates)
             
             #np.save(folder +f'fiola_result_{num_layers}_{trace_with_neg}.npy', np.hstack([trace_fiola, traces]))
-            np.save(folder + f'fiola_result_v3.1', fio.estimates)
-            np.save(folder +f'fiola_timing_v3.1_num_layers_{num_layers}_trace_with_neg_{trace_with_neg}', timing)
+            np.save(folder + f'fiola_result_v3.2', fio.estimates)
+            np.save(folder +f'fiola_timing_v3.2_num_layers_{num_layers}_trace_with_neg_{trace_with_neg}', timing)
     

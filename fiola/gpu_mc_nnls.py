@@ -349,8 +349,8 @@ class Empty_test(keras.layers.Layer):
 
 class Empty(keras.layers.Layer):
     def call(self,  fr):
-	fr =  fr[0, ..., 0]       
-	return tf.reshape(tf.transpose(fr, perm=[0, 2, 1]), (fr.shape[0], -1))
+        fr =  fr[0, ..., 0]
+        return tf.reshape(tf.transpose(fr, perm=[0, 2, 1]), (fr.shape[0], -1))
 
 def get_mc_model(template, batch_size, **kwargs):
     """
