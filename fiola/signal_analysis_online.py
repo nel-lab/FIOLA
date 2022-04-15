@@ -74,6 +74,7 @@ class SignalAnalysisOnlineZ(object):
                 setattr(self, name, value)
                 logging.debug(f'{name}, {value}')
         self.t_detect = []
+        self.t_update = []
         
         self.update_q = Queue()
         self.update_q.put(0)
@@ -89,7 +90,7 @@ class SignalAnalysisOnlineZ(object):
             num_frames: int
                 total number of frames for processing including both initialization and online processing
         """
-        nn, tm = trace_in.shape # number of neurons and time steps for initialization
+        nn, tm = np.array(trace_in).shape # number of neurons and time steps for initialization
         self.nn = nn
         self.frames_init = tm
         self.n = tm        
@@ -328,15 +329,16 @@ class SignalAnalysisOnlineZ(object):
         return self
     
     def update_statistics_thread(self):
-        self.flag_update=0        
+        self.flag_update=0  
+        import time
         while True:
             n = self.update_q.get() 
             #print(n)
             if self.flag_update > 0:
                 self.update_statistics(n)                     
             self.flag_update = self.flag_update + 1
-            import time
             time.sleep(0.00001)
+            self.t_update.append(time())
     
     def update_median(self, idx):
         tt = self.t_d[idx, self.n - np.int(self.window*2.5):self.n]

@@ -47,14 +47,30 @@ from caiman.source_extraction.cnmf import params as params
 from caiman.utils.utils import download_demo
 from caiman.summary_images import local_correlations_movie_offline
 from caiman.source_extraction.cnmf.utilities import get_file_size
-
-
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
                     "[%(process)d] %(message)s",
                     level=logging.INFO)
+
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--fnames', type=str, required=True)
+parser.add_argument('--num_frames_init', type=int, required=True)
+parser.add_argument('--K', type=int, required=True)
+args = parser.parse_args()
+
 #%%    
-def run_caiman_init(fnames):
+def run_caiman_init(fnames=None, num_frames_init=None, K=None):
+    # for dandi data only
+    if num_frames_init > 0:
+        folder = fnames.rsplit('/', 1)[0] + f'/{num_frames_init}/'
+        mov = cm.load(fnames, subindices=range(num_frames_init))
+        fnames_init = folder + fnames.rsplit('/', 1)[1][:-5] + f'_init_{num_frames_init}.tif'
+        mov.save(fnames_init)
+        fnames = fnames_init
+    
+    # general pipeline
+    print(fnames)
     c, dview, n_processes = cm.cluster.setup_cluster(
             backend='local', n_processes=None, single_thread=False)
     
@@ -128,7 +144,7 @@ def run_caiman_init(fnames):
     rf = 15
     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 6          # amount of overlap between the patches in pixels
-    K = 5                    # number of components per patch
+    #K = 5                    # number of components per patch
     gSig = [4, 4]            # expected half size of neurons in pixels
     # initialization method (if analyzing dendritic data using 'sparse_nmf')
     method_init = 'greedy_roi'
@@ -218,6 +234,7 @@ def run_caiman_init(fnames):
     
     timing['end'] = time()
     print(timing)
+    cnm2.estimates.timing = timing
     cnm2.save(save_name)
     print(save_name)
     output_file = save_name
@@ -227,7 +244,7 @@ def run_caiman_init(fnames):
     for log_file in log_files:
         os.remove(log_file)
     plt.close('all')        
-    return output_file
 
 if __name__ == "__main__":
-    run_caiman_init(fnames)
+    run_caiman_init(fnames=args.fnames, num_frames_init=args.num_frames_init, K=args.K)
+    print(args)

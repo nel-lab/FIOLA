@@ -19,6 +19,7 @@ from skimage import io
 import glob
 from tifffile import imread
 import h5py
+#%% THE FOLLOWING SECTION IS FOR RUNNING S2P
 # %% set up folders
 shift_fig = True
 if shift_fig:
@@ -48,7 +49,7 @@ else:
 # file_folder = "/media/nel/storage/fiola/R2_20190219/test"
 # Lx, Ly = (796, 512)
 ops = suite2p.default_ops()
-ops['batch_size'] = 100
+ops['batch_size'] = 1
 ops['report_timing'] = True
 # basedon the suite2p source  code, only nonrigid will generate subpixel shifts
 ops['nonrigid'] = False
@@ -73,7 +74,7 @@ db = {"data_path": [file_folder]}
 # %% Run suite2p with timing
 output_ops = suite2p.run_s2p(ops, db)
 # %% show i mage
-np.save(file_folder+ "/full_time.npy", output_ops, allow_pickle=True)
+np.save(file_folder+ "/full_time_rigid.npy", output_ops, allow_pickle=True)
 plt.imshow(output_ops["refImg"])
 
 # %% show dandi spatial footprints
@@ -89,6 +90,7 @@ for i in range(len(mask)):
     mask[i, stat[i]['ypix'], stat[i]['xpix']] = 1
 
 # %% ANALYSIS  &  FIGURE GENERATION
+#%% FIGURE 2b
 # %% file p ath  boondogglery
 files_cm = sorted(glob.glob(
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*cm_on_shifts.npy"))
@@ -96,7 +98,8 @@ files_fiola = sorted(glob.glob(
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*viola_full_shifts.npy"))
 
 # %% suite2p output shifts (movementper frame fromregistration)
-# cm_shiftpath = files_cm[idx]
+idx=0
+cm_shiftpath = files_cm[idx]
 #np.save(cm_shiftpath[:-16] + "s2p.npy",output_ops, allow_pickle=True)
 files_ops = sorted(glob.glob(
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*s2p.npy"))
@@ -123,7 +126,7 @@ plt.plot(-s2p_shifts+np.mean(s2p_shifts))
 
 # plt.plot(output_ops["yoff1"][1500:]*2+1)
 # plt.plot(fiola_full_shifts[1500:,1])
-# %%  error  calculation  using cm online  as the  reference  point
+# %%  error  calculation  using cm online  as the  reference  point for 2b
 files_voltage = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/*cm_on_shifts.npy"))
 files = files_cm + files_voltage
 dataset_x = {"alg": [], "dset": [], "err": []}
@@ -172,7 +175,7 @@ for i, f in enumerate(files):
     dataset_y["dset"] += [names[i]]*3*start
     if i==2:
         break
-# %% box plot generation
+# %% box plot generation for 2b (motion correction)
 df = pd.DataFrame(dataset_y)
 ax = sns.boxplot(x=df["dset"],
             y=df["err"],
@@ -180,15 +183,15 @@ ax = sns.boxplot(x=df["dset"],
             whis=[1,99])
 ax.set_ylim([-2,2])
 
-# %% timing  calculations (k53 only)
-fr = 1024
+# %% timing  calculations (k53 only) for 2c
+fr = 512
 file_folder = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_" + \
     str(fr)
 ops = suite2p.default_ops()
-ops['batch_size'] = 100
+ops['batch_size'] = 1
 ops['report_timing'] = True
 # basedon the suite2p source  code, only nonrigid will generate subpixel shifts
-ops['nonrigid'] = True
+ops['nonrigid'] = False
 ops['block_size'] = [Lx, Ly]
 ops['maxregshift'] = 0.1
 ops["nimg_init"] = n_time//2
@@ -197,26 +200,25 @@ ops["subpixel"] = 1000
 # ops['snr_thresh']= 1.0
 ops['data_path'] = file_folder
 db = {"data_path": [file_folder]}
-# %%  RUN s2P => do NOT  RUN > 1x Without clearing the folder
+# %%  RUN s2P => do NOT  RUN more than 1x Without clearing the folder
 output_ops = suite2p.run_s2p(ops, db)
-# %% math fortimes
+# %% math for times for 2c
 t0 = output_ops["fiola_start"]
 t1 = output_ops["fiola_startRegInit"]
 t2 = output_ops["fiola_finishTemplate"]
 batchTimes = output_ops["fiola_batchStart"]
 t3 = batchTimes[0]
-# %%
-# %%  save
+# %%  save results
 save = False
 if save:
-    np.save("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_512_ff.npy",
+    np.save("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_512_s2r2.npy",
             output_ops, allow_pickle=True)
-# %% generate timings dataset
+# %% generate timings dataset for 2c
 dataset = {"alg": [], "typ": [], "time": []}
 dataset_fr = {"alg": [], "time": []}
 timed = list()
 
-for i, f in enumerate(["fc", "fi", "cm", "s2"]):
+for i, f in enumerate(["fc", "fi", "cm", "s2", "s2r"]):
     # if i == 1: 
         # break
     base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_"
@@ -272,15 +274,23 @@ for i, f in enumerate(["fc", "fi", "cm", "s2"]):
 
 stats = {}
 data_fr_custom = {}
-nmes = ["512_fi", "512_fc", "512_cm", "512_s2",
-        "1024_fi", "1024_fc", "1024_cm", "1024_s2"]
+nmes = ["512_fi", "512_fc", "512_cm", "512_s2", "512_s2r",
+        "1024_fi", "1024_fc", "1024_cm", "1024_s2", "1024_s2r"]
 for n in nmes:
     if "s" in n:
+        if "r" in n:
+            multiplier = 1000
+        else:
+            multiplier = 10
         print(n)
-        data_fr_custom[n] = 10*np.array(np.load(base_file + n +
+        data_fr_custom[n] = multiplier*np.array(np.load(base_file + n +
                                         ".npy", allow_pickle=True)[()]["fiola_batchStart"][1:])
     else:
-        data_fr_custom[n] = 1000 * \
+        if "cm" in n:
+            multiplier = 1
+        else:
+            multiplier = 1000
+        data_fr_custom[n] = multiplier * \
             np.array(np.load(base_file + n + ".npy",
                      allow_pickle=True)[()]["mc"][1:])
 count = 0
@@ -301,19 +311,26 @@ for key in data_fr_custom.keys():
     stats[key]["fliers"] = outliers
     count += 1
 
-colors = ["green", "green", "coral", "blue", "green", "green", "coral", "blue"]
+colors = ["green", "green", "coral", "blue", "blue", "green", "green", "coral", "blue", "blue"]
 fig, ax = plt.subplots(1, 1)
-bplot = ax.bxp(stats.values(),  positions=range(8),  patch_artist=True)
+bplot = ax.bxp(stats.values(),  positions=range(10),  patch_artist=True)
 ax.set_yscale("log")
+ax.set_xticklabels(nmes)
 for patch, color in zip(bplot["boxes"], colors):
     print(color)
     patch.set_facecolor(color)
-
-#%% NNLS Timing
+#%% Print out the k53 time
+print("512_fi times: ", np.percentile(data_fr_custom["512_fi"], [0.1, 1, 25,75,99, 99.9]))
+print("512_fc times: ", np.percentile(data_fr_custom["512_fc"], [0.1, 1, 25,75,99, 99.9]))
+print("1024_fi times: ", np.percentile(data_fr_custom["1024_fi"], [0.1, 1, 25,75,99, 99.9]))
+print("1024_fc times: ", np.percentile(data_fr_custom["1024_fc"], [0.1, 1, 25,75,99, 99.9]))
+#%% THE FOLLOWING SECTIONIS CODE FOR FIGURE 3
+#%% NNLS Timing for 3e
+base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_"
 stats = {}
 data_fr_custom = {}
 # nmes = ["fi_512", "fb_512","cm_512", #"s2p_512",
-nmes=["fi_1024", "fb_1024","cm_1024"]#, "s2p_1024"]
+nmes=["fi_512_100", "fi_512_200", "fi_512_500", "cm_512", "fi_1024_100", "fi_1024_200", "fi_1024_500", "cm_1024"]#, "s2p_1024"]
 for n in nmes:
     if "fb" in n or "s2" in n:
         data_fr_custom[n] = 10 * np.array(np.load(base_file + n +
@@ -342,15 +359,17 @@ for key in data_fr_custom.keys():
     stats[key]["fliers"] = outliers
     count += 1
 
-colors = ["green", "green", "coral","green", "green", "coral"]
+colors = ["green", "green", "green", "coral","green", "green", "green", "coral"]
 fig, ax = plt.subplots(1, 1)
-bplot = ax.bxp(stats.values(),  positions=range(3),  patch_artist=True)
+bplot = ax.bxp(stats.values(),  positions=range(8),  patch_artist=True)
 ax.set_yscale("log")
+ax.set_xticklabels(nmes)
+
 for patch, color in zip(bplot["boxes"], colors):
     print(color)
     patch.set_facecolor(color)
 
-#%% NNLS -- timing for N.... files
+#%% NNLS -- timing for N.... files (3c)
 from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
 import timeit
 import time
@@ -429,7 +448,7 @@ for i in range(1, 500):
     into = [mov[i+1, :, :, None][None, :], out[0], out[1], out[2]]
     # time.sleep(0.01)
 
-#%% NNLS- pearson's r x number iterations
+#%% NNLS- pearson's r x number iterations (3c)
 base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
 from sklearn.metrics import r2_score
 # files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
@@ -451,6 +470,7 @@ from scipy.stats import sem
 files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
 offsets = [2,1,2,3,3,3] # background components
 bad = 0
+fig, ax = plt.subplots()
 for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
     x,y = [],[]
     xerr,yerr = [],[]
@@ -470,27 +490,27 @@ for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
         count = 0
         for (s,v) in zip(nn_sp, nn_vi):
             r2_indiv = r2_score(s,v)
-            if r2_indiv <= 0.1:
-                print(r2_indiv)
-                print(f, t, count)
+            if r2_indiv <= 0:
+                r2_indiv = 0
                 bad += 1
                 # plt.figure()
                 # plt.plot(s)
                 # plt.plot(v)
                 # plt.show()
-                break
-            else:
-                r2.append(r2_indiv)
+            r2.append(r2_indiv)
                 # yerr.append(sem(r2))
             count += 1
         y.append(np.mean(r2))
         yerr.append(sem(r2))
-    plt.errorbar(x, y, xerr=xerr,yerr=yerr, marker="o", label=f)
+    ax.errorbar(x, y, xerr=xerr,yerr=yerr, marker="o", label=f)
     plt.legend()
         # break
     save_r2[f+t]  = r2
         # plt.plot(r2)
-# plt.yscale("log")        
+exp = lambda x: 10**(x)
+log = lambda x: np.log10(x) 
+ax.set_yscale("function", functions=(exp, log)) 
+ax.set_yticks([0.5,0.9, 0.95, 0.999])  
         
     
 #%%

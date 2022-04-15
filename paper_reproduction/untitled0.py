@@ -1,3 +1,11 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar  3 17:29:32 2022
+
+@author: nel
+"""
+
 #!/usr/bin/env python
 
 """
@@ -55,6 +63,7 @@ logging.basicConfig(format=
                     level=logging.INFO)
 #%%    
 def run_caiman_init(fnames):
+    fnames = '/media/nel/storage/fiola/R2_20190219/test_s/small_mov.tif'
     c, dview, n_processes = cm.cluster.setup_cluster(
             backend='local', n_processes=None, single_thread=False)
     
@@ -214,10 +223,7 @@ def run_caiman_init(fnames):
     cnm2.estimates.Cn = Cn
     cnm2.estimates.template = mc.total_template_rig
     cnm2.estimates.shifts = mc.shifts_rig
-    save_name = cnm2.mmap_file[:-5] + '_v3.7.hdf5'
-    
-    timing['end'] = time()
-    print(timing)
+    save_name = cnm2.mmap_file[:-5] + '_new.hdf5'
     cnm2.save(save_name)
     print(save_name)
     output_file = save_name
@@ -226,8 +232,7 @@ def run_caiman_init(fnames):
     log_files = glob.glob('*_LOG_*')
     for log_file in log_files:
         os.remove(log_file)
-    plt.close('all')        
+        
+    timing['end'] = time()
+        
     return output_file
-
-if __name__ == "__main__":
-    run_caiman_init(fnames)

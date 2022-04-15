@@ -68,7 +68,7 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
         else:
             Ab = np.hstack((estimates.A.toarray(), estimates.b))
             
-        trace_fiola, _ = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
+        trace_fiola = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
         plt.plot(trace_fiola.T)
         
     #%% Set up online pipeline
@@ -91,7 +91,7 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
         if idx % 100 == 0:
             print(idx)        
         fio.fit_online_frame(memmap_image)   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i        
-        traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx]
+        traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
         time_per_step[idx-num_frames_init] = (time()-start)
     
     traces = traces.T
@@ -101,6 +101,7 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
     #%% Visualize result
     fio.compute_estimates()
     fio.view_components(template)
+    fio.estimates.timing_online=time_per_step
     
     # import pdb
     # pdb.set_trace()
@@ -111,22 +112,12 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
     #          caiman_file = caiman_file, 
     #          fnames_exp = fnames, 
     #          estimates = fio.estimates)
-    #save_name = f'fiola_result_num_layers_{fio.params.mc_nnls["num_layers"]}_trace_with_neg_{fio.params.mc_nnls["trace_with_neg"]}_v3.1'
-    save_name = f'fiola_result_test_v3.1'
+    save_name = f'fiola_result_num_layers_{fio.params.mc_nnls["num_layers"]}_v3.5'
+    #save_name = f'fiola_result_test_v3.3'
     np.save(os.path.join(file_dir, 'viola', save_name), fio.estimates)
-    
-    
+    plt.close('all')
     
     #%% save
-    # save_name = f'fiola_result_online_gpu_{online_gpu}_init_{opts.data["num_frames_init"]}' \
-    #     f'_bg_{opts.mc_nnls["update_bg"]}_use_spikes_{opts.mc_nnls["use_spikes"]}' \
-    #     f'_hals_movie_{opts.mc_nnls["hals_movie"]}_semi_nmf_{opts.mc_nnls["semi_nmf"]}' \
-    #     f'_adaptive_threshold_{opts.spike["adaptive_threshold"]}' \
-    #     f'_do_scale_{opts.spike["do_scale"]}_freq_{opts.spike["freq"]}'\
-    #     f'_filt_window_{opts.spike["filt_window"]}_minimal_thresh_{opts.spike["minimal_thresh"]}'\
-    #     f'_template_window_{opts.spike["template_window"]}_v2.1'
-    #np.save(os.path.join(file_dir, 'fiola', save_name), vio.estimates)
-    
     log_files = glob.glob('*_LOG_*')
     for log_file in log_files:
         os.remove(log_file)
