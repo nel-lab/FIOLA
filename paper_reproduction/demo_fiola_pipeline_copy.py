@@ -8,6 +8,7 @@ copyright in license file
 authors: @agiovann @changjia
 """
 #%%
+import glob
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,6 +21,7 @@ import pyximport
 pyximport.install()
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
+#from fiola.warmup import warmup
 from caiman.source_extraction.cnmf.utilities import get_file_size
 import caiman as cm
 from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
@@ -34,7 +36,10 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 #%% 
 def main():
 #%%
-    import glob
+    # do_warm_up = True
+    # if do_warm_up:
+    #     warmup(fnames='/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_512/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001.tif', num_frames=1000)
+        
     mode = 'calcium'                    # 'voltage' or 'calcium 'fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
@@ -83,25 +88,26 @@ def main():
        
     #    
     elif mode == 'calcium':
-        fnames = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_1024/k53.tif'
+        # fnames = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_1024/k53_1024.tif'
         # fnames= '/home/nel/caiman_data/example_movies/k53.tif'
+        fnames = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/s2p_k53/k53.tif'
         # fnames = sorted(glob.glob('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/YST/images_YST/*'))
         mask = "/home/nel/caiman_data/example_movies/k53_A.npy"
-        A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_A.npy",allow_pickle=True)[()]
-        b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_b.npy",allow_pickle=True)[()]
-        Ab = np.concatenate((A.toarray(),b),axis=1)[:, :100]
+        # A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_A.npy",allow_pickle=True)[()]
+        # b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_b.npy",allow_pickle=True)[()]
+        # Ab = np.concatenate((A.toarray(),b),axis=1)[:, :500]
         # A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/YST_A.npy",allow_pickle=True)[()]
         # b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/YST_b.npy",allow_pickle=True)[()]
         # Ab = np.concatenate((A.toarray(),b),axis=1)[:, :200]
         fr = 30                         # sample rate of the movie
-        ROIs = Ab                     # a 3D matrix contains all region of interests
+        ROIs = mask                     # a 3D matrix contains all region of interests
     
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
         num_frames_init =  1500
          # number of frames used for initialization
         num_frames_total = 3000        # estimated total number of frames for processing, this is used for generating matrix to store data
-        offline_batch_size = 100          # number of frames for one batch to perform offline motion correction
-        batch_size= 100                   # number of frames processing at the same time using gpu 
+        offline_batch_size = 1          # number of frames for one batch to perform offline motion correction
+        batch_size= 1                   # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
         ms = [10, 10]                     # maximum shift in x and y axis respectively. Will not perform motion correction if None.
         center_dims = None              # template dimensions for motion correction. If None, the input will the the shape of the FOV
@@ -114,7 +120,7 @@ def main():
         options = {
             'fnames': fnames,
             'fr': fr,
-            'ROIs': Ab,
+            'ROIs': ROIs,
             'mode': mode, 
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
@@ -127,22 +133,25 @@ def main():
             'n_split': n_split,
             'nb' : nb, 
             'trace_with_neg':trace_with_neg,
-            'num_layers': 30},
-        fnames = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_512/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001.tif"
+            'num_layers': 30,
+            'do_deconvolve': True }
+        # fnames = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_512/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001.tif"
         mov = cm.load(fnames)
-        # fnames_init = fnames.split('.')[0] + '_init.tif'
-        # mov.save(fnames_init)
+        fnames_init = fnames.split('.')[0] + '_init.tif'
+        mov.save(fnames_init)
         
         # run caiman initialization. User might need to change the parameters 
         # inside the file to get good initialization result
         # caiman_file = run_caiman_init(fnames_init)
         
         # load results of initialization
+        cnm2 = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/s2p_k53/cnm2.npy", allow_pickle=True)[()]
+        # cnm2 = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/s2p_k53/cnm2_1024.npy", allow_pickle=True)[()]
         # cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
-        # estimates = cnm2.estimates
-        # template = cnm2.estimates.template
-        # Cn = cnm2.estimates.Cn
-        template = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001_template_on.npy")
+        estimates = cnm2.estimates
+        template = cnm2.estimates.template
+        Cn = cnm2.estimates.Cn
+        # template = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001_template_on.npy")
         # template = np.median(mov[:1500], axis=0)
         # from skimage.transform import resize
         # template = resize(template,(1024,1024))
@@ -155,43 +164,49 @@ def main():
     motion_correct = True
     #example source separation
     do_nnls = True
+
     #%% Mot corr only
-    if motion_correct:
-        params = fiolaparams(params_dict=options[0])
-        fio = FIOLA(params=params)
-        # run motion correction on GPU on the initialization movie
-        mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], min_mov=mov.min())             
-        plt.plot(shifts_fiola)
-    else:    
-        mc_nn_mov = mov
+    time_all = []
+    for ii in range(1):
+        if motion_correct:
+            params = fiolaparams(params_dict=options)
+            fio = FIOLA(params=params)
+            # run motion correction on GPU on the initialization movie
+            mc_nn_mov, shifts_fiola, times = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], min_mov=mov.min())             
+            plt.plot(shifts_fiola)
+        else:    
+            mc_nn_mov = mov
+        time_all.append(np.mean(np.diff(times)))
     
     #%% NNLS only
     if do_nnls:
-        params = fiolaparams(params_dict=options[0])
+        params = fiolaparams(params_dict=options)
         fio = FIOLA(params=params)
         if mode == 'voltage':
             A = scipy.sparse.coo_matrix(to_2D(mask, order='F')).T
             fio.fit_hals(mov, A)
             Ab = fio.Ab # Ab includes spatial masks of all neurons and background
         else:
-            # Ab = np.hstack((estimates.A.toarray(), estimates.b))
-            pass # Ab = Ab[:,-500:]
+            Ab = np.hstack((estimates.A.toarray(), estimates.b))
+            Ab = Ab[:,-100:].astype(np.float32)
             
-        trace_fiola, times = fio.fit_gpu_nnls_test(mov, Ab, batch_size=50) 
-        plt.plot(trace_fiola.T)
+        trace_fiola, times_nnls = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=1) 
+        plt.plot(trace_fiola[0].T)
  #%% plot
 plt.plot(np.diff(times[1:30])) 
-np.save(base_file+ movie_name+ "_nnls_" + str(options[0]['num_layers'])+ "_time.npy", np.diff(times))       
+if False:
+    np.save(base_file+ movie_name+ "_nnls_" + str(options[0]['num_layers'])+ "_time.npy", np.diff(times))       
     #%% Set up online pipeline
-    params = fiolaparams(params_dict=options[0])
+    params = fiolaparams(params_dict=options)
     fio = FIOLA(params=params)
+
     if mode == 'voltage': # not thoroughly tested and computationally intensive for large files, it will estimate the baseline
         fio.fit_hals(mc_nn_mov, A)
         Ab = fio.Ab
     else:
         pass#Ab = np.hstack((estimates.A.toarray(), estimates.b))
     Ab = Ab.astype(np.float32)
-    Ab = Ab[:,:200]
+    # Ab = Ab[:,:200]
         
     fio = fio.create_pipeline(mc_nn_mov, trace_fiola, template, Ab, min_mov=mov.min())
     #%% run online
@@ -201,7 +216,8 @@ np.save(base_file+ movie_name+ "_nnls_" + str(options[0]['num_layers'])+ "_time.
         
     for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total):
         # if idx % 100 == 0:
-        #     print(idx)        
+        #     print(idx) 
+
         fio.fit_online_frame(memmap_image)   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i        
         traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx]
         time_per_step[idx-num_frames_init] = (time()-start)
@@ -210,6 +226,36 @@ np.save(base_file+ movie_name+ "_nnls_" + str(options[0]['num_layers'])+ "_time.
     logging.info(f'total time online: {time()-start}')
     logging.info(f'time per frame online: {(time()-start)/(num_frames_total-num_frames_init)}')
     plt.plot(np.diff(time_per_step))
+#%% run very  eagerly
+time_per_step = np.zeros(num_frames_total-num_frames_init)
+traces_out = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
+start = time()
+for idx  in  range(1500,2999):
+
+    fio.fit_online_frame(fr[None])
+    traces_out[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx]
+    time_per_step[idx-num_frames_init] = (time()-start)
+#%% run  without estimator
+from fiola.gpu_mc_nnls import get_model 
+model = get_model(template, Ab, batch_size, 
+                  ms_h=10, ms_w=10, min_mov=mov.min(),
+                  use_fft=True, normalize_cc=True, 
+                  center_dims=None, return_shifts=False, 
+                  num_layers=30, n_split=1, 
+                  trace_with_neg=True)
+# model.compile(optimizer='rmsprop', loss='mse', run_eagerly=False)   
+x,y = traces[:,0][None,:,None],traces[:,0][None,:,None]
+k = np.array([[0]])
+time_per_step = np.zeros(num_frames_total-num_frames_init)
+traces_out = np.zeros((num_frames_total-num_frames_init,Ab.shape[-1]), dtype=np.float32)
+# model.compile(optimizer='rmsprop', loss='mse')
+#%% run for loop timing
+start = time()
+for idx,fr in enumerate(mov):
+    out = model.predict([fr[None,None,:,:,None],x,y,k])
+    x,y,ne = out
+    time_per_step[idx] = time()-start
+    traces_out[idx] = x[0,:,0]
 #%%SVING: 
 path = fnames[0][:92]
 np.save(path + "")

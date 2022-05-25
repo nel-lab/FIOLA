@@ -13,7 +13,7 @@ class fiolaparams(object):
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
                  update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch_size=1, use_fft=True, normalize_cc=True,
                  center_dims=None, num_layers=30, n_split=1, trace_with_neg=True, initialize_with_gpu=True, 
-                 window = 10000, step = 5000, detrend=True, flip=True, 
+                 window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True,
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, nb=1, p=1, params_dict={}):
@@ -63,7 +63,10 @@ class fiolaparams(object):
             'step': step, # step for updating statistics
             'flip': flip, # whether to flip signal to find spikes    
             'detrend': detrend, # whether to remove photobleaching
+            'dc_param': dc_param, # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between 0.9 
+                                  # and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
             'do_scale': do_scale, # whether to scale the input trace or not
+            'do_deconvolve': do_deconvolve, #If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
             'template_window':template_window, # half window size of the template; will not perform template matching if window size equals 0
             'robust_std':robust_std, # whether to use robust way to estimate noise
             'freq': freq, # frequency for removing subthreshold activity

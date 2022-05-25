@@ -123,8 +123,10 @@ tempy1 = np.array(tempy1).squeeze()
 #%%
 out = []
 def generator():
+    # count=-1
+    # logging.info()
     for fr in  mov:
-        yield{"m":fr[None,:,:,None]}
+        yield{"m":fr[None,None,:,:,None]}
              
 def get_frs():
     dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32}, output_shapes={"m":(1,512,512,1)})

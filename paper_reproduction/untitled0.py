@@ -1,238 +1,105 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Created on Thu Mar  3 17:29:32 2022
+Created on Thu May 12 10:26:49 2022
 
 @author: nel
 """
 
-#!/usr/bin/env python
-
-"""
-Complete demo pipeline for processing two photon calcium imaging data using the
-CaImAn batch algorithm. The processing pipeline included motion correction,
-source extraction and deconvolution. The demo shows how to construct the
-params, MotionCorrect and cnmf objects and call the relevant functions. You
-can also run a large part of the pipeline with a single method (cnmf.fit_file)
-See inside for details.
-
-Demo is also available as a jupyter notebook (see demo_pipeline.ipynb)
-Dataset couresy of Sue Ann Koay and David Tank (Princeton University)
-
-This demo pertains to two photon data. For a complete analysis pipeline for
-one photon microendoscopic data see demo_pipeline_cnmfE.py
-
-copyright GNU General Public License v2.0
-authors: @agiovann and @epnev
-"""
-
-import cv2
-import glob
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
-import os
+from tensorflow.python.client import device_lib
 from time import time
+import scipy
 
-try:
-    cv2.setNumThreads(0)
-except:
-    pass
-
-try:
-    if __IPYTHON__:
-        # this is used for debugging purposes only. allows to reload classes
-        # when changed
-        get_ipython().magic('load_ext autoreload')
-        get_ipython().magic('autoreload 2')
-except NameError:
-    pass
-
-import caiman as cm
-from caiman.motion_correction import MotionCorrect
-from caiman.source_extraction.cnmf import cnmf as cnmf
-from caiman.source_extraction.cnmf import params as params
-from caiman.utils.utils import download_demo
-from caiman.summary_images import local_correlations_movie_offline
+from fiola.demo_initialize_calcium import run_caiman_init
+import pyximport
+pyximport.install()
+from fiola.fiolaparams import fiolaparams
+from fiola.fiola import FIOLA
 from caiman.source_extraction.cnmf.utilities import get_file_size
-
+import caiman as cm
+from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
 
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
                     "[%(process)d] %(message)s",
                     level=logging.INFO)
-#%%    
-def run_caiman_init(fnames):
-    fnames = '/media/nel/storage/fiola/R2_20190219/test_s/small_mov.tif'
-    c, dview, n_processes = cm.cluster.setup_cluster(
-            backend='local', n_processes=None, single_thread=False)
     
-    timing = {}
-    timing['start'] = time()
+logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.4.1
 
-    # dataset dependent parameters
-    display_images = False
-    
-    fr = 30             # imaging rate in frames per second
-    decay_time = 0.4    # length of a typical transient in seconds
-    dxy = (2., 2.)      # spatial resolution in x and y in (um per pixel)
-    # note the lower than usual spatial resolution here
-    max_shift_um = (12., 12.)       # maximum shift in um
-    patch_motion_um = (100., 100.)  # patch size for non-rigid correction in um
-    # motion correction parameters
-    pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
-    # maximum allowed rigid shift in pixels
-    max_shifts = [int(a/b) for a, b in zip(max_shift_um, dxy)]
-    # start a new patch for pw-rigid motion correction every x pixels
-    strides = tuple([int(a/b) for a, b in zip(patch_motion_um, dxy)])
-    # overlap between pathes (size of patch in pixels: strides+overlaps)
-    overlaps = (24, 24)
-    # maximum deviation allowed for patch with respect to rigid shifts
-    max_deviation_rigid = 3
-    
-    mc_dict = {
-        'fnames': fnames,
-        'fr': fr,
-        'decay_time': decay_time,
-        'dxy': dxy,
-        'pw_rigid': pw_rigid,
-        'max_shifts': max_shifts,
-        'strides': strides,
-        'overlaps': overlaps,
-        'max_deviation_rigid': max_deviation_rigid,
-        'border_nan': 'copy',
-    }
-    
-    opts = params.CNMFParams(params_dict=mc_dict)
-    
-    # Motion correction and memory mapping
-    time_init = time()
-    mc = MotionCorrect(fnames, dview=dview, **opts.get_group('motion'))
-    mc.motion_correct(save_movie=True)
-    border_to_0 = 0 if mc.border_nan == 'copy' else mc.border_to_0
-    fname_new = cm.save_memmap(mc.mmap_file, base_name='memmap_', order='C',
-                               border_to_0=border_to_0)  # exclude borders
-    #
-    Yr, dims, T = cm.load_memmap(fname_new)
-    images = np.reshape(Yr.T, [T] + list(dims), order='F')
-    #  restart cluster to clean up memory
-    cm.stop_server(dview=dview)
-    c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=None, single_thread=False)
-    #
-    f_F_mmap = mc.mmap_file[0]
-    Cns = local_correlations_movie_offline(f_F_mmap,
-                                       remove_baseline=True, window=1000, stride=1000,
-                                       winSize_baseline=100, quantil_min_baseline=10,
-                                       dview=dview)
-    Cn = Cns.max(axis=0)
-    Cn[np.isnan(Cn)] = 0
-    # if display_images: 
-       
-    plt.imshow(Cn,vmax=0.5)
-    #   parameters for source extraction and deconvolution
-    p = 1                    # order of the autoregressive system
-    gnb = 2                  # number of global background components
-    merge_thr = 0.85         # merging threshold, max correlation allowed
-    rf = 15
-    # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
-    stride_cnmf = 6          # amount of overlap between the patches in pixels
-    K = 5                    # number of components per patch
-    gSig = [4, 4]            # expected half size of neurons in pixels
-    # initialization method (if analyzing dendritic data using 'sparse_nmf')
-    method_init = 'greedy_roi'
-    ssub = 2                     # spatial subsampling during initialization
-    tsub = 2                     # temporal subsampling during intialization
-    
-    # parameters for component evaluation
-    opts_dict = {'fnames': fnames,
-                 'p': p,
-                 'fr': fr,
-                 'nb': gnb,
-                 'rf': rf,
-                 'K': K,
-                 'gSig': gSig,
-                 'stride': stride_cnmf,
-                 'method_init': method_init,
-                 'rolling_sum': True,
-                 'merge_thr': merge_thr,
-                 'n_processes': n_processes,
-                 'only_init': True,
-                 'ssub': ssub,
-                 'tsub': tsub}
-    
-    opts.change_params(params_dict=opts_dict);
-    #  RUN CNMF ON PATCHES
-    cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
-    cnm = cnm.fit(images)
-    #  COMPONENT EVALUATION
-    min_SNR = 1.0  # signal to noise ratio for accepting a component
-    rval_thr = 0.75  # space correlation threshold for accepting a component
-    cnn_thr = 0.3  # threshold for CNN based classifier
-    cnn_lowest = 0.0 # neurons with cnn probability lower than this value are rejected
-    
-    cnm.params.set('quality', {'decay_time': decay_time,
-                           'min_SNR': min_SNR,
-                           'rval_thr': rval_thr,
-                           'use_cnn': False,
-                           'min_cnn_thr': cnn_thr,
-                           'cnn_lowest': cnn_lowest})
-    cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
-    print(len(cnm.estimates.idx_components))
-    time_patch = time()
-    #
-    if display_images:
-        cnm.estimates.plot_contours(img=Cn, idx=cnm.estimates.idx_components)
-    #
-    cnm.estimates.select_components(use_object=True)
-    # RE-RUN seeded CNMF on accepted patches to refine and perform deconvolution
-    cnm2 = cnm.refit(images, dview=dview)
-    time_end = time() 
-    print(time_end- time_init)
-    #  COMPONENT EVALUATION
-    min_SNR = 1.1  # signal to noise ratio for accepting a component
-    rval_thr = 0.85  # space correlation threshold for accepting a component
-    cnn_thr = 0.15  # threshold for CNN based classifier
-    cnn_lowest = 0.0 # neurons with cnn probability lower than this value are rejected
-    
-    cnm2.params.set('quality', {'decay_time': decay_time,
-                               'min_SNR': min_SNR,
-                               'rval_thr': rval_thr,
-                               'use_cnn': False,
-                               'min_cnn_thr': cnn_thr,
-                               'cnn_lowest': cnn_lowest})
-    cnm2.estimates.evaluate_components(images, cnm2.params, dview=dview)
-    print(len(cnm2.estimates.idx_components))
-    
-    #  PLOT COMPONENTS
-    cnm2.estimates.plot_contours(img=Cn, idx=cnm2.estimates.idx_components)
-    #  VIEW TRACES (accepted and rejected)
-    if display_images:
-        cnm2.estimates.view_components(images, img=Cn,
-                                      idx=cnm2.estimates.idx_components)
-        cnm2.estimates.view_components(images, img=Cn,
-                                      idx=cnm2.estimates.idx_components_bad)
-    # update object with selected components
-    cnm2.estimates.select_components(use_object=True)
-    # Extract DF/F values
-    cnm2.estimates.detrend_df_f(quantileMin=8, frames_window=250)
-    # Show final traces
-    cnm2.estimates.view_components(img=Cn)
-    #
-    cnm2.mmap_F = f_F_mmap 
-    cnm2.estimates.Cn = Cn
-    cnm2.estimates.template = mc.total_template_rig
-    cnm2.estimates.shifts = mc.shifts_rig
-    save_name = cnm2.mmap_file[:-5] + '_new.hdf5'
-    cnm2.save(save_name)
-    print(save_name)
-    output_file = save_name
-    # STOP CLUSTER and clean up log files
-    cm.stop_server(dview=dview)
-    log_files = glob.glob('*_LOG_*')
-    for log_file in log_files:
-        os.remove(log_file)
-        
-    timing['end'] = time()
-        
-    return output_file
+#%%
+fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
+#fnames = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.01.01/mov_N.01.01.tif"
+# path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
+# mask = load(path_ROIs)
+#A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/N01_A.npy", allow_pickle=True)[()]
+#b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/N01_b.npy", allow_pickle=True)[()]
+# A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_A.npy",allow_pickle=True)[()]
+# b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_b.npy",allow_pickle=True)[()]
+#mask = np.concatenate((A.toarray()[:,-500:],b),axis=1)
+# mask = None
+
+fr = 30                         # sample rate of the movie
+ROIs = None                     # a 3D matrix contains all region of interests
+
+mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
+num_frames_init =   500         # number of frames used for initialization
+num_frames_total =  2000        # estimated total number of frames for processing, this is used for generating matrix to store data
+offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
+batch_size= 1                   # number of frames processing at the same time using gpu 
+flip = False                    # whether to flip signal to find spikes   
+detrend = True                  # whether to remove the slow trend in the fluorescence data            
+dc_param = 0.9995
+do_deconvolve = True            # If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
+ms = [5, 5]                     # maximum shift in x and y axis respectively. Will not perform motion correction if None.
+center_dims = None              # template dimensions for motion correction. If None, the input will the the shape of the FOV
+hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
+                                # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
+n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
+nb = 2                          # number of background components
+trace_with_neg=False             # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
+                
+options = {
+    'fnames': fnames,
+    'fr': fr,
+    'ROIs': ROIs,
+    'mode': mode, 
+    'num_frames_init': num_frames_init, 
+    'num_frames_total':num_frames_total,
+    'offline_batch_size': offline_batch_size,
+    'batch_size':batch_size,
+    'flip': flip,
+    'detrend': detrend,
+    'dc_param': dc_param,            
+    'do_deconvolve': do_deconvolve,
+    'ms': ms,
+    'hals_movie': hals_movie,
+    'center_dims':center_dims, 
+    'n_split': n_split,
+    'nb' : nb, 
+    'trace_with_neg':trace_with_neg}
+
+mov = cm.load(fnames, subindices=range(num_frames_init))
+# fnames_init = fnames.split('.')[0] + '_init.tif'
+# mov.save(fnames_init)
+
+# run caiman initialization. User might need to change the parameters 
+# inside the file to get good initialization result
+# caiman_file = run_caiman_init(fnames_init)
+
+# load results of initialization
+#caiman_file = '/home/nel/caiman_data/example_movies/demoMovie/memmap__d1_60_d2_80_d3_1_order_C_frames_1500__init.hdf5'
+#cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
+#estimates = cnm2.estimates
+# template = cnm2.estimates.template
+# Cn = cnm2.estimates.Cn
+template= np.median(mov[:1500], axis=0)
+
+#%%
+params = fiolaparams(params_dict=options)
+fio = FIOLA(params=params)
+# run motion correction on GPU on the initialization movie
+mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov[:100], template, fio.params.mc_nnls['offline_batch_size'], min_mov=mov.min())             
+plt.plot(shifts_fiola)

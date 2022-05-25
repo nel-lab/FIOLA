@@ -60,7 +60,12 @@ parser.add_argument('--K', type=int, required=True)
 args = parser.parse_args()
 
 #%%    
-def run_caiman_init(fnames=None, num_frames_init=None, K=None):
+def run_caiman_init(fnames=None, num_frames_init=None, K=None, min_SNR2=None):
+    fnames = '/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000.hdf5'
+    num_frames_init = 0
+    K = 8
+    min_SNR2 = 2
+    pw_rigid = False
     # for dandi data only
     if num_frames_init > 0:
         folder = fnames.rsplit('/', 1)[0] + f'/{num_frames_init}/'
@@ -84,10 +89,10 @@ def run_caiman_init(fnames=None, num_frames_init=None, K=None):
     decay_time = 0.4    # length of a typical transient in seconds
     dxy = (2., 2.)      # spatial resolution in x and y in (um per pixel)
     # note the lower than usual spatial resolution here
-    max_shift_um = (12., 12.)       # maximum shift in um
+    max_shift_um = (12., 12.)       # maximum shift in umgg
     patch_motion_um = (100., 100.)  # patch size for non-rigid correction in um
     # motion correction parameters
-    pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
+    #pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
     # maximum allowed rigid shift in pixels
     max_shifts = [int(a/b) for a, b in zip(max_shift_um, dxy)]
     # start a new patch for pw-rigid motion correction every x pixels
@@ -197,22 +202,26 @@ def run_caiman_init(fnames=None, num_frames_init=None, K=None):
     time_end = time() 
     print(time_end- time_init)
     #  COMPONENT EVALUATION
-    min_SNR = 1.1  # signal to noise ratio for accepting a component
+    #for min_SNR in [1.1, 1.3, 1.5, 1.8, 2.0]:
+    #min_SNR2 = 2.0  # signal to noise ratio for accepting a component
     rval_thr = 0.85  # space correlation threshold for accepting a component
     cnn_thr = 0.15  # threshold for CNN based classifier
     cnn_lowest = 0.0 # neurons with cnn probability lower than this value are rejected
     
     cnm2.params.set('quality', {'decay_time': decay_time,
-                               'min_SNR': min_SNR,
-                               'rval_thr': rval_thr,
-                               'use_cnn': False,
-                               'min_cnn_thr': cnn_thr,
-                               'cnn_lowest': cnn_lowest})
+                                'min_SNR': min_SNR2,
+                                'rval_thr': rval_thr,
+                                'use_cnn': False,
+                                'min_cnn_thr': cnn_thr,
+                                'cnn_lowest': cnn_lowest})
     cnm2.estimates.evaluate_components(images, cnm2.params, dview=dview)
     print(len(cnm2.estimates.idx_components))
-    
+    # save_name = cnm2.mmap_file[:-5] + f'_v3.13.hdf5'
+    # cnm2.save(save_name)
+    # np.save(folder + f'min_snr_{min_SNR}_comp_{len(cnm2.estimates.idx_components)}.npy', cnm2.estimates.idx_components)
+        
     #  PLOT COMPONENTS
-    cnm2.estimates.plot_contours(img=Cn, idx=cnm2.estimates.idx_components)
+    cnm2.estimates.plot_contours(img=Cn, idx=cnm2.estimates.idx_components, display_numbers=False, cmap='gray')
     #  VIEW TRACES (accepted and rejected)
     if display_images:
         cnm2.estimates.view_components(images, img=Cn,
@@ -230,7 +239,7 @@ def run_caiman_init(fnames=None, num_frames_init=None, K=None):
     cnm2.estimates.Cn = Cn
     cnm2.estimates.template = mc.total_template_rig
     cnm2.estimates.shifts = mc.shifts_rig
-    save_name = cnm2.mmap_file[:-5] + '_v3.7.hdf5'
+    save_name = cnm2.mmap_file[:-5] + '_v3.13.hdf5'
     
     timing['end'] = time()
     print(timing)
@@ -246,5 +255,5 @@ def run_caiman_init(fnames=None, num_frames_init=None, K=None):
     plt.close('all')        
 
 if __name__ == "__main__":
-    run_caiman_init(fnames=args.fnames, num_frames_init=args.num_frames_init, K=args.K)
+    run_caiman_init(fnames=args.fnames, num_frames_init=args.num_frames_init, K=args.K, min_SNR2=args.min_SNR2)
     print(args)

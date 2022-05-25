@@ -2297,19 +2297,19 @@ def movie_iterator(fname, start_idx, end_idx, batch_size=1):
         print('mapping tiff files')
         memmap_image = cm.load(fname)
         print(memmap_image.shape)
-        for idx in range(start_idx, end_idx):
+        for idx in range(start_idx, end_idx, batch_size):
             yield (idx, memmap_image[idx:idx+batch_size].astype(np.float32))
     elif fname.endswith('.tif') or fname.endswith('.tiff'):
         print('mapping tif file')
         memmap_image = memmap(fname)
-        for idx in range(start_idx, end_idx):
+        for idx in range(start_idx, end_idx, batch_size):
             yield (idx, memmap_image[idx:idx+batch_size].astype(np.float32))
     elif fname.endswith('.h5py') or fname.endswith('.hdf5') :
         print('mapping CaImAn h5py/hdf5 file')
         with h5py.File(fname, "r") as f:
             memmap_image = f['mov']
             # List all groups
-            for idx in range(start_idx, end_idx):
+            for idx in range(start_idx, end_idx, batch_size):
                 yield (idx, f['mov'][idx:idx+batch_size].astype(np.float32))
     else:
         raise FileNotFoundError(fname)
