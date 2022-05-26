@@ -275,7 +275,6 @@ class FIOLA(object):
         logging.info('motion correction complete')
         logging.info(f'total timing: {times[-1]}')
         logging.info(f'average timing per frame: {times[-1] / len(mov)}')
-        logging.info("HI README")
         mc_mov = []; x_sh = []; y_sh = []
         for ou in out:
             keys = list(ou.keys())

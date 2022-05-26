@@ -8,6 +8,7 @@ copyright in license file
 authors: @agiovann @changjia
 """
 #%%
+import caiman as cm
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,21 +16,17 @@ import pyximport
 pyximport.install()
 import scipy
 from tensorflow.python.client import device_lib
-from time import time, sleep
+from time import time
     
 from fiola.demo_initialize_calcium import run_caiman_init
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
-from caiman.source_extraction.cnmf.utilities import get_file_size
-import caiman as cm
-from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
-
+from fiola.utilities import download_demo, load, to_2D, movie_iterator
 
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
                     "[%(process)d] %(message)s",
-                    level=logging.INFO)
-    
+                    level=logging.INFO)    
 logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.4.1
 
 #%% 
@@ -198,13 +195,13 @@ def main():
     time_per_step = np.zeros(num_frames_total-num_frames_init)
     traces = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
     if mode == 'calcium':
+        lag = 5
         traces_deconvolved = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1] - nb), dtype=np.float32)
     start = time()
         
-    lag = 5
     for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total):
-        if idx % 100 == 0:
-            print(idx)        
+        if idx % 1000 == 0:
+                print(f'processed {idx} frames')        
         fio.fit_online_frame(memmap_image) 
         traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
         if mode == 'calcium':
