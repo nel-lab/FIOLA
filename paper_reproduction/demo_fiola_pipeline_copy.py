@@ -115,7 +115,7 @@ def main():
                                         # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
         n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
         nb = 2                          # number of background components
-        trace_with_neg=True             # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
+        trace_with_neg=False             # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
                         
         options = {
             'fnames': fnames,
@@ -134,7 +134,7 @@ def main():
             'nb' : nb, 
             'trace_with_neg':trace_with_neg,
             'num_layers': 30,
-            'do_deconvolve': True }
+            'do_deconvolve': False }
         # fnames = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_512/k53_20160530_RSM_125um_41mW_zoom2p2_00001_00001.tif"
         mov = cm.load(fnames)
         fnames_init = fnames.split('.')[0] + '_init.tif'
@@ -188,7 +188,7 @@ def main():
             Ab = fio.Ab # Ab includes spatial masks of all neurons and background
         else:
             Ab = np.hstack((estimates.A.toarray(), estimates.b))
-            Ab = Ab[:,-100:].astype(np.float32)
+            Ab = Ab[:,-500:].astype(np.float32)
             
         trace_fiola, times_nnls = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=1) 
         plt.plot(trace_fiola[0].T)

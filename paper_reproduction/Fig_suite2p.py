@@ -394,7 +394,7 @@ C_files = sorted(glob.glob(base_file+ "*half_noisyC.npy"))
 movie_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.00.00/images*/*.tif"))
 #%% load file
 idx = 0
-A = np.load(A_files[idx],allow_pickle=True)[()].toarray()[:,-100:]
+A = np.load(A_files[idx],allow_pickle=True)[()].toarray()#[:,-100:]
 b = np.load(b_files[idx],allow_pickle=True)[()]
 C = np.load(C_files[idx],allow_pickle=True)[()][-102:]
 x0 = C[:,0]
@@ -425,7 +425,7 @@ def get_frs():
     return dataset
 #%% set up nnls model
 iters = 30
-model = get_nnls_model((dims,dims), Ab.astype(np.float32), 1, iters)
+model = get_nnls_model((dims,dims), Ab.astype(np.float32), 1, iters,1,True)
 model.compile(optimizer='rmsprop', loss='mse')
 estimator  = tf.keras.estimator.model_to_estimator(model)
 times = []

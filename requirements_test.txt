@@ -1,3 +1,4 @@
+caiman
 future
 ipython
 matplotlib
@@ -6,5 +7,4 @@ peakutils
 scikit-image
 scikit-learn
 tensorflow==2.4.1
-
 
