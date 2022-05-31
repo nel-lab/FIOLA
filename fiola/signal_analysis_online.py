@@ -22,7 +22,7 @@ class SignalAnalysisOnlineZ(object):
     def __init__(self, mode='voltage', window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True,
                  do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=400, freq=15, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False,
-                 p=1, nb=0):
+                 p=1, nb=0, bas_nonneg=False, fudge_factor=.96, optimize_g=0):
         '''
         Object encapsulating Online Spike extraction from input traces
         Args:
@@ -73,6 +73,13 @@ class SignalAnalysisOnlineZ(object):
                 no deconvolution is performed if p=0
             nb: int
                 number of background components
+            bas_nonneg: bool
+                baseline strictly non-negative
+            fudge_factor: float
+                fudge factor for reducing time constant bias
+            optimize_g: int
+                Number of large, isolated events to consider for optimizing AR parameters g.
+                If optimize_g=0 (default) the estimated g is not further optimized.
         '''
         for name, value in locals().items():
             if name != 'self':
@@ -170,7 +177,9 @@ class SignalAnalysisOnlineZ(object):
                     
                     N = nn-self.nb # deconvolve only neural traces, not background
                     self.trace_deconvolved = np.zeros((N, num_frames), dtype=np.float32)
-                    results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), self.t_d[:N, :tm])
+                    results_foopsi = map(lambda t: constrained_foopsi(
+                        t, p=self.p, bas_nonneg=self.bas_nonneg, fudge_factor=self.fudge_factor,
+                        optimize_g=self.optimize_g), trace_in[:N])
                     if self.p==1:
                         self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
                                                             results_foopsi], dtype=np.float32).T
