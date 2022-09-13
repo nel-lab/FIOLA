@@ -14,19 +14,21 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 from queue import Queue
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
+#tf.get_logger().setLevel("ERROR")
+#tf.autograph.set_verbosity(1)
 import tensorflow.keras as keras
 from tensorflow.signal import fft3d, ifft3d, ifftshift
 from threading import Thread
 import timeit
 import time
 from fiola.utilities import HALS4activity
-#import tensorflow_addons as tfa
+import tensorflow_addons as tfa
 
 #%%
 class MotionCorrect(keras.layers.Layer):
     def __init__(self, template, batch_size=1, ms_h=5, ms_w=5, min_mov=0, 
                   strides=[1,1,1,1], padding='VALID',use_fft=True, 
-                  normalize_cc=True, epsilon=0.00000001, center_dims=None, return_shifts=False, **kwargs):
+                  normalize_cc=True, epsilon=0.00000001, center_dims=None, return_shifts=True, **kwargs):
         """
         Class for GPU motion correction        
 
@@ -134,10 +136,10 @@ class MotionCorrect(keras.layers.Layer):
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
         sh_x, sh_y = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w)
         self.shifts = [sh_x, sh_y]                
-        # fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
-        #                                     interpolation="bilinear") + self.min_mov
+        fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
+                                            interpolation="bilinear") + self.min_mov
         
-        fr_corrected = self.apply_shifts_dft_tf(fr[0], [-sh_x, -sh_y]) + self.min_mov
+        #fr_corrected = self.apply_shifts_dft_tf(fr[0], [-sh_x, -sh_y]) + self.min_mov
         if self.return_shifts:
             return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), self.shifts
         else:
@@ -236,7 +238,6 @@ class MotionCorrect(keras.layers.Layer):
                 "min_mov": self.min_mov, "strides": self.strides, "padding": self.padding, "epsilon": self.epsilon, 
                 "use_fft":self.use_fft, "normalize_cc":self.normalize_cc, "center_dims":self.center_dims, "return_shifts":self.return_shifts}
 #%%
-
 class NNLS(keras.layers.Layer):
     def __init__(self, theta_1, name="NNLS",**kwargs):
         """
@@ -284,7 +285,7 @@ class NNLS(keras.layers.Layer):
         mm = tf.matmul(self.th1, Y)
         new_X = tf.nn.relu(mm + weight)
 
-        Y_new = new_X + (k - 1)/(k + 2)*(new_X - X_old)  
+        Y_new = new_X + tf.cast(tf.divide(k - 1, k + 2), tf.float32)*(new_X - X_old)
         k += 1
         return (Y_new, new_X, k, weight)
     
@@ -297,7 +298,7 @@ class compute_theta2(keras.layers.Layer):
         super().__init__(**kwargs)
         self.A = A
         self.n_AtA = n_AtA
-        
+                
     def call(self, X):
         Y = tf.matmul(X, self.A)
         Y = tf.divide(Y, self.n_AtA)
@@ -443,7 +444,8 @@ def get_nnls_model(dims, Ab, batch_size, num_layers, n_split, trace_with_neg):
     mc = mc_layer(fr_in)
     
     # chains motion correction layer to weight-calculation layer
-    c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
+    # c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
+    c_th2 = compute_theta2(Ab, n_AtA)
     th2 = c_th2(mc)
     
     # connects weights, to the NNLS layer
@@ -505,6 +507,47 @@ def get_model(template, Ab, batch_size, num_layers, n_split, trace_with_neg, **k
 
     return model
 
+# def get_model(template, Ab, batch_size, num_layers, n_split, trace_with_neg, **kwargs):
+#     """
+#     build full gpu mc-nnls model
+#     """
+#     shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
+#     num_components = Ab.shape[-1]
+#     y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
+#     x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
+#     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
+#     k_in = tf.keras.layers.Input(shape=(1,), name="k")
+
+#     # calculations to initialize 
+#     AtA = Ab.T@Ab
+#     n_AtA = np.linalg.norm(AtA, ord='fro') #Frob. normalization
+#     theta_1 = (np.eye(Ab.shape[-1]) - AtA/n_AtA)
+
+#     # initialization of the motion correction layer, initialized with the template   
+#     mc_layer = Empty()
+#     mc = mc_layer(fr_in)
+
+#     # chains motion correction layer to weight-calculation layer
+#     c_th2 = compute_theta2_split(Ab, n_AtA, n_split)
+#     th2 = c_th2(mc)
+    
+#     # connects weights, calculated from the motion correction, to the NNLS layer
+#     nnls = NNLS(theta_1)
+#     x_kk = nnls([y_in, x_in, k_in, th2])
+#     # stacks NNLS 
+#     for j in range(1, num_layers):
+#         x_kk = nnls(x_kk)
+        
+#     if trace_with_neg:
+#         c_trace_with_noise = compute_trace_with_noise(AtA=AtA, n_AtA=n_AtA)
+#         tt = c_trace_with_noise(th2, x_kk[1])
+#         # create final model
+#         model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk[0], x_kk[1], tt])   
+#     else:
+#         model = keras.Model(inputs=[fr_in, y_in, x_in, k_in], outputs=[x_kk[0], x_kk[1]])   
+
+#     return model
+
     
 class Pipeline_mc_nnls(object): 
     def __init__(self, mov, template, batch_size, Ab, **kwargs):
@@ -538,8 +581,8 @@ class Pipeline_mc_nnls(object):
 
         # build model, load estimator        
         self.model = get_model(self.template, self.Ab, self.batch_size, **kwargs)
-        print("EAGER", tf.executing_eagerly())
-        # self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
+        # print("EAGER", tf.executing_eagerly())
+        #self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
         self.model.compile(optimizer='rmsprop', loss='mse')   
         self.estimator = tf.keras.estimator.model_to_estimator(self.model)
         
@@ -643,8 +686,8 @@ class Pipeline(object):
 
         # build model, load estimator        
         self.model = get_model(self.template, self.Ab, self.batch_size, **kwargs)
-        print("EAGER", tf.executing_eagerly())
-        # self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
+        logging.info(f'EAGER {tf.executing_eagerly()}')
+        #self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
         self.model.compile(optimizer='rmsprop', loss='mse')   
         self.estimator = tf.keras.estimator.model_to_estimator(self.model)
         self.mc_nnls_times = []
@@ -696,16 +739,17 @@ class Pipeline(object):
             
     def detect(self):
         self.flag=0 # note the first batch is for initialization, it should not be passed to spike extraction
-
         while True:
             traces_input = self.saoz_input_q.get()
             if traces_input.ndim == 1:
                 traces_input = traces_input[None, :]   # make sure dimension is timepoints * # of neurons
-
+            start = time.time()
             if self.flag > 0:
                 for i in range(len(traces_input)):
+                    start = time.time()
                     self.saoz.fit_next(traces_input[i:i+1].T, self.n)
                     self.n += 1
+            self.deconv_times.append(time.time() - start)
             self.flag = self.flag + 1
        
     def extract(self):

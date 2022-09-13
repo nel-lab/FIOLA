@@ -1,10 +1,14 @@
+killall -9 python
 for (( c=0; c<=2; c++ ))
 do
     for d in 3 5 10 30
     do  
-        python demo_test_simulations.py --name_id $c --num_layers $d      
-	killall -9 python
-	sleep 30      
+	for iterations in 0 1 2
+	do
+            python demo_test_simulations.py --name_id $c --iterations $iterations --num_layers $d      
+	    killall -9 python
+	    sleep 3   
+	done   
     done
 done
 

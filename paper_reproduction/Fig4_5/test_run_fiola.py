@@ -31,7 +31,7 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 
 
 #%%
-def run_fiola(fnames, path_ROIs, fr=400, options=None):
+def run_fiola(fnames, path_ROIs, fr=400, options=None, save_name=None):
     #%%
     file_dir = os.path.split(fnames)[0]
     num_frames_init = options['num_frames_init']
@@ -68,8 +68,8 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
         else:
             Ab = np.hstack((estimates.A.toarray(), estimates.b))
             
-        trace_fiola = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
-        plt.plot(trace_fiola.T)
+        trace_fiola, _ = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
+        #plt.plot(trace_fiola.T)
         
     #%% Set up online pipeline
     params = fiolaparams(params_dict=options)
@@ -81,20 +81,23 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
         Ab = np.hstack((estimates.A.toarray(), estimates.b))
     Ab = Ab.astype(np.float32)
         
+
     fio = fio.create_pipeline(mc_nn_mov, trace_fiola, template, Ab, min_mov=mov.min())
     #%% run online
     time_per_step = np.zeros(num_frames_total-num_frames_init)
-    traces = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
+    trace = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
+    trace_deconvolved = np.zeros((num_frames_total-num_frames_init, fio.Ab.shape[-1]-1), dtype=np.float32)
+    lag = 10
     start = time()
         
     for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total, batch_size=1):
-        if idx % 100 == 0:
+        if idx % 1000 == 0:
             print(idx)        
         fio.fit_online_frame(memmap_image)   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i        
-        traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
+        trace[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
+        trace_deconvolved[idx-num_frames_init] = fio.pipeline.saoz.trace_deconvolved[:,idx-1-lag]
         time_per_step[idx-num_frames_init] = (time()-start)
     
-    traces = traces.T
     logging.info(f'total time online: {time()-start}')
     logging.info(f'time per frame online: {(time()-start)/(num_frames_total-num_frames_init)}')
     plt.plot(np.diff(time_per_step),'.')
@@ -102,17 +105,18 @@ def run_fiola(fnames, path_ROIs, fr=400, options=None):
     fio.compute_estimates()
     fio.view_components(template)
     fio.estimates.timing_online=time_per_step
+    fio.estimates.online_trace = trace.T
+    fio.estimates.online_trace_deconvolved = trace_deconvolved.T
     
     # import pdb
     # pdb.set_trace()
     
     #%% save some interesting data
     # if True:
-    #     np.savez(fnames[:-4]+'_fiola_result_v3.0.npz', time_per_step=time_per_step, traces=traces, 
+    #     np.savez(fnames[:-4]+'_fiola_result_v3.0.npz', time_per_step=time_per_step, trace=trace, 
     #          caiman_file = caiman_file, 
     #          fnames_exp = fnames, 
     #          estimates = fio.estimates)
-    save_name = f'fiola_result_num_layers_{fio.params.mc_nnls["num_layers"]}_v3.5'
     #save_name = f'fiola_result_test_v3.3'
     np.save(os.path.join(file_dir, 'viola', save_name), fio.estimates)
     plt.close('all')

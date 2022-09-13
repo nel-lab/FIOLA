@@ -16,6 +16,7 @@ import pyximport
 pyximport.install()
 import os
 import scipy.io
+from scipy.stats import wilcoxon, ttest_rel, ttest_ind
 import sys
 from time import time, sleep
 from threading import Thread
@@ -31,6 +32,7 @@ except NameError:
 #
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
+from paper_reproduction.Fig7.Fig7_utilities import barplot_annotate_brackets, barplot_pvalue
 from fiola.utilities import normalize, normalize_piecewise, match_spikes_greedy, compute_F1, load, signal_filter, extract_spikes
 #sys.path.append('/media/nel/storage/Code/NEL_LAB/fiola/use_cases')
 #sys.path.append(os.path.abspath('/Users/agiovann/SOFTWARE/fiola'))
@@ -39,7 +41,7 @@ from paper_reproduction.Fig4_5.test_run_fiola import run_fiola
 
 
 #%%
-mode = ['overlapping', 'non_overlapping', 'positron'][1]
+mode = ['overlapping', 'non_overlapping', 'positron'][0]
 dropbox_folder = '/media/nel/storage/NEL-LAB Dropbox/'
 #dropbox_folder = '/Users/agiovann/Dropbox/'
 
@@ -64,9 +66,9 @@ elif mode == 'positron':
 #%%  
 # for num_layers in [1, 3, 5, 10, 30]:
 #     for trace_with_neg in [True, False]:
-#distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
+distance = [f'dist_{i}' for i in [1, 3, 5, 7, 10, 15]]
 #names = [f'viola_sim3_{i}' for i in range(1, 19)]
-names = [f'viola_sim5_{i}' for i in range(2, 8, 2)]
+#names = [f'viola_sim5_{i}' for i in range(2, 8, 2)]
 #names = [f'viola_sim6_{i}' for i in range(2, 20, 3)]
 #names = [f'viola_sim7_{i}' for i in range(2, 9)]
 test = []
@@ -218,7 +220,8 @@ for ii, dist in enumerate(distance):
             spatial_F = [np.where(sp.reshape(-1, order='F')>0) for sp in spatial]
             t_temporal = np.array([-mov[:, sp].mean((1,2)) for sp in spatial_F])
             t_spatial = spatial
-
+            
+            
             """
             idx = 2
             plt.plot(m_temporal[idx,:1000])
@@ -365,11 +368,11 @@ for ii, dist in enumerate(distance):
     # t_result_all = t_result_all[:, np.argmax(t_result_all.mean(0))]
     
     
-    if mode == 'non_overlapping':
-        np.save(os.path.join(save_folder, f'{algo}_F1_{t_range[0]}_{t_range[1]}_v3.1'), t_result_all)
-        np.save(os.path.join(save_folder, f'{algo}_spnr_{t_range[0]}_{t_range[1]}_v3.1'), spnr_all)    
-    elif mode == 'overlapping':
-        np.save(os.path.join(save_folder, f'{algo}_F1_{t_range[0]}_{t_range[1]}_{dist}'), t_result_all)
+    # if mode == 'non_overlapping':
+    #     np.save(os.path.join(save_folder, f'{algo}_F1_{t_range[0]}_{t_range[1]}_v3.1'), t_result_all)
+    #     np.save(os.path.join(save_folder, f'{algo}_spnr_{t_range[0]}_{t_range[1]}_v3.1'), spnr_all)    
+    # elif mode == 'overlapping':
+    #     np.save(os.path.join(save_folder, f'{algo}_F1_{t_range[0]}_{t_range[1]}_{dist}'), t_result_all)
     
 #%%
 plt.plot(t_temporal_p[0])
@@ -448,7 +451,7 @@ for idx, results in enumerate(result_all):
     ax.yaxis.set_tick_params(length=8)
 
 ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(os.path.join(ff, f'Fig4c.pdf'))
+#plt.savefig(os.path.join(ff, f'Fig4c.pdf'))
 
 #%% Fig 4d, SPNR
 x = [round(0.05 + 0.025 * i, 3) for i in range(7)]    
@@ -488,176 +491,39 @@ for idx, results in enumerate(result_all):
     ax.yaxis.set_tick_params(length=8)
 
 ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(os.path.join(ff, f'Fig4d.pdf'))
+#plt.savefig(os.path.join(ff, f'Fig4d.pdf'))
 
-#%% Fig4e
-fig = plt.figure()
-ax1 = plt.subplot(111)
-xx = np.arange(1, 6)
-vi = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/fiola_result_num_layers_30_trace_with_neg_False_v3.0/viola_result_10000_75000.npy', allow_pickle=True)
-me = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/meanroi_result_v3.0/meanroi_F1_10000_75000_v3.1.npy', allow_pickle=True)
-#vi = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/fiola_result_num_layers_30_trace_with_neg_False_v3.0/viola_result_spnr_10000_75000_v3.0.npy', allow_pickle=True)
-#me = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/meanroi_result_v3.0/meanroi_spnr_10000_75000_v3.1.npy', allow_pickle=True)
-select = np.array([1, 2, 3, 4, 6])
-rr = [np.array([np.mean(v['F1']) for v in vi])[select], np.array([np.mean(v['F1']) for v in me])[select]]
-#rr = [[np.mean(v) for v in vi], [np.mean(v) for v in me]]
-ax1.bar(xx-0.1, rr[0], width=0.2, label='FIOLA')
-ax1.bar(xx+0.1, rr[1], width=0.2, color='C4', label='MeanROI')
-ax1.set_xlabel('number of neurons in the FOV')
-ax1.set_ylabel('F1 score')
-ax1.set_ylim([0.5,1])
-ax1.set_xticks(xx)
-lab = np.array(['3', '5', '10', '20', '30', '40', '50'])[select]
-ax1.set_xticklabels(lab)
-ax1.spines['top'].set_visible(False)
-ax1.spines['right'].set_visible(False)
-ax1.xaxis.set_tick_params(length=8)
-ax1.yaxis.set_tick_params(length=8)
-ax1.legend(frameon=False)
+#%% #Fig4e
+# fig = plt.figure()
+# ax1 = plt.subplot(111)
+# xx = np.arange(1, 6)
+# vi = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/fiola_result_num_layers_30_trace_with_neg_False_v3.0/viola_result_10000_75000.npy', allow_pickle=True)
+# me = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/meanroi_result_v3.0/meanroi_F1_10000_75000_v3.1.npy', allow_pickle=True)
+# #vi = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/fiola_result_num_layers_30_trace_with_neg_False_v3.0/viola_result_spnr_10000_75000_v3.0.npy', allow_pickle=True)
+# #me = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping_sim7/meanroi_result_v3.0/meanroi_spnr_10000_75000_v3.1.npy', allow_pickle=True)
+# select = np.array([1, 2, 3, 4, 6])
+# rr = [np.array([np.mean(v['F1']) for v in vi])[select], np.array([np.mean(v['F1']) for v in me])[select]]
+# #rr = [[np.mean(v) for v in vi], [np.mean(v) for v in me]]
+# ax1.bar(xx-0.1, rr[0], width=0.2, label='FIOLA')
+# ax1.bar(xx+0.1, rr[1], width=0.2, color='C4', label='MeanROI')
+# ax1.set_xlabel('number of neurons in the FOV')
+# ax1.set_ylabel('F1 score')
+# ax1.set_ylim([0.5,1])
+# ax1.set_xticks(xx)
+# lab = np.array(['3', '5', '10', '20', '30', '40', '50'])[select]
+# ax1.set_xticklabels(lab)
+# ax1.spines['top'].set_visible(False)
+# ax1.spines['right'].set_visible(False)
+# ax1.xaxis.set_tick_params(length=8)
+# ax1.yaxis.set_tick_params(length=8)
+# ax1.legend(frameon=False)
 
-ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(os.path.join(ff, f'Fig4e.pdf'))
-
-#%% Fig 4f. F1 score vs Number of iterations
-fig = plt.figure()
-ax2 = plt.subplot(111)
-trace_with_neg = False
-methods = ['layers_3', 'layers_5', 'layers_10', 'layers_30']
-v3 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_3_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
-v5 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_5_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
-v10 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_10_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
-v30 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_30_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
-t3 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_3_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
-t5 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_5_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
-t10 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_10_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
-t30 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_30_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
-
-v = np.array([[np.mean(r['F1']) for r in v3], [np.mean(r['F1']) for r in v5], [np.mean(r['F1']) for r in v10], 
-     [np.mean(r['F1']) for r in v30]])
-t = np.array([t3, t5, t10, t30])
-
-xx = np.array([0, 1, 2])
-#methods = ['viola', 'layer_1', 'layer_3']
-colors = ['b', 'orange', 'g', 'r', 'black']
-for idx, method in enumerate(methods):
-
-    ax2.bar(xx + 0.1 * (idx-2), v[idx], width=0.1, #yerr=[np.std(r['F1']) for r in results], 
-            color=colors[idx])
-     
-ax2.set_xlabel('spike amplitude')
-ax2.set_ylabel('F1 score')
-ax2.set_ylim([0.2,1])
-ax2.set_xticks([0, 1, 2])
-ax2.set_xticklabels(['0.075', '0.125', '0.175'])
-plt.tight_layout()
-ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(os.path.join(ff, f'Fig4f_50neurons_new.pdf'))
-
-#%% get time per frame
-tt = {}
-for num_layers in [3, 5, 10, 30]:
-    tt[num_layers] = []
-for folder in ['/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_2', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_6']:
-    for num_layers in [3, 5, 10, 30]:
-        file = folder + f'/viola/fiola_result_num_layers_{num_layers}_v3.5.npy'
-        tt[num_layers].append(np.diff(np.load(file, allow_pickle=True).item().timing_online))
-tt = np.array(list(tt.values()))
-
-#%%
-fig = plt.figure()
-ax = plt.subplot(111)
-amps = ['0.075', '0.125', '0.175']
-for i in range(3):
-     ax.plot(t[:, i]*1000, v[:, i], label=amps[i], marker='o')
-
-# for i in range(4):
-#     ax.bar((t*1000).mean(1)[i], v.mean(1)[i], width=0.05, label=['3 iter', '5 iter', '10 iter', '30 iter'][i])
-#     #ax.scatter((t*1000).mean(1)[i], v.mean(1)[i], label=['3 iter', '5 iter', '10 iter', '30 iter'][i])
-
-ax.set_xlabel('time per frame (ms)')
-ax.set_ylabel('F1 score')
-ax.set_ylim([0.2,1])
-ax.legend()
-plt.tight_layout()
-
-#%%
-#save_r2  = {}
-#files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
-#offsets = [2,1,2,3,3,3] # background components
-#bad = 0
-fig, ax = plt.subplots()
-for i,f in enumerate(["0.075", "0.125","0.175"]):
-    x = ttt[:, i]
-    y = v[:, i]
-    ax.errorbar(x, y, marker="o", label=f)
-    plt.legend()
-
-exp = lambda x: 10**(x)
-log = lambda x: np.log10(x) 
-ax.set_yscale("function", functions=(exp, log)) 
-ax.set_yticks([0.5,0.9, 0.95, 0.999])  
-        
-#%%
-fig, ax = plt.subplots(4, 3)
-for i in range(4):
-    for j in range(3):
-        ax[i, j].plot(tt[i, j], '.')
-plt.tight_layout()
+# ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
+# plt.savefig(os.path.join(ff, f'Fig4e.pdf'))
 
 
 
-#%%
-trace_with_neg = False
-methods = ['layers_3', 'layers_5', 'layers_10', 'layers_30']
-result_all = {}
-for m in methods:
-    result_all[m] = {} 
-distance = [f'dist_{i}' for i in [3]]
-x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
-for method in methods:
-    #f = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/'
-    f = 
-    load_folder = [ff for ff in os.listdir(f) if method+'_' in ff and 'v3.0' in ff and f'trace_with_neg_{trace_with_neg}' in ff]
-    print(len(load_folder))
-    load_folder = f+load_folder[0]
-
-    files = np.array(sorted(os.listdir(load_folder)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]
-    #files = [file for file in files if method in file and dist+'.npy' in file]
-    #files = [file for file in files if dist+'.npy' in file]
-    print(len(files))
-    for file in files:
-        if file == 'viola_result_10000_20000_dist_3.npy':
-            result_all[method][file] = np.load(os.path.join(load_folder, file), allow_pickle=True)
-
-#
-#fig = plt.figure()
-#ax = plt.subplot()
-#xx = np.array(range(len(methods)))
-xx = np.array([0, 1, 2])
-#methods = ['viola', 'layer_1', 'layer_3']
-colors = ['b', 'orange', 'g', 'r', 'black']
-for idx, method in enumerate(methods):
-    results = result_all[method]
-    key = list(results.keys())[0]
-    results = results[key]
-    #print(results)
-    ax2.bar(xx + 0.1 * (idx-2), [np.mean(r['F1']) for r in results], width=0.1, #yerr=[np.std(r['F1']) for r in results], 
-            color=colors[idx])
-     
-ax2.set_xlabel('spike amplitude')
-ax2.set_ylabel('F1 score')
-ax2.set_ylim([0.5,1])
-ax2.set_xticks([0, 1, 2])
-ax2.set_xticklabels(['0.075', '0.125', '0.175'])
-ax2.legend(methods, frameon=False)
-ax2.spines['top'].set_visible(False)
-ax2.spines['right'].set_visible(False)
-ax2.xaxis.set_tick_params(length=8)
-ax2.yaxis.set_tick_params(length=8)
-plt.tight_layout()
-#plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/overlapping_v3.1.pdf')
-
-#%% Fig4h. Overlapping neurons for volpy with different overlapping areas
+#%% Fig4f. Overlapping neurons for volpy with different overlapping areas
 area = []
 for idx, dist in enumerate(distance):  
     select = np.arange(idx * 3, (idx + 1) * 3)
@@ -710,109 +576,102 @@ for method in ['viola', 'volpy', 'meanroi', 'meanroi_online', 'layer_3', 'layer_
 
 xx = np.array([0, 1, 2])
 methods = ['viola', 'volpy', 'meanroi']
-colors = ['blue', 'orange', 'green', 'purple', 'red', 'black']
 
 #%%
-fig = plt.figure()
-#ax = plt.subplot(131)
-ax1 = plt.subplot(111)
-#ax2 = plt.subplot(133)
-xx = np.array([3, 2, 1, 0, 0])
-methods = ['viola', 'volpy', 'meanroi']
-for method in methods:
-    for idx, key in enumerate(result_all[method].keys()):
-        if idx in [0, 1, 2, 4]:
-            results = result_all[method][key]
-            #print(results)
-            if method in key:
-                if method == 'viola':
-                    ax1.bar(xx[idx]-0.2 , [np.mean(r['F1']) for r in results][1], width=0.2,
-                           #yerr=[np.std(r['F1']) for r in results],  
-                             color='C0')#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                elif method == 'volpy':
-                    ax1.bar(xx[idx], [np.mean(r['F1']) for r in results][1], width=0.2,
-                           #yerr=[np.std(r['F1']) for r in results], 
-                             color='C1')#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                # elif method == 'meanroi':
-                #     # ax1.plot(x, [np.array(r['F1']).sum()/len(r['F1']) for r in results], 
-                #     #           marker='v',markersize=6, linestyle='-.', color=colors[idx])#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                #     ax1.plot(x, results, 
-                #               marker='v',markersize=6, linestyle='-.', color=colors[idx])#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                elif method == 'meanroi':
-                    ax1.bar(xx[idx]+0.2, [np.mean(r['F1']) for r in results][1], width=0.2,
-                           #yerr=[np.std(r['F1']) for r in results], 
-                             color='C4')#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                
-ax1.set_xlabel('overlapping area')
-ax1.set_ylabel('F1 score')
-ax1.set_ylim([0.5,1])
-ax1.set_xticks([0, 1, 2, 3])
-lab = ['0%', '16%', '36%', '63%']
-ax1.set_xticklabels(lab)
-ax1.spines['top'].set_visible(False)
-ax1.spines['right'].set_visible(False)
-ax1.xaxis.set_tick_params(length=8)
-ax1.yaxis.set_tick_params(length=8)
+amps = [0, 1, 2]
+spk_amps = [0.075, 0.125, 0.175]
+colors = ['C0', 'C4']#['C0', 'C1', 'C4']
+methods = ['viola', 'meanroi_online']#['viola', 'volpy', 'meanroi_online']
 
-ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(os.path.join(ff, f'Fig4h.pdf'))
-
-#%%
-fig, axs = plt.subplots(1, 3)
-sp = [0.075, 0.125, 0.175]
-
-for i in range(3):
-    xx = np.array([3, 2, 1, 0, 0])
-    methods = ['viola', 'volpy', 'meanroi']
-    for method in methods:
-        for idx, key in enumerate(result_all[method].keys()):
-            if idx in [0, 1, 2, 4]:
-                results = result_all[method][key]
-                #print(results)
-                if method in key:
-                    if method == 'viola':
-                        axs[i].bar(xx[idx]-0.2 , [np.mean(r['F1']) for r in results][i], width=0.2,
-                               #yerr=[np.std(r['F1']) for r in results],  
-                                 color='C0', label='FIOLA')#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                    elif method == 'volpy':
-                        axs[i].bar(xx[idx], [np.mean(r['F1']) for r in results][i], width=0.2,
-                               #yerr=[np.std(r['F1']) for r in results], 
-                                 color='C1', label='VolPy')#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                    # elif method == 'meanroi':
-                    #     # axs[i].plot(x, [np.array(r['F1']).sum()/len(r['F1']) for r in results], 
-                    #     #           marker='v',markersize=6, linestyle='-.', color=colors[idx])#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                    #     axs[i].plot(x, results, 
-                    #               marker='v',markersize=6, linestyle='-.', color=colors[idx])#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                    elif method == 'meanroi':
-                        axs[i].bar(xx[idx]+0.2, [np.mean(r['F1']) for r in results][i], width=0.2,
-                               #yerr=[np.std(r['F1']) for r in results], 
-                                 color='C4', label='MeanROI')#label=f'{method}_{area[idx]:.0%}_{distance[idx]}', color=colors[idx])
-                    
+for amp in amps:
+    r_all = []
+    rr = {}
+    batches = [4, 2, 1, 0]
+    n_batch = len(batches)
     
-    axs[i].set_ylim([0.3,1])
-    axs[i].set_xticks([0, 1, 2, 3])
+    for batch in batches:
+        for jj, method in enumerate(methods):
+            for idx, key in enumerate(result_all[method].keys()):    
+                if idx == batch:
+                    results = result_all[method][key]
+                    rr[method] =  [r['F1'] for r in results][amp]
+        r_all.append(rr)
+        rr = {}
+    
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    barplot_pvalue(r_all, methods, colors, ax)
+                    
+    ax.set_xlabel('overlapping area')
+    ax.set_ylabel('F1 score')
+    ax.set_ylim([0.3, 1.2])
+    ax.set_xticks([0, 1, 2, 3])
     lab = ['0%', '16%', '36%', '63%']
-    axs[i].set_xticklabels(lab)
-    axs[i].spines['top'].set_visible(False)
-    axs[i].spines['right'].set_visible(False)
-    axs[i].xaxis.set_tick_params(length=8)
-    axs[i].yaxis.set_tick_params(length=8)
-    axs[i].set_title(f'spike amplitude {sp[i]}')
+    ax.set_xticklabels(lab)
+    
     handles, labels = plt.gca().get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    axs[0].legend(by_label.values(), by_label.keys(), frameon=False)
-    #axs[i].xaxis.set_visible(False)
-    
-    if i == 0:
-        axs[i].set_ylabel('F1 score')
-        axs[i].set_xlabel('overlapping area')
-        axs[i].set_title(f'{sp[i]}')
-        
-    else:
-        axs[i].yaxis.set_ticklabels([])
-        axs[i].set_title(f'{sp[i]}')
-ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(os.path.join(ff, f'supp.pdf'))
+    plt.legend(by_label.values(), by_label.keys())
+    ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
+    #plt.savefig(os.path.join(ff, f'Fig4h_{spk_amps[amp]}_{methods[2]}.pdf'))
+    #plt.savefig(os.path.join(ff, f'Fig4h_{spk_amps[amp]}_{methods[1]}_1.pdf'))
+
+#%% Fig4g
+trace_with_neg = False
+methods = ['layers_3', 'layers_5', 'layers_10', 'layers_30']
+result_all = {}
+for m in methods:
+    result_all[m] = {} 
+distance = [f'dist_{i}' for i in [3]]
+x = [round(0.075 + 0.05 * i, 3) for i in range(3)] 
+for method in methods:
+    f = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/overlapping/'
+    load_folder = [ff for ff in os.listdir(f) if method+'_' in ff and 'v3.0' in ff and f'trace_with_neg_{trace_with_neg}' in ff]
+    print(len(load_folder))
+    load_folder = f + load_folder[0]
+
+    files = np.array(sorted(os.listdir(load_folder)))#[0]#[np.array([5, 0, 1, 2, 3, 4, 6])]
+    print(len(files))
+    for file in files:
+        if file == 'viola_result_10000_20000_dist_3.npy':
+            result_all[method][file] = np.load(os.path.join(load_folder, file), allow_pickle=True)
+
+#%%
+amps = [0, 1, 2]
+spk_amps = [0.075, 0.125, 0.175]
+colors = ['C0', 'C1', 'C2', 'C3']
+methods = ['layers_3', 'layers_5', 'layers_10', 'layers_30']
+
+#for amp in amps:
+r_all = []
+rr = {}
+batches = [0, 1, 2]
+n_batch = len(batches)
+
+for batch in batches:
+    for jj, method in enumerate(methods):
+        for idx, key in enumerate(result_all[method].keys()):    
+            if idx == 0:
+                results = result_all[method][key]
+                rr[method] =  [r['F1'] for r in results][batch]#[amp]
+    r_all.append(rr)
+    rr = {}
+
+fig = plt.figure()
+ax = plt.subplot(111)
+barplot_pvalue(r_all, methods, colors, ax, width=0.12)
+
+ax.set_xlabel('spike amplitude')
+ax.set_ylabel('F1 score')
+ax.set_ylim([0.3,1.2])
+ax.set_xticks([0, 1, 2])
+ax.set_xticklabels(['0.075', '0.125', '0.175'])
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles))
+plt.legend(by_label.values(), by_label.keys())
+plt.tight_layout()
+#plt.savefig(os.path.join(ff, f'Fig4g_pvalue.pdf'))
+
 
 
 #%%
@@ -907,9 +766,133 @@ ax1.spines['right'].set_visible(False)
 ax1.xaxis.set_tick_params(length=8)
 ax1.yaxis.set_tick_params(length=8)
 
-
-
 #%% Supplementary figure
+amps = [0, 1, 2, 3, 4, 5, 6]
+spk_amps = [0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2]
+colors = ['C0', 'C1', 'C4']
+methods = ['FIOLA', 'VolPy', 'MeanROI']
+
+r_all = []
+rr = {}
+batches = [0, 1, 2, 3, 4, 5, 6]
+n_batch = len(batches)
+
+for batch in batches:
+    for jj, method in enumerate(methods):
+        results = result_all[jj][batch]
+        rr[method] = results['F1']
+    r_all.append(rr)
+    rr = {}
+
+fig = plt.figure(figsize=(10, 8))
+ax = plt.subplot(111)
+barplot_pvalue(r_all, methods, colors, ax, width=0.2)
+
+ax.set_xlabel('spike amplitude')
+ax.set_ylabel('F1 score')
+ax.set_ylim([0, 1.2])
+ax.set_xticks(amps)
+ax.set_xticklabels(spk_amps)
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles))
+plt.legend(by_label.values(), by_label.keys())
+plt.tight_layout()
+plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig_supp_simulation_ttest_rel_new.pdf')
+
+#%% Fig supp. F1 score vs Number of iterations (timing)
+fig = plt.figure()
+ax2 = plt.subplot(111)
+trace_with_neg = False
+methods = ['layers_3', 'layers_5', 'layers_10', 'layers_30']
+v3 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_3_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
+v5 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_5_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
+v10 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_10_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
+v30 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_30_v3.3/viola_result_10000_75000.npy', allow_pickle=True)
+t3 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_3_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
+t5 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_5_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
+t10 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_10_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
+t30 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_simulations/non_overlapping/fiola_result_num_layers_30_v3.3/viola_result_10000_75000_timing.npy', allow_pickle=True)
+
+v = np.array([[np.mean(r['F1']) for r in v3], [np.mean(r['F1']) for r in v5], [np.mean(r['F1']) for r in v10], 
+     [np.mean(r['F1']) for r in v30]])
+t = np.array([t3, t5, t10, t30])
+
+xx = np.array([0, 1, 2])
+#methods = ['viola', 'layer_1', 'layer_3']
+colors = ['b', 'orange', 'g', 'r', 'black']
+for idx, method in enumerate(methods):
+
+    ax2.bar(xx + 0.1 * (idx-2), v[idx], width=0.1, #yerr=[np.std(r['F1']) for r in results], 
+            color=colors[idx])
+     
+ax2.set_xlabel('spike amplitude')
+ax2.set_ylabel('F1 score')
+ax2.set_ylim([0.2,1])
+ax2.set_xticks([0, 1, 2])
+ax2.set_xticklabels(['0.075', '0.125', '0.175'])
+plt.tight_layout()
+ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
+#plt.savefig(os.path.join(ff, f'Fig4f_50neurons_new.pdf'))
+
+#%% get time per frame
+# tt = {}
+# for num_layers in [3, 5, 10, 30]:
+#     tt[num_layers] = []
+# for folder in ['/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_2', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_6']:
+#     for num_layers in [3, 5, 10, 30]:
+#         file = folder + f'/viola/fiola_result_num_layers_{num_layers}_v3.5.npy'
+#         tt[num_layers].append(np.diff(np.load(file, allow_pickle=True).item().timing_online))
+# tt = np.array(list(tt.values()))
+
+#%% Supp figure F1 score vs time per frame
+tt = np.zeros((4,3))
+folders = ['/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_2', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_6']
+for idx, folder in enumerate(folders):
+    for idxx, num_layers in enumerate([3, 5, 10, 30]):
+        temp = []
+        for iterations in [0, 1, 2]:
+            file = folder + f'/viola/fiola_result_iterations_{iterations}_num_layers_{num_layers}_do_deconvolve_True_v3.8.npy'
+            temp.append(np.diff(np.load(file, allow_pickle=True).item().timing_online))
+        tt[idxx, idx] = np.mean(temp)
+
+#%%
+fig = plt.figure()
+ax = plt.subplot(111)
+amps = ['0.075', '0.125', '0.175']
+for i in range(3):
+     ax.plot(tt[:, i]*1000, v[:, i], label=amps[i], marker='o')
+
+# for i in range(4):
+#     ax.bar((t*1000).mean(1)[i], v.mean(1)[i], width=0.05, label=['3 iter', '5 iter', '10 iter', '30 iter'][i])
+#     #ax.scatter((t*1000).mean(1)[i], v.mean(1)[i], label=['3 iter', '5 iter', '10 iter', '30 iter'][i])
+
+ax.set_xlabel('time per frame (ms)')
+ax.set_ylabel('F1 score')
+ax.set_ylim([0.2,1])
+ax.legend()
+plt.tight_layout()
+plt.savefig(os.path.join(ff, f'Supp_fig_F1score_tpf_v3.8.pdf'))
+
+#%%
+t1=[]; t2 = []
+files = ['/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4/viola/fiola_result_iterations_0_num_layers_30_do_deconvolve_True_v3.7.npy', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4/viola/fiola_result_iterations_1_num_layers_30_do_deconvolve_True_v3.7.npy', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4/viola/fiola_result_iterations_2_num_layers_30_do_deconvolve_True_v3.7.npy']
+for file in files:
+    t1.append(np.mean(np.diff(np.load(file, allow_pickle=True).item().timing_online)))
+t1 = np.array(t1)
+
+files = ['/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4/viola/fiola_result_iterations_0_num_layers_30_do_deconvolve_False_v3.7.npy', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4/viola/fiola_result_iterations_1_num_layers_30_do_deconvolve_False_v3.7.npy', '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/simulation/non_overlapping/viola_sim5_4/viola/fiola_result_iterations_2_num_layers_30_do_deconvolve_False_v3.7.npy']
+for file in files:
+    t2.append(np.mean(np.diff(np.load(file, allow_pickle=True).item().timing_online)))
+t2 = np.array(t2)
+#%%
+plt.figure()
+plt.bar([0, 1], [t1.mean(), t2.mean()], yerr=[t1.std(), t2.std()])
+plt.ylabel('Timing (ms)')
+#plt.xlabel('Number of neurons')
+plt.xticks([0, 1], ['deconvolution', 'no deconvolution'])
+#plt.savefig(os.path.join(ff, f'Supp_fig_timing_deconvolution.pdf'))
+###########################################################################################################################
+#%%
 mean = []
 std = []
 f = []
@@ -931,6 +914,7 @@ for idx, results in enumerate(result_all):
 rr = [f,v,f1,f2]
 
 #%%
+from scipy import stats
 sig = []
 for amp in range(7):
     temp = np.zeros((4,4))
@@ -964,7 +948,8 @@ for i in range (7):
     elif temp <= 0.05:
         string = '*'
     barplot_annotate_brackets(0, 1, string, [i-width/2, i+width/2], 
-                              [mean[0,i], mean[1,i]], yerr=[std[0,i], std[1,i]])
+                              [mean[0,i], mean[1,i]], yerr=[std[0,i], std[1,i]], 
+                              barh=0.01)
 
 ax.spines['top'].set_visible(False)
 ax.spines['right'].set_visible(False)
@@ -981,7 +966,7 @@ ax.legend(ncol=2, frameon=False, loc=0)
 #ax.set_ylim([0,1])
 fig.tight_layout()
 plt.show()
-plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/supp/suppl_simulation_f1_significance_wilcoxon.png')
+#plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig_supp_simulation_f1_significance_wilcoxon.pdf')
 
 #%%
 def barplot_annotate_brackets(num1, num2, data, center, height, yerr=None, dh=.05, barh=.05, fs=None, maxasterix=None):
@@ -1766,4 +1751,107 @@ plt.plot(np.arange(0, 75000, step), k)
 # #fig = plt.figure()
 # #ax = plt.subplot()
 # #xx = np.array([0, 1, 2, 3, 3])
-# xx = np.array([3, 2, 1, 0, 0])
+# xx = np.array([3, 2, 1, 0, 0])#%% 
+fig = plt.figure()
+ax = plt.subplot()
+#xx = np.array(range(len(methods)))
+xx = np.array([0, 1, 2])
+#methods = ['viola', 'layer_1', 'layer_3']
+colors = ['b', 'orange', 'g', 'r', 'black']
+for idx, method in enumerate(methods):
+    results = result_all[method]
+    key = list(results.keys())[0]
+    results = results[key]
+    #print(results)
+    ax.bar(xx + 0.1 * (idx-2), [np.mean(r['F1']) for r in results], width=0.1, #yerr=[np.std(r['F1']) for r in results], 
+            color=colors[idx])
+     
+ax.set_xlabel('spike amplitude')
+ax.set_ylabel('F1 score')
+ax.set_ylim([0.5,1])
+ax.set_xticks([0, 1, 2])
+ax.set_xticklabels(['0.075', '0.125', '0.175'])
+ax.legend(methods, frameon=False)
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+ax.xaxis.set_tick_params(length=8)
+ax.yaxis.set_tick_params(length=8)
+plt.tight_layout()
+#plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/overlapping_v3.1.pdf')
+#%%
+# fig, axs = plt.subplots(1, 3)
+# sp = [0.075, 0.125, 0.175]
+
+# for i in range(3):
+#     xx = np.array([3, 2, 1, 0, 0])
+#     methods = ['viola', 'volpy', 'meanroi']
+#     for jj, method in enumerate(methods):
+#         for idx, key in enumerate(result_all[method].keys()):
+#             #print(key)
+#             if idx in [0, 1, 2, 4]:
+#                 print(key)
+#                 results = result_all[method][key]
+#                 #print(results)
+#                 if method in key:
+#                     axs[i].bar(xx[idx] + 0.2 * (jj - 1) , [np.mean(r['F1']) for r in results][i], width=0.2,
+#                            yerr=np.array([0, [np.std(r['F1']) for r in results][i]])[:, None],  
+#                              color=cc[jj], label=f'{method}')
+
+#     axs[i].set_ylim([0.3,1])
+#     axs[i].set_xticks([0, 1, 2, 3])
+#     lab = ['0%', '16%', '36%', '63%']
+#     axs[i].set_xticklabels(lab)
+#     axs[i].spines['top'].set_visible(False)
+#     axs[i].spines['right'].set_visible(False)
+#     axs[i].xaxis.set_tick_params(length=8)
+#     axs[i].yaxis.set_tick_params(length=8)
+#     axs[i].set_title(f'spike amplitude {sp[i]}')
+#     handles, labels = plt.gca().get_legend_handles_labels()
+#     by_label = dict(zip(labels, handles))
+#     axs[0].legend(by_label.values(), by_label.keys(), frameon=False)
+#     #axs[i].xaxis.set_visible(False)
+    
+#     if i == 0:
+#         axs[i].set_ylabel('F1 score')
+#         axs[i].set_xlabel('overlapping area')
+#         axs[i].set_title(f'{sp[i]}')
+        
+#     else:
+#         axs[i].yaxis.set_ticklabels([])
+#         axs[i].set_title(f'{sp[i]}')
+# ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
+#plt.savefig(os.path.join(ff, f'supp.pdf'))
+
+# for jj, method in enumerate(methods):
+#     for idx, key in enumerate(result_all[method].keys()):    
+#         print(key)
+#         if idx in [0, 1, 2, 4]:
+#             results = result_all[method][key]
+#             if method in key:
+#                 ax1.bar(xx[idx] + 0.2 * (jj - 1) , [np.mean(r['F1']) for r in results][1], width=0.2,
+#                        yerr=np.array([0, [np.std(r['F1']) for r in results][1]])[:, None],  
+#                          color=cc[jj], label=f'{method}')
+
+#%%
+#save_r2  = {}
+#files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
+#offsets = [2,1,2,3,3,3] # background components
+#bad = 0
+fig, ax = plt.subplots()
+for i,f in enumerate(["0.075", "0.125","0.175"]):
+    x = ttt[:, i]
+    y = v[:, i]
+    ax.errorbar(x, y, marker="o", label=f)
+    plt.legend()
+
+exp = lambda x: 10**(x)
+log = lambda x: np.log10(x) 
+ax.set_yscale("function", functions=(exp, log)) 
+ax.set_yticks([0.5,0.9, 0.95, 0.999])  
+        
+#%%
+fig, ax = plt.subplots(4, 3)
+for i in range(4):
+    for j in range(3):
+        ax[i, j].plot(tt[i, j], '.')
+plt.tight_layout()

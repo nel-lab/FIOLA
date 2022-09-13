@@ -11,7 +11,7 @@ import numpy as np
 from queue import Queue
 from scipy.ndimage import median_filter
 from scipy import signal
-from time import time
+from time import time, sleep
 from threading import Thread
 
 from fiola.utilities import compute_std, compute_thresh, get_thresh, signal_filter, estimate_running_std, OnlineFilter, non_symm_median_filter, adaptive_thresh
@@ -99,95 +99,101 @@ class SignalAnalysisOnlineZ(object):
         self.nn = nn
         self.frames_init = tm
         self.n = tm        
+        self.N = self.nn - self.nb # N number of neurons, excluding background components when doing deconvolution/spike detection
         
-        if self.step < 3 * self.nn:
+        if self.step < 3 * self.N:
             raise Exception('too many neurons for updating statistics, please increase parameter step')
         
         if self.mode == 'voltage':
             # contains all the extracted fluorescence traces
-            self.trace, self.t_d, self.t0, self.t, self.t_s, self.t_sub = (np.zeros((nn, num_frames), dtype=np.float32) for _ in range(6))
+            self.trace =  np.zeros((self.nn, num_frames), dtype=np.float32)
+            self.t_d, self.t0, self.t, self.t_s, self.t_sub, self.trace_deconvolved = (np.zeros((self.N, num_frames), dtype=np.float32) for _ in range(6))
             
             # contains running statistics
-            self.median, self.scale, self.thresh, self.median2, self.std = (np.zeros((nn,1), dtype=np.float32) for _ in range(5))
+            self.median, self.scale, self.thresh, self.median2, self.std = (np.zeros((self.N,1), dtype=np.float32) for _ in range(5))
     
             # contains spike time
-            self.index = np.zeros((nn, num_frames), dtype=np.int32)
-            self.index_track = np.zeros((nn), dtype=np.int32)        
-            self.peak_to_std = np.zeros((nn, num_frames), dtype=np.float32)
-            self.SNR, self.thresh_factor, self.peak_level = (np.zeros((nn, 1), dtype=np.float32) for _ in range(3))
+            self.index = np.zeros((self.N, num_frames), dtype=np.int32)
+            self.index_track = np.zeros((self.N), dtype=np.int32)        
+            self.peak_to_std = np.zeros((self.N, num_frames), dtype=np.float32)
+            self.SNR, self.thresh_factor, self.peak_level = (np.zeros((self.N, 1), dtype=np.float32) for _ in range(3))
             if self.template_window > 0:
-                self.PTA = np.zeros((nn, 2*self.template_window+1), dtype=np.float32)
+                self.PTA = np.zeros((self.N, 2*self.template_window+1), dtype=np.float32)
             else:
-                self.PTA = np.zeros((nn, 5), dtype=np.float32)
+                self.PTA = np.zeros((self.N, 5), dtype=np.float32)
             
             t_start = time()
             # initialize for each neuron: @todo parallelize
             if self.flip:
-                self.trace[:, :tm] =  - trace_in.copy()
+                self.trace[:, :tm] = -trace_in.copy()
             else:
                 self.trace[:, :tm] = trace_in.copy()
            
             if self.detrend:
-                self.t_d[:, 0] = self.trace[:, 0]
+                self.t_d[:, 0] = self.trace[:self.N, 0]
                 for tp in range(trace_in.shape[1]):
                     if tp > 0:
-                        self.t_d[:, tp] = self.trace[:, tp] - self.trace[:, tp - 1] + self.dc_param * self.t_d[:, tp - 1]
+                        self.t_d[:, tp] = self.trace[:self.N, tp] - self.trace[:self.N, tp - 1] + self.dc_param * self.t_d[:, tp - 1]
             else:
-                self.t_d = self.trace.copy()
+                self.t_d = self.trace[:self.N, :].copy()
                 
             if self.do_deconvolve:
                 for idx, tr in enumerate(self.t_d[:, :tm]):  
                     output_list = find_spikes_tm(tr, self.freq, self.fr, self.do_scale, self.filt_window, self.template_window,
-                                                 self.robust_std, self.adaptive_threshold, self.minimal_thresh, self.do_plot)
+                                                     self.robust_std, self.adaptive_threshold, self.minimal_thresh, self.do_plot)
                     self.index_track[idx] = output_list[0].shape[0]
                     self.index[idx, :self.index_track[idx]], self.thresh[idx], self.PTA[idx], self.t0[idx, :tm], \
                         self.t[idx, :tm], self.t_s[idx, :tm], self.t_sub[idx, :tm], self.median[idx], self.scale[idx], \
                             self.thresh_factor[idx], self.median2[idx], self.std[idx], \
                                 self.peak_to_std[idx, :self.index_track[idx]], self.peak_level[idx] = output_list
+                    self.trace_deconvolved[idx][self.index[idx]] = 1
+                    self.trace_deconvolved[idx, 0] = 0 # exclude the first frame
             else:
                 logging.info('skipping deconvolution')
                                     
             self.t_detect = self.t_detect + [(time() - t_start) / tm] * trace_in.shape[1]         
         elif self.mode == 'calcium':
-            self.trace, self.t_d = (np.zeros((nn, num_frames), dtype=np.float32) for _ in range(2))
+            self.trace = np.zeros((nn, num_frames), dtype=np.float32)
+            self.t_d = np.zeros((self.N, num_frames), dtype=np.float32)
             self.trace[:, :tm] = trace_in.copy()
             
             if self.flip:
                 raise Exception('flipping signal is not supported for calcium imaging')
                 
             if self.detrend:
-                self.t_d[:, 0] = self.trace[:, 0]
+                self.t_d[:, 0] = self.trace[:self.N, 0]
                 for tp in range(tm):
                     if tp > 0:
-                        self.t_d[:, tp] = self.trace[:, tp] - self.trace[:, tp - 1] + self.dc_param * self.t_d[:, tp - 1]
+                        self.t_d[:, tp] = self.trace[:self.N, tp] - self.trace[:self.N, tp - 1] + self.dc_param * self.t_d[:, tp - 1]
             else:
-                self.t_d = self.trace.copy()
+                self.t_d = self.trace[:self.N].copy()
             
             t_start = time()
-            if self.do_deconvolve:                
+            #idx=0
+            if self.do_deconvolve: 
+                #print(idx,time())
+                #idx+=1
                 if self.p>0: # calcium deconvolution
                     from caiman.source_extraction.cnmf.deconvolution import constrained_foopsi
-                    
-                    N = nn-self.nb # deconvolve only neural traces, not background
-                    self.trace_deconvolved = np.zeros((N, num_frames), dtype=np.float32)
-                    results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), self.t_d[:N, :tm])
+                    self.trace_deconvolved = np.zeros((self.N, num_frames), dtype=np.float32)
+                    results_foopsi = map(lambda t: constrained_foopsi(t, p=self.p), self.t_d[:self.N, :tm])
                     if self.p==1:
                         self.b, self.lam, self.g = np.array([[r[1], r[-1], r[3][0]] for r in
                                                             results_foopsi], dtype=np.float32).T
                         self._lg = np.log(self.g)
                         self._bl = self.b + self.lam*(1-self.g)
-                        self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
-                        self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
-                        self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
+                        self._v, self._w = np.zeros((2, self.N, 50), dtype=np.float32)
+                        self._t, self._l = np.zeros((2, self.N, 50), dtype=np.int32)
+                        self._i = np.zeros(self.N, dtype=np.int32)  # number of pools (spikes)
                         n = 0
-                        for y in self.t_d[:N, :tm].T:
+                        for y in self.t_d[:self.N, :tm].T:
                             par_fit_next_AR1(y-self._bl, self.trace_deconvolved, self._lg,
                                               self._v, self._w, self._t, self._l, self._i, n)
                             n += 1
                             tmp = self._v.shape[1]
                             if self._i.max() >= tmp:
-                                vw = np.zeros((2, N, tmp+50), dtype=np.float32)
-                                tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                                vw = np.zeros((2, self.N, tmp+50), dtype=np.float32)
+                                tl = np.zeros((2, self.N, tmp+50), dtype=np.int32)
                                 vw[:,:,:tmp] = self._v, self._w
                                 tl[:,:,:tmp] = self._t, self._l
                                 self._v,self._w = vw
@@ -209,12 +215,12 @@ class SignalAnalysisOnlineZ(object):
                         self._g11g12 = np.cumsum(self._g11 * self._g12, axis=1)
                         n = 0
                         # initialize
-                        self._y = np.empty((N, num_frames), dtype=np.float32)
-                        self._v, self._w = np.zeros((2, N, 50), dtype=np.float32)
-                        self._t, self._l = np.zeros((2, N, 50), dtype=np.int32)
-                        self._i = np.zeros(N, dtype=np.int32)  # number of pools (spikes)
+                        self._y = np.empty((self.N, num_frames), dtype=np.float32)
+                        self._v, self._w = np.zeros((2, self.N, 50), dtype=np.float32)
+                        self._t, self._l = np.zeros((2, self.N, 50), dtype=np.int32)
+                        self._i = np.zeros(self.N, dtype=np.int32)  # number of pools (spikes)
                         # process
-                        for yt in self.t_d[:N].T:
+                        for yt in self.t_d[:self.N].T:
                             self._y[:,n] = yt-self._bl
                             par_fit_next_AR2(self._y, self.trace_deconvolved, self._d,
                                               self._g11, self._g12, self._g11g11, self._g11g12,
@@ -222,8 +228,8 @@ class SignalAnalysisOnlineZ(object):
                             n +=1
                             tmp = self._v.shape[1]
                             if self._i.max()>=tmp:
-                                vw = np.zeros((2, N, tmp+50), dtype=np.float32)
-                                tl = np.zeros((2, N, tmp+50), dtype=np.int32)
+                                vw = np.zeros((2, self.N, tmp+50), dtype=np.float32)
+                                tl = np.zeros((2, self.N, tmp+50), dtype=np.int32)
                                 vw[:,:,:tmp] = self._v, self._w
                                 tl[:,:,:tmp] = self._t, self._l
                                 self._v,self._w = vw
@@ -251,9 +257,9 @@ class SignalAnalysisOnlineZ(object):
             else:
                 self.trace[:, n:(n + 1)] = trace_in.copy()
             if self.detrend:
-                self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)] - self.trace[:, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
+                self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)] - self.trace[:self.N, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
             else:
-                self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)]
+                self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)]
                 
             if self.do_deconvolve:
                 temp = self.t_d[:, n:(n+1)].copy()        
@@ -283,7 +289,7 @@ class SignalAnalysisOnlineZ(object):
                     sub_index = self.n        
                     lag = 0
                     if self.n >= self.frames_init:
-                        temp = np.zeros((self.nn, self.filt_window))
+                        temp = np.zeros((self.N, self.filt_window))
                         temp[:, :int((self.filt_window - 1) / 2) + 1] = self.t0[:, self.n - int((self.filt_window - 1) / 2): self.n + 1]
                         temp[:, int((self.filt_window - 1) / 2) + 1:] = np.flip(self.t0[:, self.n - int((self.filt_window - 1) / 2): self.n])
                         self.t_sub[:, sub_index] = np.median(temp, 1)
@@ -305,7 +311,8 @@ class SignalAnalysisOnlineZ(object):
                     if idx_list.size > 0:
                         self.index[idx_list, self.index_track[idx_list]] = sub_index - self.template_window - 1
                         self.peak_to_std[idx_list, self.index_track[idx_list]] = self.t_s[idx_list, sub_index - self.template_window - 1] /self.std[idx_list, -1]
-                        self.index_track[idx_list] +=1           
+                        self.index_track[idx_list] += 1  
+                        self.trace_deconvolved[idx_list, sub_index - self.template_window - 1] = 1
 
         elif self.mode == 'calcium':
             self.trace[:, n:(n+1)] = trace_in.copy()  
@@ -314,9 +321,9 @@ class SignalAnalysisOnlineZ(object):
                 raise Exception('flipping signal is not supported for calcium imaging')
                 
             if self.detrend:
-                self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)] - self.trace[:, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
+                self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)] - self.trace[:self.N, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
             else:
-                self.t_d[:, n:(n + 1)] = self.trace[:, n:(n + 1)]
+                self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)]
 
             if self.do_deconvolve:
                 if self.p>0: # deconvolve/denoise
@@ -346,13 +353,14 @@ class SignalAnalysisOnlineZ(object):
                             self._v,self._w = vw
                             self._t,self._l = tl
         self.t_detect.append(time() - t_start)
-        self.update_q.put(n)
+        if self.do_deconvolve:
+            self.update_q.put(n)
         return self
     
     def update_statistics(self, n):
         if self.mode == 'voltage':
             res = n % self.step        
-            if ((n > 3.0 * self.window) and (res < 3 * self.nn)):
+            if ((n > 3.0 * self.window) and (res < 3 * self.N)):
                 idx = int(res / 3)   # index of neuron waiting for updating
                 temp = res - 3 * idx
                 if temp == 0:
@@ -368,11 +376,10 @@ class SignalAnalysisOnlineZ(object):
         self.flag_update=0  
         while True:
             n = self.update_q.get() 
-            # print(n)
             if self.flag_update > 0:
                 self.update_statistics(n)                     
             self.flag_update = self.flag_update + 1
-            #time.sleep(0.00001)
+            sleep(1e-5)
             self.t_update.append(time())
     
     def update_median(self, idx):
@@ -431,11 +438,11 @@ class SignalAnalysisOnlineZ(object):
     def reconstruct_signal(self):
         if self.mode == 'voltage':
             self.t_rec = np.zeros(self.trace.shape)
-            for idx in range(self.trace.shape[0]):
-                spikes = np.array(list(set(self.index[idx])-set([0])))
-                if spikes.size > 0:
-                    self.t_rec[idx, spikes] = 1
-                    self.t_rec[idx] = np.convolve(self.t_rec[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
+            for idx in range(self.N):
+            #     spikes = np.array(list(set(self.index[idx])-set([0])))
+            #     if spikes.size > 0:
+            #         self.t_rec[idx, spikes] = 1
+                self.t_rec[idx] = np.convolve(self.trace_deconvolved[idx], np.flip(self.PTA[idx]), 'same')   #self.scale[idx,0]
         elif self.mode == 'calcium' and self.p > 0:
             T = self.trace.shape[1]
             N = len(self._v)
@@ -623,6 +630,10 @@ def find_spikes_tm(img, freq, fr, do_scale=False, filt_window=15, template_windo
         peak_level = data[index[index>300]] / std # remove peaks in first three hundred frames to improve robustness
     except:
         peak_level = data[index] / std 
+
     peak_level = np.percentile(peak_level, 95)
+
+        
+        
 
     return index, thresh2, PTA, t0, t, t_s, sub, median, scale, thresh_factor, median2, std, peak_to_std, peak_level 

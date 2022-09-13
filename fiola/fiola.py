@@ -12,6 +12,8 @@ import numpy as np
 from numpy.linalg import norm
 from queue import Queue
 import scipy
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 from scipy.optimize import nnls  
 import tensorflow as tf
 gpus = tf.config.experimental.list_physical_devices('GPU') 
@@ -19,6 +21,8 @@ for gpu in gpus:
   tf.config.experimental.set_memory_growth(gpu, True) # limit gpu memory
 import timeit
 import time
+#tf.get_logger().setLevel("ERROR")
+#tf.autograph.set_verbosity(1)
 
 from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline, Pipeline_mc_nnls
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
@@ -33,7 +37,7 @@ class FIOLA(object):
                  window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15, adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
-                 filt_window = 15, do_plot=False, params={}):
+                 filt_window = 15, nb=1, do_plot=False, params={}):
         # please check fiolaparams.py for detailed documentation of parameters in class FIOLA
         if params is None:
             logging.warning("parameters are not set from fiolaparams")
@@ -94,50 +98,6 @@ class FIOLA(object):
         except:
             logging.warning('no queue or thread to delete')
         return self
-    
-    # def fit_caiman_init(self, mov, mc_dict, opts_dict, quality_dict, save_movie=True):
-    #     """
-    #     run caiman initialization for FIOLA
-        
-    #     Parameters
-    #     ----------
-    #     mov : ndarray
-    #         input movie
-    #     mc_dict : dict
-    #         parameters for motion correction
-    #     opts_dict : dict
-    #         parameters for source extraction
-    #     quality_dict : dict
-    #         parameters for quality control
-    #     save_movie : bool
-    #         whether to save input movie or not. The default is True.
-
-    #     Returns
-    #     -------
-    #     mov : ndarray
-    #         motion corrected movie
-    #     trace_init : ndarray
-    #         output traces
-    #     mask : ndarray
-    #         spatial footprints
-
-    #     """
-    #     from fiola.caiman_init import run_caiman_init
-    #     if save_movie == True:
-    #         init_name = self.params.mc_dict['fnames'].split('.')[0] + f'_{mov.shape[0]}.tif'
-    #     else:
-    #         init_name = self.params.mc_dict['fnames']
-    #     estimates = run_caiman_init(mov, init_name, mc_dict, opts_dict, quality_dict, save_movie=save_movie)
-    #     estimates.plot_contours(img=estimates.Cn)
-    #     plt.title('found components') 
-    #     plt.show()
-    #     mask = np.hstack((estimates.A.toarray(), estimates.b)).reshape([mov.shape[1], mov.shape[2], -1], order='F').transpose([2, 0, 1])
-    #     trace_init = np.vstack((estimates.C, estimates.f))
-    #     if np.ndim(trace_init) == 1:
-    #         trace_init = trace_init[None, :]    
-    #     return mov, trace_init, mask        
-     
-
         
     def fit_hals(self, mov, A_sparse):
         """
@@ -253,12 +213,10 @@ class FIOLA(object):
         flag = 1000 # logging every 1000 frames
         index = 0
         dims = mov.shape[1:]
-        print(tf.executing_eagerly(), "is Eager?")
         mc_model = get_mc_model(template, batch_size, ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=min_mov,
                                 use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                                 center_dims=self.params.mc_nnls['center_dims'], return_shifts=True)
         
-        #mc_model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
         mc_model.compile(optimizer='rmsprop', loss='mse')   
         estimator = tf.keras.estimator.model_to_estimator(mc_model)
         # return estimator
@@ -288,88 +246,101 @@ class FIOLA(object):
         
         return mc_mov, shifts, times
     
-    # def fit_gpu_nnls_test(self, mov, Ab, batch_size=1):
-    #     """
-    #     Run GPU NNLS for source extraction
+    def fit_gpu_nnls_test(self, mov, Ab, batch_size=1):
+        """
+        Run GPU NNLS for source extraction
     
-    #     Parameters
-    #     ----------
-    #     mov: ndarray
-    #         motion corrected movie
-    #     Ab: ndarray (number of pixels * number of spatial footprints)
-    #         spatial footprints for neurons and background        
-    #     batch_size: int
-    #         number of frames used for motion correction each time. The default is 1.
-    #     num_layers: int
-    #         number of iterations for performing nnls
+        Parameters
+        ----------
+        mov: ndarray
+            motion corrected movie
+        Ab: ndarray (number of pixels * number of spatial footprints)
+            spatial footprints for neurons and background        
+        batch_size: int
+            number of frames used for motion correction each time. The default is 1.
+        num_layers: int
+            number of iterations for performing nnls
         
-    #     Returns
-    #     -------
-    #     trace: ndarray
-    #         extracted temporal traces 
-    #     """
-        
-    #     def generator():
-    #         if len(mov) % batch_size != 0 :
-    #             raise ValueError('batch_size needs to be a factor of frames of the movie')
-    #         for idx in range(len(mov) // batch_size):
-    #             yield {"m":mov[None, idx*batch_size:(idx+1)*batch_size,...,None], 
-    #                    "y":y, "x":x, "k":[[0.0]]}
+        Returns
+        -------
+        trace: ndarray
+            extracted temporal traces 
+        """
+        times2 = []
+        def generator():
+            # if len(mov) % batch_size != 0 :
+            #     raise ValueError('batch_size needs to be a factor of frames of the movie')
+            for fr in mov:
+                # star = timeit.default_timer()
+                out = nnls_q.get()
+                # out = out.astype(np.float32)
+                # times2.append(timeit.default_timer() - star)
+                yield {"m":fr[None,None,:,:,None], 
+                        "y":out[0][None], "x":out[1][None], "k":[[0.0]]}
                 
-    #     def get_frs():
-    #         dataset = tf.data.Dataset.from_generator(generator, 
-    #                                                  output_types={"m": tf.float32,
-    #                                                                "y": tf.float32,
-    #                                                                "x": tf.float32,
-    #                                                                "k": tf.float32}, 
-    #                                                  output_shapes={"m":(1, batch_size, dims[0], dims[1], 1),
-    #                                                                 "y":(1, num_components, batch_size),
-    #                                                                 "x":(1, num_components, batch_size),
-    #                                                                 "k":(1, 1)})
-    #         return dataset
+        def get_frs():
+            dataset = tf.data.Dataset.from_generator(generator, 
+                                                      output_types={"m": tf.float32,
+                                                                    "y": tf.float32,
+                                                                    "x": tf.float32,
+                                                                    "k": tf.float32}, 
+                                                      output_shapes={"m":(1, batch_size, dims[0], dims[1], 1),
+                                                                    "y":(1, num_components, batch_size),
+                                                                    "x":(1, num_components, batch_size),
+                                                                    "k":(1, 1)})
+            return dataset
         
-    #     times = [None]*(len(mov)//batch_size)
-    #     out = [None]*(len(mov)//batch_size)
-    #     flag = 1000
-    #     index = 0
-    #     dims = mov.shape[1:]
+        times0 = [0]*(len(mov) // batch_size)
+        times1 = [0]*(len(mov) // batch_size)
+        trace = [0]*(len(mov) // batch_size)
+        flag = 1000
+        index = 0
+        dims = mov.shape[1:]
+        nnls_q = Queue()
         
-    #     b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')       
-    #     C_init = np.dot(Ab.T, b)
-    #     x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
-    #     x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
-    #     num_components = Ab.shape[-1]
-    #     print(self.params.mc_nnls['num_layers'], "NUM LAYERS debug")
-    #     nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
-    #                                 self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
-    #     nnls_model.compile(optimizer='rmsprop', loss='mse')   
-    #     estimator = tf.keras.estimator.model_to_estimator(nnls_model)
+        b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')       
+        C_init = np.dot(Ab.T, b)
+        x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
+        x0 = x0.astype(np.float32)
+        x, y = np.array(x0[None]), np.array(x0[None])
+        nnls_q.put(np.concatenate((x,y)))
+        num_components = Ab.shape[-1]
+        Ab = Ab.astype(np.float32)
+
+        nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
+                                    self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
+        nnls_model.compile(optimizer='rmsprop', loss='mse')   
+        estimator = tf.keras.estimator.model_to_estimator(nnls_model)
         
-    #     logging.info('beginning source extraction')
-    #     start = timeit.default_timer()
-    #     for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
-    #         out[index] = i
-    #         times[index]= (time.time()-start)
-    #         index += 1    
-    #         # if index * batch_size >= flag:
-    #         #     logging.info(f'processed {flag} frames')
-    #         #     flag += 1000          
+        logging.info('beginning source extraction')
+        start = timeit.default_timer()
+
+        count=0
+        for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+            # values = list(i.values())
+            nnls_q.put(np.concatenate((i['nnls'],i['nnls_1'])))
+            # trace[count] = values[-1][0]
+            trace[count]=i['nnls']
+            times1[count] = -start+timeit.default_timer()
+            # if index * batch_size >= flag:
+            #     logging.info(f'processed {flag} frames')
+            #     flag += 1000 
+            count +=  1
+
+        logging.info(i.keys())
+        # import pdb
+        # pdb.set_trace()
+        print(len(trace), trace[0].shape, "DEBUG")
+        # trace = np.hstack(trace)
         
-    #     logging.info('source extraction complete')
-    #     # logging.info(f'total timing: {times[-1]}')
-    #     # logging.info(f'average timing per frame: {times[-1] / len(mov)}')
         
-    #     trace = []; 
-    #     for ou in out:
-    #         if ou:
-    #             keys = list(ou.keys())
-    #             trace.append(ou[keys[0]][0])  
-    #         else:
-    #             pass
-    #     trace = np.hstack(trace)
-        
-    #     return trace, times
-    
+        logging.info('source extraction complete')
+        # logging.info(f'total timing: {times[-1]}')
+        # logging.info(f'average timing per frame: {times[-1] / len(mov)}')
+        # 
+        return trace, times1
+
+   
     def fit_gpu_nnls(self, mov, Ab, batch_size=1):
         """
         Run GPU NNLS for source extraction
@@ -426,7 +397,6 @@ class FIOLA(object):
         x, y = np.array(x0[None,:]), np.array(x0[None,:]) 
         nnls_q.put((y, x))
         num_components = Ab.shape[-1]
-
         nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
                                     self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
         nnls_model.compile(optimizer='rmsprop', loss='mse')   
@@ -445,14 +415,11 @@ class FIOLA(object):
                 logging.info(f'processed {flag} frames')
                 flag += 1000 
             count +=  1
-        # import pdb
-        # pdb.set_trace()
         trace = np.hstack(trace)
         
         logging.info('source extraction complete')
         logging.info(f'total timing: {times[-1]}')
         logging.info(f'average timing per frame: {times[-1] / len(mov)}')
-        logging.info(f'Executing eagerly: {tf.executing_eagerly()}')
         
         return trace, times
 
@@ -576,7 +543,7 @@ class FIOLA(object):
         logging.info('spike extraction complete')
         logging.info(f'total timing: {times[-1]}')
         logging.info(f'average timing per neuron: {times[-1] / len(trace)}')
-                  
+        logging.info(f'times: {np.mean(times)}')
         return saoz      
     
     def view_components(self, img, idx=None, cnm_estimates=None):
@@ -653,12 +620,15 @@ class FIOLA(object):
                     ax2.legend()
                     ax2.set_title(f'Signal {i+1}')
                 else:
-                    ax2.plot(normalize(self.estimates.t_s[idx][i]))            
-                    spikes = np.delete(self.estimates.index[i], self.estimates.index[i]==0)
-                    h_min = normalize(self.estimates.t_s[idx][i]).max()
-                    ax2.vlines(spikes, h_min, h_min + 1, color='black')
-                    ax2.legend(labels=['trace', 'spikes'])
-                    ax2.set_title(f'Signal and spike times {i+1}')
+                    try:
+                        ax2.plot(normalize(self.estimates.t_s[idx][i]))            
+                        spikes = np.delete(self.estimates.index[i], self.estimates.index[i]==0)
+                        h_min = normalize(self.estimates.t_s[idx][i]).max()
+                        ax2.vlines(spikes, h_min, h_min + 1, color='black')
+                        ax2.legend(labels=['trace', 'spikes'])
+                        ax2.set_title(f'Signal and spike times {i+1}')
+                    except:
+                        pass
                 
                 ax3.cla()
                 ax3.imshow(img, interpolation='None', cmap=plt.cm.gray, vmax=vmax)

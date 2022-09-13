@@ -208,13 +208,13 @@ def run_caiman_init(fnames):
     # Extract DF/F values
     cnm2.estimates.detrend_df_f(quantileMin=8, frames_window=250)
     # Show final traces
-    cnm2.estimates.view_components(img=Cn)
+    #cnm2.estimates.view_components(img=Cn)
     #
     cnm2.mmap_F = f_F_mmap 
     cnm2.estimates.Cn = Cn
     cnm2.estimates.template = mc.total_template_rig
     cnm2.estimates.shifts = mc.shifts_rig
-    save_name = cnm2.mmap_file[:-5] + '_v3.7.hdf5'
+    save_name = cnm2.mmap_file[:-5] + '_caiman_init.hdf5'
     
     timing['end'] = time()
     print(timing)

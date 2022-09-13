@@ -32,7 +32,7 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 #%% 
 def main():
 #%%
-    mode = 'voltage'                    # 'voltage' or 'calcium 'fluorescence indicator
+    mode = 'calcium'                    # 'voltage' or 'calcium 'fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
         folder = '/home/nel/caiman_data/example_movies/volpy'
