@@ -162,7 +162,7 @@ ax1.set_ylabel('neuron index')
 
 #%%
 c, dview, n_processes = setup_cluster(
-    backend='multiprocessing', n_processes=8, single_thread=False)
+    backend='multiprocessing', n_processes=12, single_thread=False)
 
 #%%
 cnm = load_CNMF('/media/nel/storage/fiola/R2_20190219/3000/memmap__d1_796_d2_512_d3_1_order_C_frames_3000__v3.7.hdf5')
@@ -207,13 +207,13 @@ tp_gt, tp_comp, fn_gt, fp_comp, performance_suite2p = compare_components(s2p_est
                                                                          print_assignment=False,
                                                                          labels=['Suite_2p', 'CaImAn_Online'],
                                                                          plot_results=True)
-plt.savefig(savef + 'Fig7_supp_spatial_comparison3_v3.7.pdf')  
+plt.savefig(savef + 'Fig7_supp_spatial_comparison3_v3.8.pdf')  
 print(len(tp_gt) / (len(tp_gt) + len(fn_gt)))
 
-{'recall': 0.7639821029082774,
-  'precision': 0.6809571286141576,
-  'accuracy': 0.5626029654036244,
-  'f1_score': 0.7200843437005798}
+{'recall': 0.7522371364653244,
+ 'precision': 0.6890368852459017,
+ 'accuracy': 0.5615866388308977,
+ 'f1_score': 0.7192513368983957}
 
 #%%
 tp_gt, tp_comp, fn_gt, fp_comp, performance_suite2p = compare_components(onacid_estimate, cnm_estimate,
@@ -222,16 +222,16 @@ tp_gt, tp_comp, fn_gt, fp_comp, performance_suite2p = compare_components(onacid_
                                                                          print_assignment=False,
                                                                          labels=['CaImAn_Online', 'FIOLA'],
                                                                          plot_results=True)
-plt.savefig(savef + 'Fig7_supp_spatial_comparison4_v3.7.pdf')  
+plt.savefig(savef + 'Fig7_supp_spatial_comparison4_v3.8.pdf')  
 print(len(tp_gt) / (len(tp_gt) + len(fn_gt)))
 
-{'recall': 0.5089730807577268,
- 'precision': 0.7811782708492732,
- 'accuracy': 0.4454624781849913,
- 'f1_score': 0.6163597947479625}
+{'recall': 0.5179303278688525,
+ 'precision': 0.7735271614384086,
+ 'accuracy': 0.44973309608540923,
+ 'f1_score': 0.6204357164774471}
 
 #%% Fig Supp nueron detection comparison
-data = np.array([[0.61, 0.72, 0.53], [0.76, 0.72, 0.81], [0.72, 0.68, 0.76]])
+data = np.array([[0.61, 0.72, 0.53], [0.76, 0.72, 0.81], [0.72, 0.69, 0.75]])
 labels = ['FIOLA3000', 'CaImAn', 'CaImAn Online']
 x = np.arange(len(labels))  # the label locations
 

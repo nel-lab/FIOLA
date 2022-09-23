@@ -29,7 +29,7 @@ from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential, local_correlations, quick_annotation, HALS4activity
 
 class FIOLA(object):
-    def __init__(self, fnames=None, fr=400, ROIs=None, mode='voltage', init_method='binary_masks', num_frames_init=10000, num_frames_total=20000, 
+    def __init__(self, fnames=None, fr=400, mode='voltage', init_method='binary_masks', num_frames_init=10000, num_frames_total=20000, 
                  ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
                  update_bg=True, use_spikes=False, batch_size=1, use_fft=True, normalize_cc=True,
@@ -37,7 +37,7 @@ class FIOLA(object):
                  window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15, adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
-                 filt_window = 15, nb=1, do_plot=False, params={}):
+                 filt_window = 15, nb=1, lag=5, do_plot=False, params={}):
         # please check fiolaparams.py for detailed documentation of parameters in class FIOLA
         if params is None:
             logging.warning("parameters are not set from fiolaparams")
@@ -546,6 +546,148 @@ class FIOLA(object):
         logging.info(f'times: {np.mean(times)}')
         return saoz      
     
+    # def view_components(self, img, idx=None, cnm_estimates=None):
+    #     """ View spatial and temporal components interactively
+    #     Args:
+    #         estimates: dict
+    #             estimates dictionary contain results of VolPy
+
+    #         idx: list
+    #             index of selected neurons
+    #     """
+    #     if idx is None:
+    #         idx = np.arange(len(self.estimates.Ab.T))
+
+    #     n = len(idx) 
+    #     fig = plt.figure(figsize=(30, 10))
+        
+    #     dims = img.shape
+        
+    #     spatial = self.estimates.Ab.T.reshape([-1, dims[0], dims[1]], order='F')
+    
+    #     axcomp = plt.axes([0.1, 0.05, 0.8, 0.02])
+    #     ax1 = plt.axes([0.05, 0.55, 0.3, 0.3])
+    #     ax3 = plt.axes([0.05, 0.15, 0.3, 0.3])
+    #     #ax2 = plt.axes([0.05, 0.1, 0.9, 0.4])    
+    #     ax2 = plt.axes([0.40, 0.55, 0.55, 0.35])    
+    #     ax4 = plt.axes([0.40, 0.1, 0.55, 0.35])    
+    #     s_comp = Slider(axcomp, 'Component', 0, n, valinit=0)
+    #     vmax = np.percentile(img, 98)
+        
+    #     def arrow_key_image_control(event):
+    
+    #         if event.key == 'left':
+    #             new_val = np.round(s_comp.val - 1)
+    #             if new_val < 0:
+    #                 new_val = 0
+    #             s_comp.set_val(new_val)
+    
+    #         elif event.key == 'right':
+    #             new_val = np.round(s_comp.val + 1)
+    #             if new_val > n :
+    #                 new_val = n  
+    #             s_comp.set_val(new_val)
+            
+    #     def update(val):
+    #         i = np.int(np.round(s_comp.val))
+    #         print(f'component:{i}')
+    
+    #         if i < n:
+                
+    #             ax1.cla()
+    #             imgtmp = spatial[idx][i]
+    #             ax1.imshow(imgtmp, interpolation='None', cmap=plt.cm.gray, vmax=np.max(imgtmp)*0.5, vmin=0)
+    #             ax1.set_title(f'Spatial component {i+1}')
+    #             ax1.axis('off')
+                
+    #             ax2.cla()
+    #             if self.params.data['mode'] == 'calcium':
+    #                 ax2.plot(self.estimates.trace[idx][i], alpha=0.8, label='extracted traces')
+                    
+    #                 try: 
+    #                     temp = self.estimates.trace.shape[0] - self.estimates.trace_deconvolved.shape[0]
+    #                     if temp > 0:
+    #                         ax2.plot(np.vstack((self.estimates.trace_deconvolved, 
+    #                                            np.zeros((temp, self.estimates.trace.shape[1]))))[idx][i],
+    #                                            alpha=0.8, label='deconv traces')
+    #                     else:
+    #                         ax2.plot(self.estimates.trace_deconvolved[idx][i], alpha=0.8, label='deconv traces')
+    #                 except:               
+    #                     pass
+                    
+    #                 if cnm_estimates is not None:
+    #                     ax2.plot(np.vstack((cnm_estimates.C, cnm_estimates.f))[idx][i], label='caiman result')                        
+    #                     #ax2.plot((cnm_estimates.C+cnm_estimates.YrA)[idx][i], label='caiman result')                        
+    #                 ax2.legend()
+    #                 ax2.set_title(f'Signal {i+1}')
+    #             else:
+    #                 ix = idx[i]
+    #                 if idx[i] < self.Ab.shape[1] - self.params.hals['nb']:
+    #                     #ax2.plot(normalize(self.estimates.t_s[ix]))            
+    #                     ax2.plot(self.estimates.t_s[ix])
+    #                     #spikes = np.delete(self.estimates.index[ix], self.estimates.index[ix]==0)
+    #                     #h_min = normalize(self.estimates.t_s[ix]).max()
+    #                     h_min = self.estimates.PTA[ix].max()
+                        
+    #                     #ax2.vlines(spikes, h_min, h_min + 1, color='black')
+    #                     ax2.plot(self.estimates.trace_deconvolved[ix] * h_min)
+    #                     ax2.legend(labels=['trace retrieved afterwards', 'spikes retrieved afterwards'])
+    #                     ax2.set_title(f'Signal and spike times {i+1}')
+    #                 else:
+    #                     ax2.plot(normalize(self.estimates.trace[ix]))            
+    #                     ax2.legend(labels=['background trace'])
+    #             ax2.set_xlim([0, self.params.data['num_frames_total']])
+                        
+    #             ax3.cla()
+    #             ax3.imshow(img, interpolation='None', cmap=plt.cm.gray, vmax=vmax)
+    #             imgtmp2 = imgtmp.copy()
+    #             imgtmp2[imgtmp2 == 0] = np.nan
+    #             ax3.imshow(imgtmp2, interpolation='None',
+    #                         alpha=0.5, cmap=plt.cm.hot)
+    #             ax3.axis('off')
+                
+    #             ax4.cla()
+    #             if self.params.data['mode'] == 'calcium':
+    #                 #ax2.plot(self.estimates.trace[idx][i], alpha=0.8, label='extracted traces')
+    #                 #ax4.plot(range(self.params.data['num_frames_init']-1, self.params.data['num_frames_total']-1),self.estimates.online_trace[idx][i], alpha=0.8, label='extracted traces')
+                    
+    #                 try: 
+    #                     temp = self.estimates.trace.shape[0] - self.estimates.trace_decovolved.shape[0]
+    #                     if temp > 0:
+    #                         ax4.plot(np.vstack((self.estimates.trace_deconvolved, 
+    #                                            np.zeros((temp, self.estimates.trace.shape[1]))))[idx][i],
+    #                                            alpha=0.8, label='deconv traces')
+    #                     else:
+    #                         ax4.plot(self.estimates.trace_deconvolved[idx][i], alpha=0.8, label='deconv traces')
+    #                 except:               
+    #                     pass
+                    
+    #                 if cnm_estimates is not None:
+    #                     ax4.plot(np.vstack((cnm_estimates.C, cnm_estimates.f))[idx][i], label='caiman result')                        
+    #                     #ax4.plot((cnm_estimates.C+cnm_estimates.YrA)[idx][i], label='caiman result')                        
+    #                 ax4.legend()
+    #                 ax4.set_title(f'Signal {i+1}')
+    #             else:
+    #                 ix = idx[i]
+    #                 ax4.plot(range(self.params.data['num_frames_init']-1, self.params.data['num_frames_total']-1),self.estimates.online_trace[idx][i], alpha=0.8, label='extracted traces')
+                    
+    #                 if idx[i] < self.Ab.shape[1] - self.params.hals['nb']:
+    #                     pass
+                        
+    #                     # ax4.plot(normalize(self.estimates.t_s[ix]))            
+    #                     # spikes = np.delete(self.estimates.index[ix], self.estimates.index[ix]==0)
+    #                     # h_min = normalize(self.estimates.t_s[ix]).max()
+    #                     # ax4.vlines(spikes, h_min, h_min + 1, color='black')
+    #                     # ax4.legend(labels=['trace', 'spikes'])
+    #                     # ax4.set_title(f'Signal and spike times {i+1}')
+    #                 else:
+    #                     ax4.plot(normalize(self.estimates.trace[ix]))            
+    #                     ax4.legend(labels=['background trace'])
+    #             ax4.set_xlim([0, self.params.data['num_frames_total']])
+    #     s_comp.on_changed(update)
+    #     s_comp.set_val(0)
+    #     fig.canvas.mpl_connect('key_release_event', arrow_key_image_control)
+    #     plt.show()
     def view_components(self, img, idx=None, cnm_estimates=None):
         """ View spatial and temporal components interactively
         Args:
@@ -557,10 +699,9 @@ class FIOLA(object):
         """
         if idx is None:
             idx = np.arange(len(self.estimates.Ab.T))
-            #idx = np.arange(415)
 
         n = len(idx) 
-        fig = plt.figure(figsize=(10, 10))
+        fig = plt.figure(figsize=(30, 10))
         
         dims = img.shape
         
@@ -570,6 +711,8 @@ class FIOLA(object):
         ax1 = plt.axes([0.05, 0.55, 0.4, 0.4])
         ax3 = plt.axes([0.55, 0.55, 0.4, 0.4])
         ax2 = plt.axes([0.05, 0.1, 0.9, 0.4])    
+        #ax2 = plt.axes([0.05, 0.3, 0.9, 0.2])    
+        #ax4 = plt.axes([0.05, 0.05, 0.9, 0.2])    
         s_comp = Slider(axcomp, 'Component', 0, n, valinit=0)
         vmax = np.percentile(img, 98)
         
@@ -607,8 +750,8 @@ class FIOLA(object):
                         temp = self.estimates.trace.shape[0] - self.estimates.trace_deconvolved.shape[0]
                         if temp > 0:
                             ax2.plot(np.vstack((self.estimates.trace_deconvolved, 
-                                               np.zeros((temp, self.estimates.trace.shape[1]))))[idx][i],
-                                               alpha=0.8, label='deconv traces')
+                                                np.zeros((temp, self.estimates.trace.shape[1]))))[idx][i],
+                                                alpha=0.8, label='deconv traces')
                         else:
                             ax2.plot(self.estimates.trace_deconvolved[idx][i], alpha=0.8, label='deconv traces')
                     except:               
@@ -620,24 +763,65 @@ class FIOLA(object):
                     ax2.legend()
                     ax2.set_title(f'Signal {i+1}')
                 else:
-                    try:
-                        ax2.plot(normalize(self.estimates.t_s[idx][i]))            
-                        spikes = np.delete(self.estimates.index[i], self.estimates.index[i]==0)
-                        h_min = normalize(self.estimates.t_s[idx][i]).max()
+                    ix = idx[i]
+                    if idx[i] < self.Ab.shape[1] - self.params.hals['nb']:
+                        ax2.plot(normalize(self.estimates.t_s[ix]))            
+                        spikes = np.delete(self.estimates.index[ix], self.estimates.index[ix]==0)
+                        h_min = normalize(self.estimates.t_s[ix]).max()
                         ax2.vlines(spikes, h_min, h_min + 1, color='black')
                         ax2.legend(labels=['trace', 'spikes'])
                         ax2.set_title(f'Signal and spike times {i+1}')
-                    except:
-                        pass
-                
+                    else:
+                        ax2.plot(normalize(self.estimates.trace[ix]))            
+                        ax2.legend(labels=['background trace'])
+                ax2.set_xlim([0, self.params.data['num_frames_total']])
+                        
                 ax3.cla()
                 ax3.imshow(img, interpolation='None', cmap=plt.cm.gray, vmax=vmax)
                 imgtmp2 = imgtmp.copy()
                 imgtmp2[imgtmp2 == 0] = np.nan
                 ax3.imshow(imgtmp2, interpolation='None',
-                           alpha=0.5, cmap=plt.cm.hot)
+                            alpha=0.5, cmap=plt.cm.hot)
                 ax3.axis('off')
                 
+                # ax4.cla()
+                # if self.params.data['mode'] == 'calcium':
+                #     #ax2.plot(self.estimates.trace[idx][i], alpha=0.8, label='extracted traces')
+                #     #ax4.plot(range(self.params.data['num_frames_init']-1, self.params.data['num_frames_total']-1),self.estimates.online_trace[idx][i], alpha=0.8, label='extracted traces')
+                    
+                #     try: 
+                #         temp = self.estimates.trace.shape[0] - self.estimates.trace_decovolved.shape[0]
+                #         if temp > 0:
+                #             ax4.plot(np.vstack((self.estimates.trace_deconvolved, 
+                #                                 np.zeros((temp, self.estimates.trace.shape[1]))))[idx][i],
+                #                                 alpha=0.8, label='deconv traces')
+                #         else:
+                #             ax4.plot(self.estimates.trace_deconvolved[idx][i], alpha=0.8, label='deconv traces')
+                #     except:               
+                #         pass
+                    
+                #     if cnm_estimates is not None:
+                #         ax4.plot(np.vstack((cnm_estimates.C, cnm_estimates.f))[idx][i], label='caiman result')                        
+                #         #ax4.plot((cnm_estimates.C+cnm_estimates.YrA)[idx][i], label='caiman result')                        
+                #     ax4.legend()
+                #     ax4.set_title(f'Signal {i+1}')
+                # else:
+                #     ix = idx[i]
+                #     ax4.plot(range(self.params.data['num_frames_init']-1, self.params.data['num_frames_total']-1),self.estimates.online_trace[idx][i], alpha=0.8, label='extracted traces')
+                    
+                #     if idx[i] < self.Ab.shape[1] - self.params.hals['nb']:
+                #         pass
+                        
+                #         # ax4.plot(normalize(self.estimates.t_s[ix]))            
+                #         # spikes = np.delete(self.estimates.index[ix], self.estimates.index[ix]==0)
+                #         # h_min = normalize(self.estimates.t_s[ix]).max()
+                #         # ax4.vlines(spikes, h_min, h_min + 1, color='black')
+                #         # ax4.legend(labels=['trace', 'spikes'])
+                #         # ax4.set_title(f'Signal and spike times {i+1}')
+                #     else:
+                #         ax4.plot(normalize(self.estimates.trace[ix]))            
+                #         ax4.legend(labels=['background trace'])
+                # ax4.set_xlim([0, self.params.data['num_frames_total']])
         s_comp.on_changed(update)
         s_comp.set_val(0)
         fig.canvas.mpl_connect('key_release_event', arrow_key_image_control)

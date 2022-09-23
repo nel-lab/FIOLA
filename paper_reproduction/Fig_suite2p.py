@@ -193,7 +193,7 @@ fr = 512
 file_folder = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_" + \
     str(fr)
 ops = suite2p.default_ops()
-ops['batch_size'] = 1
+ops['batch_size'] = 100
 ops['report_timing'] = True
 # basedon the suite2p source  code, only nonrigid will generate subpixel shifts
 ops['nonrigid'] = False
@@ -211,8 +211,9 @@ output_ops = suite2p.run_s2p(ops, db)
 t0 = output_ops["fiola_start"]
 t1 = output_ops["fiola_startRegInit"]
 t2 = output_ops["fiola_finishTemplate"]
-batchTimes = output_ops["fiola_batchStart"]
+batchTimes = output_ops["fiola_batchStart"][1:]
 t3 = batchTimes[0]
+print(np.quantile(batchTimes, 0.05),np.quantile(batchTimes, 0.5),np.quantile(batchTimes, 0.95))
 # %%  save results
 save = False
 if save:
@@ -283,12 +284,19 @@ nmes = ["512_fi", "512_fc", "512_cm", "512_s2", "512_s2r",
         "1024_fi", "1024_fc", "1024_cm", "1024_s2", "1024_s2r"]
 for n in nmes:
     if "s" in n:
+        temp=""
         if "r" in n:
             multiplier = 1000
         else:
             multiplier = 10
-        print(n)
-        data_fr_custom[n] = multiplier*np.array(np.load(base_file + n +
+        if "512" in n:
+            temp="test_19-09-22/"
+            data_fr_custom[n] = 10*np.array(np.load(base_file + temp + n +
+                                            ".npy", allow_pickle=True))
+                                    
+            print(n)
+        else:
+            data_fr_custom[n] = multiplier*np.array(np.load(base_file + temp + n +
                                         ".npy", allow_pickle=True)[()]["fiola_batchStart"][1:])
     else:
         if "cm" in n:

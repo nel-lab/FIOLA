@@ -8,7 +8,7 @@ import logging
 import numpy as np
 
 class fiolaparams(object):
-    def __init__(self, fnames=None, fr=400, ROIs=None, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
+    def __init__(self, fnames=None, fr=400, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
                  ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
                  update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch_size=1, use_fft=True, normalize_cc=True,
@@ -16,7 +16,7 @@ class fiolaparams(object):
                  window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True,
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
-                 filt_window = 15, do_plot=False, nb=1, p=1, params_dict={}):
+                 filt_window = 15, do_plot=False, nb=1, p=1, lag=5, params_dict={}):
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -25,7 +25,6 @@ class fiolaparams(object):
         self.data = {
             'fnames': fnames, # name of the movie
             'fr': fr, # sample rate of the movie
-            'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'mode': mode, # 'voltage' or 'calcium 'fluorescence indicator
             'num_frames_init': num_frames_init, # number of frames used for initialization
             'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
@@ -63,7 +62,7 @@ class fiolaparams(object):
             'step': step, # step for updating statistics
             'flip': flip, # whether to flip signal to find spikes    
             'detrend': detrend, # whether to remove photobleaching
-            'dc_param': dc_param, # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between 0.9 
+            'dc_param': dc_param, # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between 0.99 
                                   # and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
             'do_scale': do_scale, # whether to scale the input trace or not
             'do_deconvolve': do_deconvolve, #If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
@@ -75,8 +74,13 @@ class fiolaparams(object):
             'online_filter_method': online_filter_method, #use 'median_filter' or 'median_filter_no_lag' for doing online filter.
             'filt_window': filt_window, # window size for removing the subthreshold activities 
             'do_plot': do_plot, # whether to plot or not
-            'p': p, # order of the AR process for calcium deconvolution
+            'p': p # order of the AR process for calcium deconvolution
         }
+        
+        self.retrieve = {
+            'lag': lag  # lag for retrieving the online result.
+        }
+        
 
         self.change_params(params_dict)
 

@@ -39,7 +39,7 @@ class SignalAnalysisOnlineZ(object):
                 whether to remove the slow trend in the fluorescence data            
             dc_param: float
                 DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between
-                0.9 and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
+                0.99 and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
             do_deconvolve: bool
                 If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
             do_scale: bool

@@ -97,9 +97,6 @@ t1500 = np.load('/media/nel/storage/fiola/R2_20190219/1500/fiola_result_init_fra
 t1000 = np.load('/media/nel/storage/fiola/R2_20190219/1000/fiola_result_init_frames_1000_iteration_1_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_lag_5_test_v3.21.npy', allow_pickle=True).item().online_trace_deconvolved
 t500 = np.load('/media/nel/storage/fiola/R2_20190219/500/fiola_result_init_frames_500_iteration_1_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_lag_5_test_v3.21.npy', allow_pickle=True).item().online_trace_deconvolved
 
-#t3000 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_lag_5_test_v3.21.npy', allow_pickle=True).item().online_trace_deconvolved
-#t3000 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_lag_4_test_v3.21.npy', allow_pickle=True).item().online_trace_deconvolved
-
 cnm3000 = load_CNMF('/media/nel/storage/fiola/R2_20190219/3000/memmap__d1_796_d2_512_d3_1_order_C_frames_3000__v3.7.hdf5')
 cnm1500 = load_CNMF('/media/nel/storage/fiola/R2_20190219/1500/memmap__d1_796_d2_512_d3_1_order_C_frames_1500__v3.7.hdf5')
 cnm1000 = load_CNMF('/media/nel/storage/fiola/R2_20190219/1000/memmap__d1_796_d2_512_d3_1_order_C_frames_1000__v3.7.hdf5')
@@ -326,7 +323,7 @@ ax1 = plt.subplot()
 rr = list(r.values())
 methods = list(r.keys())
 #num = [tt.shape[1] for tt in t_g.values()]
-num = [1307, 1065, 907, 549, 2006, 1788, 1990]
+num = [1307, 1065, 907, 549, 1952, 1788, 1990]
 r_mean = [np.mean(x) for x in rr]
 r_std = [np.std(x) for x in rr]
 
@@ -361,7 +358,7 @@ ax1.set_xlabel('Number of neurons')
 ax1.legend()
 plt.tight_layout()
 
-#plt.savefig(savef + f'Fig7c_pos_{lag}_v3.8.pdf')
+plt.savefig(savef + f'Fig7c_pos_{lag}_v3.8.pdf')
 #plt.savefig(savef + 'Fig_supp_spd_v3.1.pdf')
 # 0.17898542457533081
 # 0.0055860117488064406
@@ -859,7 +856,7 @@ ax1 = plt.subplot()
 rr = list(r.values())
 methods = list(r.keys())
 #num = [tt.shape[1] for tt in t_g.values()]
-num = [1307, 1065, 907, 549, 2006, 1788, 1990]
+num = [1307, 1065, 907, 549, 1952, 1788, 1990]
 r_mean = [np.mean(x) for x in rr]
 r_std = [np.std(x) for x in rr]
 
