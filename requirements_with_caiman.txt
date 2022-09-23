@@ -23,6 +23,7 @@ scikit-image
 scikit-learn
 scipy
 tensorflow
+tensorflow-addons
 tifffile
 tk
 tqdm
