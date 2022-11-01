@@ -25,6 +25,7 @@ cd CaImAn
 pip install -e . 
 conda install spyder
 pip install jinja2==3.0.1
+pip install h5py==2.10.0
 ```
 
 ### mamba installation (Outdated)
