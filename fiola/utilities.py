@@ -41,7 +41,8 @@ def download_demo(folder, name):
              'demo_voltage_imaging_ROIs.hdf5':'https://www.dropbox.com/s/hizj9kvv09jkxg4/demo_voltage_imaging_ROIs.hdf5?dl=0', 
              'k53.tif':'https://www.dropbox.com/s/5mqauy6li6mwb4p/k53.tif?dl=0', 
              'k53_ROIs.hdf5': 'https://www.dropbox.com/s/bpsjw2vahvjkcdu/k53_ROIs.hdf5?dl=0', 
-             'demoMovie.tif': 'https://www.dropbox.com/s/i3wue8k5e0xpd36/demoMovie.tif?dl=0'}    
+             'demoMovie.tif': 'https://www.dropbox.com/s/i3wue8k5e0xpd36/demoMovie.tif?dl=0', 
+             'Sue_2x_3000_40_-46.tif': 'https://www.dropbox.com/s/7xaech6s7egy0xr/Sue_2x_3000_40_-46.tif?dl=0'}    
     if name not in file_dict.keys():
         raise Exception('files can not be downloaded')
 
