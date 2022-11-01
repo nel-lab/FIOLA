@@ -7,7 +7,6 @@ holoviews
 ipykernel
 ipython
 ipyparallel
-Jinja2==3.0.1
 jupyter
 keras
 matplotlib
@@ -24,7 +23,7 @@ scikit-image
 scikit-learn
 scipy
 tensorflow==2.4.1
-tensorflow-addons==0.12.1
+tensorflow-addons
 tifffile
 tk
 tqdm
