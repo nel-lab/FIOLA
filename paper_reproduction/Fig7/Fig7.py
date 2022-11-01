@@ -107,9 +107,11 @@ tracec = cnm2.estimates.S
 traces = np.load('/media/nel/storage/fiola/R2_20190219/test/test_full/suite2p_result_non_rigid_v3.1/plane0/spks.npy')
 #onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/mov_R2_20190219T210000_caiman_online_results_v3.0_new_params_min_snr_2.0.hdf5')
 #onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.13.hdf5')
-onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.14.hdf5')
+#onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.14.hdf5')
+#onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.16.hdf5')
+onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.20.hdf5')
 onacid_comp = onacid.estimates.idx_components
-traceo = onacid.estimates.online_deconvolved_trace['6'][onacid_comp]
+traceo = onacid.estimates.online_deconvolved_trace[onacid_comp]
 onacid.estimates.A = onacid.estimates.A[:, onacid_comp]
 onacid.time_neuron_added = onacid.time_neuron_added[onacid_comp]
 #cnm = load_CNMF('/media/nel/storage/fiola/R2_20190219/3000/memmap__d1_796_d2_512_d3_1_order_C_frames_3000__v3.7.hdf5')
@@ -208,7 +210,7 @@ t_g = t_g1.copy()
 #%% Fig 7c decoding performance through cross-validation
 start = time()
 t_test = t_g.copy()
-#t_test = {'CaImAn_Online': t_g['CaImAn_Online']}
+t_test = {'FIOLA3000': t_g['FIOLA3000'], 'CaImAn_Online': t_g['CaImAn_Online']}
 #t_test = {'Suite2p': t_g['Suite2p'], 'CaImAn':t_g['CaImAn']}
 #t_test = {'FIOLA_10': t_g['FIOLA_10']}
 t_s = 3000
@@ -229,9 +231,9 @@ end = time()
 print(f'processing time {end-start}')
 
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-#np.save(ff+'Fig7c_result_lag5_v3.8.npy', r); np.save(ff+'Fig7c_prediction_lag5_v3.8.npy', p)
+#np.save(ff+'Fig7c_result_lag5_v3.9.npy', r); np.save(ff+'Fig7c_prediction_lag5_v3.9.npy', p)
 #np.save(ff+'Fig7_supp_dec_lag_v3.8.npy', r); np.save(ff+'Fig7_supp_dec_lag_prediction_v3.8.npy', p)
-np.save(ff+'Fig7_supp_layers_result_lag_5_v3.8.npy', r); np.save(ff+'Fig7_supp_layers_prediction_lag_5_v3.8.npy', p)
+#np.save(ff+'Fig7_supp_layers_result_lag_5_v3.9.npy', r); np.save(ff+'Fig7_supp_layers_prediction_lag_5_v3.9.npy', p)
 #np.save(ff+'Fig7_supp_s2p_rigid_result_v3.8.npy', r)
 
 #%% Fig 7d decoding performance across time
@@ -272,7 +274,7 @@ for key, tr in deepcopy(t_test).items():
     r[key] = s        
     print(f'average decoding performance: {np.mean(r[key])}')
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-np.save(ff+'Fig7d_result_lag5_v3.8.npy', r)
+np.save(ff+'Fig7d_result_lag5_v3.9.npy', r)
 
 #%% Fig 7e Decoding position at different speed group
 s_tt = s_t[t_s:t_e]
@@ -310,20 +312,20 @@ for key, tr in t_test.items():
 end = time()
 print(f'processing time {end-start}')
 
-np.save(ff+'Fig7e_result_lag5_v3.8.npy', r)
-np.save(ff+'Fig7e_prediction_lag5_v3.8.npy', p)
+np.save(ff+'Fig7e_result_lag5_v3.9.npy', r)
+np.save(ff+'Fig7e_prediction_lag5_v3.9.npy', p)
 
 #%% Figure 7c
 lag = ['lag1', 'lag3', 'lag5'][2]
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-r = np.load(ff+f'Fig7c_result_{lag}_v3.8.npy', allow_pickle=True).item()
-p = np.load(ff+f'Fig7c_prediction_{lag}_v3.8.npy', allow_pickle=True).item()
+r = np.load(ff+f'Fig7c_result_{lag}_v3.9.npy', allow_pickle=True).item()
+p = np.load(ff+f'Fig7c_prediction_{lag}_v3.9.npy', allow_pickle=True).item()
 fig = plt.figure() 
 ax1 = plt.subplot()
 rr = list(r.values())
 methods = list(r.keys())
 #num = [tt.shape[1] for tt in t_g.values()]
-num = [1307, 1065, 907, 549, 1952, 1788, 1990]
+num = [1307, 1065, 907, 549, 2019, 1788, 1990]
 r_mean = [np.mean(x) for x in rr]
 r_std = [np.std(x) for x in rr]
 
@@ -358,7 +360,7 @@ ax1.set_xlabel('Number of neurons')
 ax1.legend()
 plt.tight_layout()
 
-plt.savefig(savef + f'Fig7c_pos_{lag}_v3.8.pdf')
+plt.savefig(savef + f'Fig7c_pos_{lag}_v3.9.pdf')
 #plt.savefig(savef + 'Fig_supp_spd_v3.1.pdf')
 # 0.17898542457533081
 # 0.0055860117488064406
@@ -366,7 +368,7 @@ plt.savefig(savef + f'Fig7c_pos_{lag}_v3.8.pdf')
 # 0.0035924052250248485
 
 #%% Fig 7d 
-r = np.load(ff+f'Fig7d_result_lag5_v3.8.npy', allow_pickle=True).item()
+r = np.load(ff+f'Fig7d_result_lag5_v3.9.npy', allow_pickle=True).item()
 xx = np.array(list(range(13000, 28000, 2000)))
 #xx = np.array(xx) - 13000
 #fig = plt.figure(figsize=(8, 6)) 
@@ -391,7 +393,7 @@ ax1.locator_params(axis='x', nbins=4)
 #ax1.set_xticks([])
 #ax1.set_yticks([])
 #ax1.set_ylim([-0.1,1])
-#plt.savefig(savef + f'Fig7d_{lag}_v3.8.pdf')
+plt.savefig(savef + f'Fig7d_{lag}_v3.9.pdf')
 
 #%%
 import numpy as np
@@ -495,7 +497,7 @@ spd_group = ['low', 'mid', 'high']
 
 #%%
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-r = np.load(ff+f'Fig7e_result_{lag}_v3.8.npy', allow_pickle=True).item()
+r = np.load(ff+f'Fig7e_result_{lag}_v3.9.npy', allow_pickle=True).item()
 amps = [0]
 spk_amps = [0]
 colors = ['C0', 'C1', 'C2', 'C3']
@@ -524,7 +526,7 @@ for amp in amps:
     ax.set_ylim([0.4,1.2])
     
     ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-#plt.savefig(savef + f'Fig7e_{lag}_v3.8.pdf')
+plt.savefig(savef + f'Fig7e_{lag}_v3.9.pdf')
 
 
 #%% Fig 7g timing for init + acquisition + online exp
@@ -600,7 +602,7 @@ tt = np.array(t_online).reshape((3,4), order='F').copy()
 t_online = np.array(t_online).reshape((3,4), order='F')[2]
 
 #%%
-onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.13.hdf5')
+onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.16.hdf5')
 t_onacid = onacid.time_spend.sum()
 t_s2p = 1836.44
 t_s2p_rigid = 970
@@ -631,7 +633,7 @@ ax1.set_xticks([])
 #ax1.set_xticklabels(['Fiola 3000', 'Fiola 1500', 'Fiola 1000', 'Fiola 500' ])
 #ax1.set_yticks([])
 #ax1.set_ylim([0,1])
-#plt.savefig(savef+'Fig7g_total_time_v3.7.pdf')
+plt.savefig(savef+'Fig7g_total_time_v3.9.pdf')
 
 #%% supp timing s2p
 colors = [ 'C0', 'C3', 'C7', 'C4']
@@ -730,7 +732,7 @@ tpfs = np.array(tpf).reshape(5, 3).std(1)
 
 #%%
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-rr = np.load(ff+'Fig7c_result_lag5_v3.8.npy', allow_pickle=True).item()
+rr = np.load(ff+'Fig7c_result_lag5_v3.9.npy', allow_pickle=True).item()
 
 r['CaImAn_Online'] = rr['CaImAn_Online']
 r['Suite2p'] = rr['Suite2p']
@@ -740,7 +742,7 @@ for key in ['CaImAn_Online', 'Suite2p', 'CaImAn']:
     mean.append(np.mean(r[key]))
     std.append(np.std(r[key]))
 #%%
-onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.13.hdf5')
+onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.16.hdf5')
 t_onacid = onacid.time_spend.sum()
 t_s2p = 1836.44
 t_s2p_rigid = 970
@@ -760,7 +762,7 @@ methods = list(r.keys())
 colors = ['C5', 'C6', 'C7', 'C8', 'C9', 'C1', 'C2', 'C3', 'C4']
 
 for idx in range(len(list(r.keys()))):
-    if idx < 5:
+    #if idx < 5:
         try:
             ax1.errorbar(tpfm[idx], mean[idx], yerr=std[idx], xerr=tpfs[idx], fmt='o', capsize=5, color=colors[idx], label=layers[idx])
         except:
@@ -771,7 +773,7 @@ ax1.set_xlabel('time per frame (ms)')
 ax1.set_ylim([0.8, 0.96])
 ax1.legend()
 #plt.savefig(savef + 'Fig7_supp_num_layers_lag5_b_v3.8.pdf')
-#plt.savefig(savef + 'Fig7_supp_num_layers_lag5_a_v3.8.pdf')
+plt.savefig(savef + 'Fig7_supp_num_layers_lag5_a_v3.9.pdf')
 
 
 #%%
@@ -2295,7 +2297,7 @@ np.argsort(t1-t2)
 #%% drifting analysis
 #ii = 353
 rigid = True
-fio = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_no_init_v3.10.npy', allow_pickle=True).item()
+fio = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_no_init_v3.9.npy', allow_pickle=True).item()
 if not rigid:
     mov = cm.load('/media/nel/storage/fiola/R2_20190219/full_nonrigid/memmap__d1_796_d2_512_d3_1_order_C_frames_31933_.mmap')
 else:
@@ -2355,10 +2357,10 @@ key = 'FIOLA3000'#'Suite2p'#'FIOLA3000'
 #f = t_raw[key]#[:-2]
 #f = StandardScaler().fit_transform(f.T).T
 
-tt0 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_True_no_init_v3.10.npy', allow_pickle=True).item().trace
+tt0 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_True_no_init_v3.9.npy', allow_pickle=True).item().trace
 tt0 = tt0[:-2]
 #tt0 = tt0 - tt0.mean(1)[:, None]
-tt1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_False_no_init_v3.10.npy', allow_pickle=True).item().trace
+tt1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_False_no_init_v3.9.npy', allow_pickle=True).item().trace
 tt1 = tt1 - tt1.mean(1)[:, None]
 #%%
 fig, ax = plt.subplots(2,1, figsize=(8, 16))
@@ -2488,15 +2490,15 @@ Fneu = np.load('/media/nel/storage/fiola/R2_20190219/test/test_full/suite2p/plan
 trace = F - 0.7 * Fneu
 trace = trace[:, 1:]
 trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_v3.1.npy', allow_pickle=True).item().trace
-#trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_True_no_init_v3.10.npy', allow_pickle=True).item().trace
-#trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_False_no_init_v3.10.npy', allow_pickle=True).item().trace
+#trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_True_no_init_v3.9.npy', allow_pickle=True).item().trace
+#trace1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_include_bg_False_no_init_v3.9.npy', allow_pickle=True).item().trace
 trace2 = np.load('/media/nel/storage/fiola/R2_20190219/1500/fiola_result_v3.1.npy', allow_pickle=True).item().trace
 trace3 = np.load('/media/nel/storage/fiola/R2_20190219/1000/fiola_result_v3.1.npy', allow_pickle=True).item().trace
 trace4 = np.load('/media/nel/storage/fiola/R2_20190219/500/fiola_result_v3.1.npy', allow_pickle=True).item().trace
-#fio1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_no_init_v3.10.npy', allow_pickle=True).item()
+#fio1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_no_init_v3.9.npy', allow_pickle=True).item()
 fio = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_False_with_detrending_v3.11.npy', allow_pickle=True).item()
 #fio1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_with_detrending_v3.11.npy', allow_pickle=True).item()
-#tt1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_no_init_v3.10.npy', allow_pickle=True).item()
+#tt1 = np.load('/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_1_num_layers_10_trace_with_neg_True_no_init_v3.9.npy', allow_pickle=True).item()
 #%%
 ii = 280
 plt.figure()

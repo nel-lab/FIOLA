@@ -63,8 +63,8 @@ def main():
     rval_thr = 0.85  # soace correlation threshold for candidate components
     # set up some additional supporting parameters needed for the algorithm
     # (these are default values but can change depending on dataset properties)
-    init_batch = 100  # number of frames for initialization (presumably from the first file)
-    K = 20  # initial number of components
+    init_batch = 100#3000  # number of frames for initialization (presumably from the first file)
+    K = 20#1400  # initial number of components
     epochs = 1  # number of passes over the data
     show_movie = False # show the movie as the data gets processed
 
@@ -93,59 +93,58 @@ def main():
 # %% fit online
     cnm = cnmf.online_cnmf.OnACID(params=opts)
     cnm.fit_online()
-    #cnm.save(os.path.splitext(fnames[0])[0]+'_caiman_online_results_dec_lag_v3.14.hdf5')
+    cnm.save(os.path.splitext(fnames[0])[0]+'_caiman_online_results_test_v3.20.hdf5')
 
+# # %% plot contours (this may take time)
+#     logging.info('Number of components: ' + str(cnm.estimates.A.shape[-1]))
+#     images = cm.load(fnames)
+#     Cn = images.local_correlations(swap_dim=False, frames_per_chunk=500)
+#     cnm.estimates.plot_contours(img=Cn, display_numbers=False)
 
-# %% plot contours (this may take time)
-    logging.info('Number of components: ' + str(cnm.estimates.A.shape[-1]))
-    images = cm.load(fnames)
-    Cn = images.local_correlations(swap_dim=False, frames_per_chunk=500)
-    cnm.estimates.plot_contours(img=Cn, display_numbers=False)
+# # %% view components
+#     cnm.estimates.view_components(img=Cn)
 
-# %% view components
-    cnm.estimates.view_components(img=Cn)
+# # %% plot timing performance (if a movie is generated during processing, timing
+# # will be severely over-estimated)
 
-# %% plot timing performance (if a movie is generated during processing, timing
-# will be severely over-estimated)
-
-    T_motion = 1e3*np.array(cnm.t_motion)
-    T_detect = 1e3*np.array(cnm.t_detect)
-    T_shapes = 1e3*np.array(cnm.t_shapes)
-    T_track = 1e3*np.array(cnm.t_online) - T_motion - T_detect - T_shapes
-    plt.figure()
-    plt.stackplot(np.arange(len(T_motion)), T_motion, T_track, T_detect, T_shapes)
-    plt.legend(labels=['motion', 'tracking', 'detect', 'shapes'], loc=2)
-    plt.title('Processing time allocation')
-    plt.xlabel('Frame #')
-    plt.ylabel('Processing time [ms]')
-    plt.show()
+#     T_motion = 1e3*np.array(cnm.t_motion)
+#     T_detect = 1e3*np.array(cnm.t_detect)
+#     T_shapes = 1e3*np.array(cnm.t_shapes)
+#     T_track = 1e3*np.array(cnm.t_online) - T_motion - T_detect - T_shapes
+#     plt.figure()
+#     plt.stackplot(np.arange(len(T_motion)), T_motion, T_track, T_detect, T_shapes)
+#     plt.legend(labels=['motion', 'tracking', 'detect', 'shapes'], loc=2)
+#     plt.title('Processing time allocation')
+#     plt.xlabel('Frame #')
+#     plt.ylabel('Processing time [ms]')
+#     plt.show()
     
-    end  = time()
-#%%
-base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_"
-saveDict = {"T_motion":T_motion,"T_detect":T_detect,"T_shapes": T_shapes, "T_track": T_track}
-np.save(base_file+ "cm_1024_nnls_time.npy", saveDict, allow_pickle=True)
+#     end  = time()
+# #%%
+# base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_"
+# saveDict = {"T_motion":T_motion,"T_detect":T_detect,"T_shapes": T_shapes, "T_track": T_track}
+# np.save(base_file+ "cm_1024_nnls_time.npy", saveDict, allow_pickle=True)
 #%% RUN IF YOU WANT TO VISUALIZE THE RESULTS (might take time)
     c, dview, n_processes = \
         cm.cluster.setup_cluster(backend='local', n_processes=None,
                                  single_thread=False)
-    if opts.online['motion_correct']:
-        shifts = cnm.estimates.shifts[-cnm.estimates.C.shape[-1]:]
-        if not opts.motion['pw_rigid']:
-            memmap_file = cm.motion_correction.apply_shift_online(images, shifts,
-                                                        save_base_name='MC')
-        else:
-            mc = cm.motion_correction.MotionCorrect(fnames, dview=dview,
-                                                    **opts.get_group('motion'))
+    # if opts.online['motion_correct']:
+    #     shifts = cnm.estimates.shifts[-cnm.estimates.C.shape[-1]:]
+    #     if not opts.motion['pw_rigid']:
+    #         memmap_file = cm.motion_correction.apply_shift_online(images, shifts,
+    #                                                     save_base_name='MC')
+    #     else:
+    #         mc = cm.motion_correction.MotionCorrect(fnames, dview=dview,
+    #                                                 **opts.get_group('motion'))
 
-            mc.y_shifts_els = [[sx[0] for sx in sh] for sh in shifts]
-            mc.x_shifts_els = [[sx[1] for sx in sh] for sh in shifts]
-            memmap_file = mc.apply_shifts_movie(fnames, rigid_shifts=False,
-                                                save_memmap=True,
-                                                save_base_name='MC')
-    else:  # To do: apply non-rigid shifts on the fly
-        memmap_file = images.save(fnames[0][:-4] + 'mmap')
-    cnm.mmap_file = memmap_file
+    #         mc.y_shifts_els = [[sx[0] for sx in sh] for sh in shifts]
+    #         mc.x_shifts_els = [[sx[1] for sx in sh] for sh in shifts]
+    #         memmap_file = mc.apply_shifts_movie(fnames, rigid_shifts=False,
+    #                                             save_memmap=True,
+    #                                             save_base_name='MC')
+    # else:  # To do: apply non-rigid shifts on the fly
+    #     memmap_file = images.save(fnames[0][:-4] + 'mmap')
+    # cnm.mmap_file = memmap_file
 
 
     #cnm = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/mov_R2_20190219T210000_caiman_online_results_v3.0_new_params.hdf5')
@@ -166,8 +165,8 @@ np.save(base_file+ "cm_1024_nnls_time.npy", saveDict, allow_pickle=True)
                                 'cnn_lowest': cnn_lowest})
 
     cnm.estimates.evaluate_components(images, cnm.params, dview=dview)
-    cnm.estimates.Cn = Cn
-    cnm.save(os.path.splitext(fnames[0])[0]+'_caiman_online_results_v3.8.hdf5')
+    #cnm.estimates.Cn = Cn
+    cnm.save(os.path.splitext(fnames[0])[0]+'_caiman_online_results_final_v3.20.hdf5')
 
     dview.terminate()
     end  = time()

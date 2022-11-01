@@ -207,13 +207,13 @@ tp_gt, tp_comp, fn_gt, fp_comp, performance_suite2p = compare_components(s2p_est
                                                                          print_assignment=False,
                                                                          labels=['Suite_2p', 'CaImAn_Online'],
                                                                          plot_results=True)
-plt.savefig(savef + 'Fig7_supp_spatial_comparison3_v3.8.pdf')  
+plt.savefig(savef + 'Fig7_supp_spatial_comparison3_v3.9.pdf')  
 print(len(tp_gt) / (len(tp_gt) + len(fn_gt)))
 
-{'recall': 0.7522371364653244,
- 'precision': 0.6890368852459017,
- 'accuracy': 0.5615866388308977,
- 'f1_score': 0.7192513368983957}
+{'recall': 0.7768456375838926,
+ 'precision': 0.687964338781575,
+ 'accuracy': 0.5744416873449132,
+ 'f1_score': 0.7297084318360915}
 
 #%%
 tp_gt, tp_comp, fn_gt, fp_comp, performance_suite2p = compare_components(onacid_estimate, cnm_estimate,
@@ -231,7 +231,7 @@ print(len(tp_gt) / (len(tp_gt) + len(fn_gt)))
  'f1_score': 0.6204357164774471}
 
 #%% Fig Supp nueron detection comparison
-data = np.array([[0.61, 0.72, 0.53], [0.76, 0.72, 0.81], [0.72, 0.69, 0.75]])
+data = np.array([[0.61, 0.72, 0.53], [0.76, 0.72, 0.81], [0.73, 0.69, 0.78]])
 labels = ['FIOLA3000', 'CaImAn', 'CaImAn Online']
 x = np.arange(len(labels))  # the label locations
 
@@ -249,7 +249,7 @@ ax.set_ylim([0, 1])
 ax.legend()
 fig.tight_layout()
 plt.show()
-plt.savefig(savef + 'Fig7_supp_detection_F1.pdf') 
+plt.savefig(savef + 'Fig7_supp_detection_F1_v3.9.pdf') 
 
 
 
