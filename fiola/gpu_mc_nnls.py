@@ -68,10 +68,7 @@ class MotionCorrect(keras.layers.Layer):
         for name, value in locals().items():
             if name != 'self':
                 setattr(self, name, value)
-                logging.debug(f'{name}, {value}')
-                
-        print('start')
-        print(self.batch_size)
+                #logging.debug(f'{name}, {value}')
         
         self.template_0 = template
         self.shp_0 = self.template_0.shape
@@ -369,7 +366,6 @@ def get_mc_model(template, batch_size, **kwargs):
     fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m")  
 
     # initialization of the motion correction layer, initialized with the template
-    logging.info("New Model")
     mc_layer = MotionCorrect(template, batch_size, **kwargs)   
     mc, shifts = mc_layer(fr_in)    
 
@@ -569,8 +565,7 @@ class Pipeline_mc_nnls(object):
         for name, value in locals().items():
             if name != 'self':
                 setattr(self, name, value)
-                logging.debug(f'{name}, {value}')
-        
+                        
         b = self.mov[0:self.batch_size].T.reshape((-1, self.batch_size), order='F')         
         C_init = np.dot(Ab.T, b)
         x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
@@ -581,8 +576,6 @@ class Pipeline_mc_nnls(object):
 
         # build model, load estimator        
         self.model = get_model(self.template, self.Ab, self.batch_size, **kwargs)
-        # print("EAGER", tf.executing_eagerly())
-        #self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
         self.model.compile(optimizer='rmsprop', loss='mse')   
         self.estimator = tf.keras.estimator.model_to_estimator(self.model)
         
@@ -686,7 +679,7 @@ class Pipeline(object):
 
         # build model, load estimator        
         self.model = get_model(self.template, self.Ab, self.batch_size, **kwargs)
-        logging.info(f'EAGER {tf.executing_eagerly()}')
+        #logging.info(f'EAGER {tf.executing_eagerly()}')
         #self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
         self.model.compile(optimizer='rmsprop', loss='mse')   
         self.estimator = tf.keras.estimator.model_to_estimator(self.model)

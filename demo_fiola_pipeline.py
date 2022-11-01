@@ -33,7 +33,7 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 #%% 
 def main():
 #%%
-    mode = 'voltage'                    # 'voltage' or 'calcium 'fluorescence indicator
+    mode = 'calcium'                    # 'voltage' or 'calcium 'fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
         folder = '/home/nel/caiman_data/example_movies/volpy'
@@ -85,8 +85,8 @@ def main():
         mov = cm.load(fnames, subindices=range(num_frames_init))
         fnames_init = fnames.split('.')[0] + '_init.tif'
         mov.save(fnames_init)
-        #path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
-        path_ROIs = run_volpy_init(fnames_init)
+        path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
+        #path_ROIs = run_volpy_init(fnames_init)
         mask = load(path_ROIs)
         
         template = np.median(mov, 0)
@@ -94,10 +94,11 @@ def main():
     #    
     elif mode == 'calcium':
         fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
+        #fnames = '/home/nel/caiman_data/example_movies/Sue_2x_3000_40_-46.tif'
         fr = 30                         # sample rate of the movie
         
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-        num_frames_init =   500         # number of frames used for initialization
+        num_frames_init =   1000         # number of frames used for initialization
         num_frames_total =  2000        # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
         batch_size= 1                   # number of frames processing at the same time using gpu 
@@ -111,7 +112,7 @@ def main():
         hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
                                         # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
         n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
-        nb = 2                          # number of background components
+        nb = 1                          # number of background components
         trace_with_neg=False            # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
         lag = 5                         # lag for retrieving the online result.
                         
@@ -142,7 +143,8 @@ def main():
         # run caiman initialization. User might need to change the parameters 
         # inside the file to get good initialization result
         #caiman_file = '/home/nel/caiman_data/example_movies/demoMovie/memmap__d1_60_d2_80_d3_1_order_C_frames_1500__init.hdf5'
-        caiman_file = run_caiman_init(fnames_init)
+        caiman_file = run_caiman_init(fnames_init, pw_rigid=True, 
+                                      max_shifts=ms, gnb=nb, K=5, gSig=[4, 4])
         
         # load results of initialization
         cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
@@ -165,6 +167,9 @@ def main():
         # run motion correction on GPU on the initialization movie
         mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], min_mov=mov.min())             
         plt.plot(shifts_fiola)
+        plt.xlabel('frames')
+        plt.ylabel('pixels')                 
+        plt.legend(['x shifts', 'y shifts'])
     else:    
         mc_nn_mov = mov
     
@@ -179,7 +184,9 @@ def main():
         else:
             Ab = np.hstack((estimates.A.toarray(), estimates.b))
         trace_fiola, _ = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
-        plt.plot(trace_fiola.T)
+        plt.plot(trace_fiola[:-nb].T)
+        plt.xlabel('frames')
+        plt.ylabel('fluorescence signal')              
 
     else:        
         if trace_with_neg == True:
@@ -188,7 +195,6 @@ def main():
             trace_fiola = estimates.C+estimates.YrA
             trace_fiola[trace_fiola < 0] = 0
             trace_fiola = np.vstack((trace_fiola, estimates.f))
-
         
     #%% set up online pipeline
     params = fiolaparams(params_dict=options)
@@ -226,9 +232,10 @@ def main():
     fio.view_components(template)
     
     #%% save result
-    if False:
-        np.savez(fnames[:-4]+'_fiola_result.npz', time_per_step=time_per_step, traces=traces, 
-             caiman_file = caiman_file, 
-             fnames_exp = fnames, 
-             estimates = fio.estimates)
+    if True:
+        np.save(folder + f'/fiola_result', fio.estimates)
+        
+#%%
+if __name__ == "__main__":
+    main()
     

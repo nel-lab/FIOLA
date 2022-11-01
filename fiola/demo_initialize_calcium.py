@@ -40,7 +40,31 @@ logging.basicConfig(format=
                     "[%(process)d] %(message)s",
                     level=logging.INFO)
 #%%    
-def run_caiman_init(fnames):
+def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, K = 5, gSig = [4, 4]):
+    """
+    Run caiman for initialization.
+    
+    Parameters
+    ----------
+    fnames : string
+        file name
+    pw_rigid : bool, 
+        flag to select rigid vs pw_rigid motion correction. The default is True.
+    max_shifts: list
+        maximum shifts allowed for x axis and y axis. The default is [6, 6].
+    gnb : int
+        number of background components. The default is 2.
+    K : int
+        number of components per patch. The default is 5.
+    gSig : list
+        expected half size of neurons in pixels. The default is [4, 4].
+
+    Returns
+    -------
+    output_file : string
+        file with caiman output
+
+    """
     c, dview, n_processes = cm.cluster.setup_cluster(
             backend='local', n_processes=None, single_thread=False)
     
@@ -54,12 +78,8 @@ def run_caiman_init(fnames):
     decay_time = 0.4    # length of a typical transient in seconds
     dxy = (2., 2.)      # spatial resolution in x and y in (um per pixel)
     # note the lower than usual spatial resolution here
-    max_shift_um = (12., 12.)       # maximum shift in um
     patch_motion_um = (100., 100.)  # patch size for non-rigid correction in um
     # motion correction parameters
-    pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
-    # maximum allowed rigid shift in pixels
-    max_shifts = [int(a/b) for a, b in zip(max_shift_um, dxy)]
     # start a new patch for pw-rigid motion correction every x pixels
     strides = tuple([int(a/b) for a, b in zip(patch_motion_um, dxy)])
     # overlap between pathes (size of patch in pixels: strides+overlaps)
@@ -109,13 +129,10 @@ def run_caiman_init(fnames):
     plt.imshow(Cn,vmax=0.5)
     #   parameters for source extraction and deconvolution
     p = 1                    # order of the autoregressive system
-    gnb = 2                  # number of global background components
     merge_thr = 0.85         # merging threshold, max correlation allowed
     rf = 15
     # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 6          # amount of overlap between the patches in pixels
-    K = 5                    # number of components per patch
-    gSig = [4, 4]            # expected half size of neurons in pixels
     # initialization method (if analyzing dendritic data using 'sparse_nmf')
     method_init = 'greedy_roi'
     ssub = 2                     # spatial subsampling during initialization

@@ -2,6 +2,7 @@ channels:
 - conda-forge
 dependencies:
 - python == 3.8
+- cython
 - future
 - ipython
 - tensorflow-gpu==2.4.1
