@@ -9,17 +9,24 @@ Tested on Ubuntu 18.04 operating systems. Software dependencies can be found in 
 ## Installation guide
 It takes less than 3 mins to run the following code for installation on a normal desktop computers:
 
+```
 git clone https://github.com/nel-lab/FIOLA.git
-
+git clone https://github.com/flatironinstitute/CaImAn.git
 cd FIOLA
+```
 
-### Pip installation
+### Pip installation (Recommended)
+```
 conda create --name fiola python==3.8
+conda install spyder
 conda activate fiola
-pip install -r requirements.txt
+pip install -r requirements_with_caiman.txt
 pip install -e.
+cd CaImAn
+pip install -e . 
+```
 
-### mamba installation (suggested)
+### mamba installation (Outdated)
 In your base environment install mamba
 ``` conda install mamba ```
 
