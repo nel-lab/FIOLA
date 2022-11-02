@@ -21,8 +21,8 @@ for gpu in gpus:
   tf.config.experimental.set_memory_growth(gpu, True) # limit gpu memory
 import timeit
 import time
-#tf.get_logger().setLevel("ERROR")
-#tf.autograph.set_verbosity(1)
+tf.get_logger().setLevel("ERROR")
+tf.autograph.set_verbosity(0)
 
 from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline, Pipeline_mc_nnls
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ

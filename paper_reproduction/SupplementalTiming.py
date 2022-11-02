@@ -58,9 +58,10 @@ print(len(fiola_256), len(fiola_512), len(fiola_1024))
 #%% SF7 plotting
 fig, ax = plt.subplots()
 fiolas = [fiola_256, fiola_512, fiola_1024]
-for j in range(3):
+for j in range(2,3):
     for i in range(3):    
         data = np.load(fiolas[i][j], allow_pickle=True)
         ax.scatter(range(1,len(data)+ 1), data)
+        print(fiolas[i][j][-20:], np.mean(data)*1000)
 plt.hlines([0.0025, 0.005, 0.01225], 0, 3000)
 plt.legend(["256_100","256_200","256_500","512_100","512_200","512_500","1024_100","1024_200","1024_500",])

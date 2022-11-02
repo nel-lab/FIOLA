@@ -14,8 +14,8 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 from queue import Queue
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
-#tf.get_logger().setLevel("ERROR")
-#tf.autograph.set_verbosity(1)
+tf.get_logger().setLevel("ERROR")
+tf.autograph.set_verbosity(0)
 import tensorflow.keras as keras
 from tensorflow.signal import fft3d, ifft3d, ifftshift
 from threading import Thread

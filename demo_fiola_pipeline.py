@@ -19,7 +19,6 @@ from tensorflow.python.client import device_lib
 from time import time
     
 from fiola.demo_initialize_calcium import run_caiman_init
-from fiola.demo_initialize_voltage import run_volpy_init
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
 from fiola.utilities import download_demo, load, to_2D, movie_iterator
@@ -28,7 +27,7 @@ logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
                     "[%(process)d] %(message)s",
                     level=logging.INFO)    
-logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.4.1
+logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.5.0
 
 #%% 
 def main():
@@ -86,9 +85,7 @@ def main():
         fnames_init = fnames.split('.')[0] + '_init.tif'
         mov.save(fnames_init)
         path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
-        #path_ROIs = run_volpy_init(fnames_init)
-        mask = load(path_ROIs)
-        
+        mask = load(path_ROIs)        
         template = np.median(mov, 0)
        
     #    
@@ -142,7 +139,6 @@ def main():
         
         # run caiman initialization. User might need to change the parameters 
         # inside the file to get good initialization result
-        #caiman_file = '/home/nel/caiman_data/example_movies/demoMovie/memmap__d1_60_d2_80_d3_1_order_C_frames_1500__init.hdf5'
         caiman_file = run_caiman_init(fnames_init, pw_rigid=True, 
                                       max_shifts=ms, gnb=nb, K=5, gSig=[4, 4])
         
