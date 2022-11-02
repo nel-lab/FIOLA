@@ -1,8 +1,17 @@
 #!/usr/bin/env python
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
+from Cython.Build import cythonize
+from distutils.command.build_ext import build_ext
 
 with open("README.md") as file:
     read_me_description = file.read()
+
+ext_modules = [
+    Extension(
+        "fiola.oasis",
+        ["fiola/oasis.pyx"],
+    )
+]
 
 setup(
     name="fiola",
@@ -24,4 +33,6 @@ setup(
         'Intended Audience :: Researchers', 
     ],
     python_requires='>=3.7',
+    ext_modules=cythonize(ext_modules),
+    cmdclass={'build_ext': build_ext}
 )

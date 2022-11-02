@@ -1,0 +1,11 @@
+# fiola online processing different number of layers
+killall -9 python
+for c in 1 3 5 30
+	do  
+	for d in 1 
+		do
+			python Fig7_fiola.py --iteration $d --init_frames 3000 --num_layers $c --trace_with_neg False --center_dims 398 256 --lag 5
+			killall -9 python
+			sleep 10
+	done		
+done

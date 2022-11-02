@@ -31,7 +31,7 @@ import scipy.io
 from use_cases.test_run_fiola import run_fiola # must be in use_cases folder
         
 #%%
-ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron'
+ROOT_FOLDER = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/one_neuron'
 names = ['454597_Cell_0_40x_patch1', '456462_Cell_3_40x_1xtube_10A2',
          '456462_Cell_3_40x_1xtube_10A3', '456462_Cell_5_40x_1xtube_10A5',
          '456462_Cell_5_40x_1xtube_10A6', '456462_Cell_5_40x_1xtube_10A7', 
@@ -133,101 +133,123 @@ for idx, name in enumerate(np.array(names)):
 
 
 #%%
-modes = ['viola', 'volpy', 'meanroi']
-mode = modes[2]
+modes = ['viola', 'volpy', 'meanroi', 'meanroi_online']
+mode = modes[3]
 result = {}
 select = np.array(range(19))
-for mode in modes:
+#for mode in modes:
 result_threshold = {}
 thresh_list = np.arange(2.0, 4.1, 0.1)
-for thresh in thresh_list:    
-    print(f'threshold level {thresh}')
-    f1_scores = []                
-    prec = []
-    rec = []
-    thr = []
-    spnr_all = []
-    for idx, name in enumerate(np.array(names)[select]):
-        gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
-        dict1 = np.load(gt_path, allow_pickle=True)
-        length = dict1['v_sg'].shape[0] 
-        print(length)
-        
-        if mode == 'viola':
-            vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
-            vi_files = sorted([file for file in os.listdir(vi_folder) if 'filt_window' not in file and 'v2.1' in file])# and '24000' in file])
-            #if len(vi_files) == 0:
-            #    vi_files = sorted([file for file in os.listdir(vi_folder) if 'v2.0' in file and 'thresh_factor' in file])# and '24000' in file])
-            print(f'files number: {len(vi_files)}')
-            if len(vi_files) != 1:
-                raise Exception('file number greater than 1')
-                vi_files = [file for file in vi_files if '15000' in file]
-            vi_file = vi_files[0]
-            vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
-            
-            vi_spatial = vi.H.copy()
-            vi_temporal = vi.t_s.copy().flatten()
-            vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
-            thr.append(vi.thresh_factor[0])
-            
-            n_cells = 1
-            vi_result = {'F1':[], 'precision':[], 'recall':[]}        
-            rr = {'F1':[], 'precision':[], 'recall':[]}        
-            vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])        
-            dict1_v_sp_ = dict1['v_t'][vi_spikes]
+#for thresh in thresh_list:    
+print(f'threshold level {thresh}')
+f1_scores = []                
+prec = []
+rec = []
+thr = []
+spnr_all = []
+for idx, name in enumerate(np.array(names)[select]):
+    gt_path = os.path.join(ROOT_FOLDER, name, name+'_output.npz')
+    dict1 = np.load(gt_path, allow_pickle=True)
+    length = dict1['v_sg'].shape[0] 
+    print(length)
     
-        elif mode == 'volpy':
-            v_folder = os.path.join(ROOT_FOLDER, name, 'volpy')
-            v_files = sorted([file for file in os.listdir(v_folder)])
-            print(f'files number: {len(v_files)}')
-            v_file = v_files[0]
-            v = np.load(os.path.join(v_folder, v_file), allow_pickle=True).item()
-            
-            v_spatial = v['weights'][0]
-            v_temporal = v['ts'][0]
-            v_spikes = v['spikes'][0]        
-            v_spikes = np.delete(v_spikes, np.where(v_spikes >= dict1['v_t'].shape[0])[0])
-            dict1_v_sp_ = dict1['v_t'][v_spikes]
+    if mode == 'viola':
+        vi_folder = os.path.join(ROOT_FOLDER, name, 'viola')
+        vi_files = sorted([file for file in os.listdir(vi_folder) if 'filt_window' not in file and 'v2.1' in file])# and '24000' in file])
+        #if len(vi_files) == 0:
+        #    vi_files = sorted([file for file in os.listdir(vi_folder) if 'v2.0' in file and 'thresh_factor' in file])# and '24000' in file])
+        print(f'files number: {len(vi_files)}')
+        if len(vi_files) != 1:
+            raise Exception('file number greater than 1')
+            vi_files = [file for file in vi_files if '15000' in file]
+        vi_file = vi_files[0]
+        vi = np.load(os.path.join(vi_folder, vi_file), allow_pickle=True).item()
         
-        elif mode == 'meanroi':
-            mov = load(os.path.join(ROOT_FOLDER, name, name+'_mc.tif'))
-            spatial = load(os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5'))#.squeeze()
-            spatial = spatial.squeeze()[None, :, :]
-            mov = mov.reshape([mov.shape[0], -1], order='F')
-            spatial_F = [np.where(sp.reshape(-1, order='F')>0) for sp in spatial]
-            t_temporal = np.array([-mov[:, sp].mean((1,2)) for sp in spatial_F])
-            t_spatial = spatial
-            
-            t_temporal_p = signal_filter(t_temporal, freq=freq_all[select][idx], fr=frate_all[select][idx])
-            t_temporal_p[:, :30] = 0
-            t_temporal_p[:, -30:] = 0  
-            v_temporal = t_temporal_p.squeeze()              
-            #thresh = 3
-            t_spikes = np.array(extract_spikes(t_temporal_p, threshold=thresh)).squeeze()
-            t_spikes = np.delete(t_spikes, np.where(t_spikes >= dict1['v_t'].shape[0])[0])
-            dict1_v_sp_ = dict1['v_t'][t_spikes]
+        vi_spatial = vi.H.copy()
+        vi_temporal = vi.t_s.copy().flatten()
+        vi_spikes = np.array([np.array(sorted(list(set(sp)-set([0])))) for sp in vi.index])[np.argsort(vi.seq)][0]
+        thr.append(vi.thresh_factor[0])
         
-        if 'Cell' in name:
-            for i in range(len(dict1['sweep_time']) - 1):
-                dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
-            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+        n_cells = 1
+        vi_result = {'F1':[], 'precision':[], 'recall':[]}        
+        rr = {'F1':[], 'precision':[], 'recall':[]}        
+        vi_spikes = np.delete(vi_spikes, np.where(vi_spikes >= dict1['v_t'].shape[0])[0])        
+        dict1_v_sp_ = dict1['v_t'][vi_spikes]
+
+    elif mode == 'volpy':
+        v_folder = os.path.join(ROOT_FOLDER, name, 'volpy')
+        v_files = sorted([file for file in os.listdir(v_folder)])
+        print(f'files number: {len(v_files)}')
+        v_file = v_files[0]
+        v = np.load(os.path.join(v_folder, v_file), allow_pickle=True).item()
         
-        precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned, spnr\
-                            = metric(name, dict1['sweep_time'], dict1['e_sg'], 
-                                  dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
-                                  v_temporal, dict1_v_sp_ , 
-                                  dict1['v_t'], dict1['v_sub'],init_frames=init_frames_all[select][idx], save=False)
-            
-        p = len(e_match)/len(v_spike_aligned)
-        r = len(e_match)/len(e_spike_aligned)
-        f = (2 / (1 / p + 1 / r))
+        v_spatial = v['weights'][0]
+        v_temporal = v['ts'][0]
+        v_spikes = v['spikes'][0]        
+        v_spikes = np.delete(v_spikes, np.where(v_spikes >= dict1['v_t'].shape[0])[0])
+        dict1_v_sp_ = dict1['v_t'][v_spikes]
     
-        f1_scores.append(f)                
-        prec.append(p)
-        rec.append(r)
-        spnr_all.append(spnr)
-    result_threshold[str(thresh)] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
-    result[mode] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
+    elif mode == 'meanroi':
+        mov = load(os.path.join(ROOT_FOLDER, name, name+'_mc.tif'))
+        spatial = load(os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5'))#.squeeze()
+        spatial = spatial.squeeze()[None, :, :]
+        mov = mov.reshape([mov.shape[0], -1], order='F')
+        spatial_F = [np.where(sp.reshape(-1, order='F')>0) for sp in spatial]
+        t_temporal = np.array([-mov[:, sp].mean((1,2)) for sp in spatial_F])
+        t_spatial = spatial
+        
+        t_temporal_p = signal_filter(t_temporal, freq=freq_all[select][idx], fr=frate_all[select][idx])
+        t_temporal_p[:, :30] = 0
+        t_temporal_p[:, -30:] = 0  
+        v_temporal = t_temporal_p.squeeze()              
+        #thresh = 3
+        t_spikes = np.array(extract_spikes(t_temporal_p, threshold=thresh)).squeeze()
+        t_spikes = np.delete(t_spikes, np.where(t_spikes >= dict1['v_t'].shape[0])[0])
+        dict1_v_sp_ = dict1['v_t'][t_spikes]
+    
+    elif mode == 'meanroi_online':
+        mov = load(os.path.join(ROOT_FOLDER, name, name+'_mc.tif'))
+        spatial = load(os.path.join(ROOT_FOLDER, name, name+'_ROI.hdf5'))#.squeeze()
+        spatial = spatial.squeeze()[None, :, :]
+        mov = mov.reshape([mov.shape[0], -1], order='F')
+        spatial_F = [np.where(sp.reshape(-1, order='F')>0) for sp in spatial]
+        t_temporal = np.array([-mov[:, sp].mean((1,2)) for sp in spatial_F])
+        t_spatial = spatial
+        from fiola.signal_analysis_online import SignalAnalysisOnlineZ
+        init_frames = init_frames_all[idx]
+        saoz = SignalAnalysisOnlineZ(mode='voltage', window=10000, step=5000, detrend=True, flip=False,
+                                     do_scale=False, template_window=2, robust_std=False, adaptive_threshold=True, fr=frate_all[idx], freq=freq_all[idx], 
+                                     minimal_thresh=3.0, online_filter_method = 'median_filter', filt_window = 15, do_plot=False)               
+        saoz.fit(t_temporal[:, :init_frames], num_frames=t_temporal.shape[1])
+        for n in range(init_frames, t_temporal.shape[1]):
+            saoz.fit_next(t_temporal[:, n: n+1], n)
+        t_spikes = np.unique(saoz.index)
+        t_spikes = t_spikes[1:] # remove the first one
+        t_spikes = np.delete(t_spikes, np.where(t_spikes >= dict1['v_t'].shape[0])[0])        
+        dict1_v_sp_ = dict1['v_t'][t_spikes]
+        v_temporal = saoz.t_s[0]
+    
+    if 'Cell' in name:
+        for i in range(len(dict1['sweep_time']) - 1):
+            dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([np.logical_and(dict1_v_sp_>dict1['sweep_time'][i][-1], dict1_v_sp_<dict1['sweep_time'][i+1][0])])[1])
+        dict1_v_sp_ = np.delete(dict1_v_sp_, np.where([dict1_v_sp_>dict1['sweep_time'][i+1][-1]])[1])
+    
+    precision, recall, F1, sub_corr, e_match, v_match, mean_time, e_spike_aligned, v_spike_aligned, spnr\
+                        = metric(name, dict1['sweep_time'], dict1['e_sg'], 
+                              dict1['e_sp'], dict1['e_t'],dict1['e_sub'], 
+                              v_temporal, dict1_v_sp_ , 
+                              dict1['v_t'], dict1['v_sub'],init_frames=init_frames_all[select][idx], save=False)
+        
+    p = len(e_match)/len(v_spike_aligned)
+    r = len(e_match)/len(e_spike_aligned)
+    f = (2 / (1 / p + 1 / r))
+
+    f1_scores.append(f)                
+    prec.append(p)
+    rec.append(r)
+    spnr_all.append(spnr)
+#result_threshold[str(thresh)] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
+result[mode] = {'f1':f1_scores, 'precision':prec, 'recall':rec, 'spnr':spnr_all}
 
 #%%
 plt.plot(f1_scores);plt.plot(prec);plt.plot(rec);plt.legend(['f1','prec', 'rec','threshold'])
@@ -248,10 +270,13 @@ result_threshold['2.900000000000001']
 
 
 #%%
-SAVE_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron'
-np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_15_template_window_2'), result)
-
+SAVE_FOLDER = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron'
+#np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_15_template_window_2'), result)
+#np.save(os.path.join(SAVE_FOLDER, f'viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_15_template_window_2'), result)
 np.save(os.path.join(SAVE_FOLDER, f'mean_roi_threshold_2.9'), result_threshold['2.900000000000001'])
+np.save(os.path.join(SAVE_FOLDER, f'mean_roi_online_v3.0'), result)
+
+
    
 #%%
 sp = spnr_all.copy()

@@ -1,0 +1,61 @@
+killall -9 python
+for c in 10 
+do  
+   python Fig7_fiola.py --iteration 1 --init_frames 3000 --num_layers 10 --trace_with_neg False --center_dims 0 0
+   killall -9 python
+   sleep 10		
+done
+
+#killall -9 python
+#for c in 10 
+#do  
+#   python Fig7_fiola.py --iteration 1 --init_frames 3000 --num_layers $c --trace_with_neg False --center_dims 398 256
+#   killall -9 python
+#   sleep 10		
+#done
+
+
+# fiola online processing
+#killall -9 python
+#for c in 500 1000 1500 3000
+#do
+#	for d in 1 2 3
+#	do
+#		python Fig7_fiola.py --iteration $d --init_frames $c --num_layers 10 --trace_with_neg False --#center_dims 0
+#		killall -9 python
+#		sleep 10		
+#	done
+#done
+
+#fiola not include bg
+#python Fig7_fiola.py --iteration 1 --init_frames 3000 --num_layers 10 --trace_with_neg False 
+
+# fiola online processing different number of layers
+#killall -9 python
+#for c in 1 3 5 10 
+#do  
+#   python Fig7_fiola.py --iteration 1 --init_frames 3000 --num_layers $c --trace_with_neg False
+#   killall -9 python
+#   sleep 10		
+#done
+
+# caiman processing
+#python Fig7_caiman_init.py --fnames '/media/nel/storage/fiola/R2_20190219/#mov_R2_20190219T210000.hdf5' --num_frames_init 0 --K 8
+
+
+
+# caiman init for FIOLA
+#for c in 500 1000 1500 3000
+#do
+#    python Fig7_caiman_init.py --fnames '/media/nel/storage/fiola/R2_20190219/#mov_R2_20190219T210000.hdf5' --num_frames_init $c
+#done
+
+#for (( c=1; c<=5; c++ ))
+#do  
+#   python Fig7_fiola.py --iteration $c --init_frames 1500
+#done
+
+
+#python Fig7_fiola.py --iteration 1 --init_frames 500
+#python Fig7_fiola.py --iteration 1 --init_frames 1000
+#python Fig7_fiola.py --iteration 1 --init_frames 1500

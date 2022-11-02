@@ -1,9 +1,11 @@
 future
 ipython
-tensorflow==2.4.1
+matplotlib
 opencv-python
+peakutils
 scikit-image
 scikit-learn
-matplotlib
-peakutils
+tensorflow==2.4.1
+tensorflow-addons
+
 

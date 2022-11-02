@@ -1,0 +1,11 @@
+for d in 30
+do 
+    for iterations in 0 1 2
+    do
+        python demo_test_simulations.py --name_id 1 --iterations $iterations --num_layers $d --do_deconvolve False  
+	killall -9 python
+	sleep 3   
+    done   
+done
+
+

@@ -7,9 +7,12 @@ accuracy and timing for the algorithm sao
 """
 
 #%%
-import matplotlib
-matplotlib.rcParams['pdf.fonttype'] = 42
-matplotlib.rcParams['ps.fonttype'] = 42
+import matplotlib as mpl
+mpl.rcParams.update({'pdf.fonttype' : 42, 
+                     'ps.fonttype' : 42, 
+                     'legend.frameon' : False, 
+                     'axes.spines.right' :  False, 
+                     'axes.spines.top' : False})
 import matplotlib.pyplot as plt
 import numpy as np 
 
@@ -150,7 +153,6 @@ ax0.legend(ncol=2, frameon=False, loc=0)
 plt.tight_layout()
 #plt.savefig(os.path.join(save_folder, 'one_neuron_F1_v2.0.pdf'))
 
-
 x = np.arange(0, 1)  # the label locations
 width = 0.35  # the width of the bars
 rects1 = ax1.bar(x - width/2, v_mean[0], width, yerr=v_std[0], capsize=10, label=f'Viola')
@@ -192,95 +194,52 @@ x = np.arange(len(labels))  # the label locations
 
 width = 0.66  # the width of the bars
 
-result = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy', allow_pickle=True).item()
+result = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy', allow_pickle=True).item()
 viola = result['viola']['f1']
 volpy = result['volpy']['f1']
-viola1 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_2.npy', allow_pickle=True)
+viola1 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_2.npy', allow_pickle=True)
 viola1 = viola1.item()['viola']['f1']
-viola2 = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_0.npy', allow_pickle=True)
+viola2 = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500_filt_window_[8, 4]_template_window_0.npy', allow_pickle=True)
 viola2 = viola2.item()['viola']['f1']
-meanroi = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/mean_roi_threshold_2.9.npy', allow_pickle=True)
+meanroi = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/mean_roi_threshold_2.9.npy', allow_pickle=True)
 meanroi = meanroi.item()['f1']
 v = np.array([viola, volpy, viola1, viola2, meanroi])
 v_mean = v.mean(1)
 v_std = v.std(1)
 
-#%%
-from matplotlib import gridspec
-fig = plt.figure(figsize=(8, 6)) 
-#gs = gridspec.GridSpec(1, 1) 
-#ax0 = plt.subplot(gs[0])
-ax1 = plt.subplot()
-# rects1 = ax0.bar(x+1 - width/2, viola, width/4, label=f'FIOLA_25ms')
-# rects2 = ax0.bar(x+1 - width/4, volpy, width/4, label=f'VolPy')
-# rects3 = ax0.bar(x+1  , viola1, width/4, label=f'FIOLA_17.5ms')
-# rects4 = ax0.bar(x+1 + width/4, viola2, width/4, label=f'FIOLA_12.5ms')
-
-
-# # Add some text for labels, title and custom x-axis tick labels, etc.
-# ax0.spines['top'].set_visible(False)
-# ax0.spines['right'].set_visible(False)
-# ax0.spines['bottom'].set_visible(False)
-# ax0.set_ylim([0,1])
-# ax0.set_xlabel('Cell')
-# ax0.set_xticks(x+1)
-
-# ax0.set_ylabel('F1 Score')
-# #ax0.set_title('Fiola vs VolPy')
-# #ax0.set_xticklabels(labels, rotation='vertical', fontsize=3)
-# ax0.xaxis.set_ticks_position('none') 
-# ax0.yaxis.set_tick_params(length=8)
-# ax0.legend()
-# ax0.legend(ncol=2, frameon=False, loc=0)
-# plt.tight_layout()
-#plt.savefig(os.path.join(save_folder, 'one_neuron_F1_v2.0.pdf'))
-
-
-x = np.arange(0, 1)  # the label locations
-width = 0.35  # the width of the bars
-rects1 = ax1.bar(x - width/2, v_mean[0], width/4, yerr=v_std[0], capsize=5, label=f'FIOLA_25ms')
-rects2 = ax1.bar(x - width/4, v_mean[1], width/4, yerr=v_std[1], capsize=5, label=f'VolPy')
-rects3 = ax1.bar(x  , v_mean[2], width/4, yerr=v_std[2], capsize=5, label=f'FIOLA_17.5ms')
-rects4 = ax1.bar(x + width/4, v_mean[3], width/4, yerr=v_std[3], capsize=5, label=f'FIOLA_12.5ms')
-rects4 = ax1.bar(x + width/2, v_mean[4], width/4, yerr=v_std[4], capsize=5, label=f'MeansROI')
-
-
-ax1.spines['top'].set_visible(False)
-ax1.spines['right'].set_visible(False)
-ax1.spines['bottom'].set_visible(False)
-ax1.spines['left'].set_visible(False)
-ax1.set_xlabel('Average')
-ax1.xaxis.set_ticks_position('none') 
-ax1.yaxis.set_ticks_position('none') 
-ax1.set_xticks([])
-ax1.set_yticks([])
-ax1.set_ylim([0,1])
-
-#ax1.set_xticks(None)
-#ax1.set_xticklabels(labels, rotation='horizontal', fontsize=5)
-ax1.legend()
-#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-#plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1_Fiola&VolPy_non_symm_median_1.pdf'))
 
 #%%
-from scipy import stats
-rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
-rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
-stats.ttest_ind(volpy,viola2,  equal_var = False)
-stats.wilcoxon(volpy, viola2)
+amps = [0]
+spk_amps = [0]
+colors = ['C0', 'C1', 'C2', 'C3']
+methods = ['FIOLA', 'VolPy', 'FIOLA_17.5ms', 'FIOLA_12.5ms']
 
-stats.ttest_ind(viola,viola2,  equal_var = False)
-stats.wilcoxon(viola, viola2)
+r_all = []
+rr = {}
+batches = [0]
+n_batch = len(batches)
 
-#%%
-from scipy import stats
-rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
-rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
-stats.ttest_ind(viola, meanroi,  equal_var = False)
-stats.wilcoxon(viola, meanroi, alternative='greater')
-#stats.ttest_ind(viola, viola2,  equal_var = False)
-stats.wilcoxon(viola, meanroi)
+for batch in batches:
+    for jj, method in enumerate(methods):
+        results = v[jj]
+        rr[method] = results
+    r_all.append(rr)
+    rr = {}
 
+fig = plt.figure()
+ax = plt.subplot(111)
+barplot_pvalue(r_all, methods, colors, ax, width=0.3)
+
+ax.set_xlabel('')
+ax.set_ylabel('F1 score')
+#ax.set_ylim([0, 1.2])
+ax.set_xticks(amps)
+ax.set_xticklabels(spk_amps)
+handles, labels = plt.gca().get_legend_handles_labels()
+by_label = dict(zip(labels, handles))
+plt.legend(by_label.values(), by_label.keys())
+plt.tight_layout()
+#plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig4h.pdf')
 
 #%% Fig5 b
 fig, ax = plt.subplots(1, 1)
@@ -537,7 +496,7 @@ F1 = F1.reshape([3,8])
 
 
 #%%
-result_all = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neuron/viola_F1_v2.1.npy', 
+result_all = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neuron/viola_F1_v2.1.npy', 
                      allow_pickle=True).item()
 F1 = np.zeros([3,8])
 
@@ -563,7 +522,7 @@ for keys, values in result_all.items():
         F1[row, col] = vv['f1']
         col = col + 1
         
-result = np.load('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy',
+result = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/viola_volpy_F1_v2.1_freq_15_thresh_factor_step_2500.npy',
                  allow_pickle=True).item()
 rr = result['viola']['f1'].copy()
 F1[0,0] = rr[0]
@@ -613,8 +572,153 @@ ax.yaxis.set_tick_params(length=8)
 ax.set_ylim([0,1])
 ax.legend(ncol=4, frameon=False, loc='upper center')
 plt.tight_layout()
-plt.savefig(os.path.join(save_folder, 'overlapping_neurons_F1_v2.1.pdf' ))
+#plt.savefig(os.path.join(save_folder, 'overlapping_neurons_F1_v2.1.pdf' ))
 
+
+
+#%%
+result_all = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_overlapping_neuron/meanroi_F1_v3.0.npy', allow_pickle=True).item()
+F2 = np.zeros([3,8])
+
+for keys, values in result_all.items():
+    print(keys)
+    if '0&1' in keys:
+        row = 0        
+    if '0&2' in keys:
+        row = 1
+    if '1&2' in keys:
+        row = 2
+    print(row)
+    
+    if '_25percent' in keys:
+        col = 6
+    if '_10percent' in keys:
+        col = 4
+    if '_0percent' in keys:
+        col = 2
+    print(col)
+        
+    for kk, vv in values.items():
+        F2[row, col] = vv['f1']
+        col = col + 1
+        
+result = np.load('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_one_neuron/mean_roi_online_v3.0.npy',
+                 allow_pickle=True).item()
+rr = result['meanroi_online']['f1'].copy()
+F2[0,0] = rr[0]
+F2[1,0] = rr[0]
+F2[0,1] = rr[1]
+F2[1,1] = rr[2]
+F2[2,0] = rr[1]
+F2[2,1] = rr[2]
+
+ff1 = F2[0].reshape((2,4), order='F')
+
+
+#%%
+save_folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/'
+label = ['Cell1', 'Cell2']
+#x = np.arange(len(label))  # the label locations
+x = np.array([0, 1])
+width = 0.1  # the width of the bars
+
+ff = F1[0].reshape((2,4), order='F')
+colors=['blue', 'yellow', 'red', 'green']
+methods = ['seperate', '0%', '10%', '25%']
+
+fig = plt.figure()
+ax = plt.subplot(121)
+ax1 = plt.subplot(122)
+
+for idx in range(4):
+    ax.bar(x+width*(idx-1.5), ff[:, idx], width, color=colors[idx], label=methods[idx])
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+#ax.spines['bottom'].set_visible(False)
+ax.set_ylabel('F1 Score')
+ax.set_xticks(x)
+ax.set_xticklabels(label)
+ax.xaxis.set_ticks_position('none') 
+ax.yaxis.set_tick_params(length=8)
+ax.set_ylim([0.5,1])
+ax.legend(frameon=False,  loc='upper center')
+
+
+#x = np.array([0, 1])
+#width = 0.1  # the width of the bars
+      
+colors=['blue', 'orange']
+methods = ['FIOLA', 'meanroi online']
+for idx in range(2):
+    ax1.bar(x+width*(idx-0.5), [ff.mean(1), ff1.mean(1)][idx], width, color=colors[idx], label=methods[idx])
+ax1.spines['top'].set_visible(False)
+ax1.spines['right'].set_visible(False)
+#ax1.spines['bottom'].set_visible(False)
+ax1.set_ylabel('F1 Score')
+ax1.set_xticks(x)
+ax1.set_xticklabels(label)
+ax1.xaxis.set_ticks_position('none') 
+ax1.yaxis.set_tick_params(length=8)
+ax1.set_ylim([0.5,1])
+ax1.legend(frameon=False)
+fig.tight_layout()
+
+#plt.savefig(save_folder+'v3.0/real_data_overlapping.pdf')
+
+#%%
+colors=['blue', 'orange']
+methods = ['FIOLA', 'meanroi online']
+
+fig = plt.figure()
+ax = plt.subplot(111)
+
+x = np.array([0, 1, 2 ,3])
+label = ['seperate', '0%', '10%', '25%']
+width = 0.2
+for idx in range(2):
+    ax.bar(x+width*(idx-0.5), [ff[0], ff1[0]][idx], width, color=colors[idx], label=methods[idx])
+
+ax.set_ylabel('F1 Score')
+ax.set_xticks(x)
+ax.set_xticklabels(label)
+ax.set_ylim([0.3,1])
+ax.legend()
+fig.tight_layout()
+plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig_supp_real_data_ablation.pdf')
+
+
+#%%
+save_folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/'
+
+#x = np.arange(len(label))  # the label locations
+x = np.array([0, 1])
+width = 0.1  # the width of the bars
+colors=['blue', 'yellow', 'red', 'green']
+methods = ['seperate', '0%', '10%', '25%']
+
+fig, ax = plt.subplots(1, 3, figsize=(15, 8))
+for j in range(3):
+    if j == 0:
+        label = ['Cell1', 'Cell2']
+    elif j == 1:
+        label = ['Cell1', 'Cell3']
+    elif j == 2:
+        label = ['Cell2', 'Cell3']
+    
+    ff = F1[j].reshape((2,4), order='F')
+    for idx in range(4):
+        ax[j].bar(x+width*(idx-1.5), ff[:, idx], width, color=colors[idx], label=methods[idx])
+    if j == 0:
+        ax[j].set_ylabel('F1 Score')
+        ax[j].legend(frameon=False,  loc='upper center')
+    ax[j].set_xticks(x)
+    ax[j].set_xticklabels(label)
+    ax[j].xaxis.set_ticks_position('none') 
+    ax[j].yaxis.set_tick_params(length=8)
+    ax[j].set_ylim([0.5,1])
+    
+plt.tight_layout()
+#plt.savefig(save_folder+'v3.0/supp/Fig_supp_real_data_overlapping.pdf')
 ################################################################################################
 #%%
 save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/overlapping_neurons'
@@ -673,4 +777,87 @@ plt.vlines(percent_10_2_spikes, 1.2, 1.3, color='red')
 plt.vlines(percent_25_2_spikes, 1.3, 1.4, color='green')
 plt.legend()
 
+#%%
+from matplotlib import gridspec
+fig = plt.figure(figsize=(8, 6)) 
+#gs = gridspec.GridSpec(1, 1) 
+#ax0 = plt.subplot(gs[0])
+ax1 = plt.subplot()
+# rects1 = ax0.bar(x+1 - width/2, viola, width/4, label=f'FIOLA_25ms')
+# rects2 = ax0.bar(x+1 - width/4, volpy, width/4, label=f'VolPy')
+# rects3 = ax0.bar(x+1  , viola1, width/4, label=f'FIOLA_17.5ms')
+# rects4 = ax0.bar(x+1 + width/4, viola2, width/4, label=f'FIOLA_12.5ms')
 
+
+# # Add some text for labels, title and custom x-axis tick labels, etc.
+# ax0.spines['top'].set_visible(False)
+# ax0.spines['right'].set_visible(False)
+# ax0.spines['bottom'].set_visible(False)
+# ax0.set_ylim([0,1])
+# ax0.set_xlabel('Cell')
+# ax0.set_xticks(x+1)
+
+# ax0.set_ylabel('F1 Score')
+# #ax0.set_title('Fiola vs VolPy')
+# #ax0.set_xticklabels(labels, rotation='vertical', fontsize=3)
+# ax0.xaxis.set_ticks_position('none') 
+# ax0.yaxis.set_tick_params(length=8)
+# ax0.legend()
+# ax0.legend(ncol=2, frameon=False, loc=0)
+# plt.tight_layout()
+#plt.savefig(os.path.join(save_folder, 'one_neuron_F1_v2.0.pdf'))
+
+
+x = np.arange(0, 1)  # the label locations
+width = 0.35  # the width of the bars
+rects1 = ax1.bar(x - width/2, v_mean[0], width/4, yerr=v_std[0], capsize=5, label=f'FIOLA_25ms')
+rects2 = ax1.bar(x - width/4, v_mean[1], width/4, yerr=v_std[1], capsize=5, label=f'VolPy')
+rects3 = ax1.bar(x  , v_mean[2], width/4, yerr=v_std[2], capsize=5, label=f'FIOLA_17.5ms')
+rects4 = ax1.bar(x + width/4, v_mean[3], width/4, yerr=v_std[3], capsize=5, label=f'FIOLA_12.5ms')
+rects4 = ax1.bar(x + width/2, v_mean[4], width/4, yerr=v_std[4], capsize=5, label=f'MeansROI')
+
+
+ax1.spines['top'].set_visible(False)
+ax1.spines['right'].set_visible(False)
+ax1.spines['bottom'].set_visible(False)
+ax1.spines['left'].set_visible(False)
+ax1.set_xlabel('Average')
+ax1.xaxis.set_ticks_position('none') 
+ax1.yaxis.set_ticks_position('none') 
+ax1.set_xticks([])
+ax1.set_yticks([])
+ax1.set_ylim([0,1])
+
+#ax1.set_xticks(None)
+#ax1.set_xticklabels(labels, rotation='horizontal', fontsize=5)
+ax1.legend()
+#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
+#plt.savefig(os.path.join(save_folder, 'one_neuron_F1_average_v2.1_Fiola&VolPy_non_symm_median_1.pdf'))
+
+#%%
+from scipy import stats
+rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
+rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
+stats.ttest_ind(volpy,viola2,  equal_var = False)
+stats.wilcoxon(volpy, viola2)
+stats.ttest_ind(viola,viola2,  equal_var = False)
+stats.wilcoxon(viola, viola2)
+
+#%%
+for ii, m1 in enumerate([viola, volpy, viola1, viola2]):
+    for jj, m2 in enumerate([viola, volpy, viola1, viola2]):
+        if ii < jj:
+            print(ii); print(jj)
+            print(stats.ttest_rel(m1, m2))
+            #print(stats.wilcoxon(m1, m2))
+
+
+
+#%%
+from scipy import stats
+rvs1 = stats.norm.rvs(loc=7,scale=10,size=500)
+rvs2 = stats.norm.rvs(loc=5,scale=10,size=500)
+stats.ttest_ind(viola, meanroi,  equal_var = False)
+stats.wilcoxon(viola, meanroi, alternative='greater')
+#stats.ttest_ind(viola, viola2,  equal_var = False)
+stats.wilcoxon(viola, meanroi)

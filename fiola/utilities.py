@@ -28,6 +28,10 @@ from skimage.io import imread
 from sklearn.decomposition import NMF
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from scipy.sparse import spdiags
+from past.utils import old_div
+from tifffile import memmap, imread
+import caiman as cm
 
 from fiola.external.cell_magic_wand import cell_magic_wand_single_point
 
@@ -36,7 +40,9 @@ def download_demo(folder, name):
     file_dict = {'demo_voltage_imaging.hdf5': 'https://www.dropbox.com/s/0giota4b1dmpo1m/demo_voltage_imaging.hdf5?dl=0', 
              'demo_voltage_imaging_ROIs.hdf5':'https://www.dropbox.com/s/hizj9kvv09jkxg4/demo_voltage_imaging_ROIs.hdf5?dl=0', 
              'k53.tif':'https://www.dropbox.com/s/5mqauy6li6mwb4p/k53.tif?dl=0', 
-             'k53_ROIs.hdf5': 'https://www.dropbox.com/s/bpsjw2vahvjkcdu/k53_ROIs.hdf5?dl=0'}    
+             'k53_ROIs.hdf5': 'https://www.dropbox.com/s/bpsjw2vahvjkcdu/k53_ROIs.hdf5?dl=0', 
+             'demoMovie.tif': 'https://www.dropbox.com/s/i3wue8k5e0xpd36/demoMovie.tif?dl=0', 
+             'Sue_2x_3000_40_-46.tif': 'https://www.dropbox.com/s/7xaech6s7egy0xr/Sue_2x_3000_40_-46.tif?dl=0'}    
     if name not in file_dict.keys():
         raise Exception('files can not be downloaded')
 
@@ -977,6 +983,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
         http://proceedings.mlr.press/v39/kimura14.pdf
     """
     # smooth the components
+
     dims, T = np.shape(Y)[:-1], np.shape(Y)[-1]
     K = A.shape[1]  # number of neurons
     nb = b.shape[1]  # number of background components
@@ -991,7 +998,7 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
     ind_A = spr.csc_matrix(ind_A)  # indicator of nonnero pixels
     def HALS4activity(Yr, A, C, iters=2, semi_nmf=False):
         U = A.T.dot(Yr)
-        V = A.T.dot(A) + np.finfo(A.dtype).eps
+        V = (A.T.dot(A)).toarray() + np.finfo(A.dtype).eps        
         for _ in range(iters):
             for m in range(len(U)):  # neurons and background
                 if semi_nmf:
@@ -1015,11 +1022,14 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
                 A[:, K + m] = np.clip(A[:, K + m] + ((U[K + m] - V[K + m].dot(A.T)) /
                                                      V[K + m, K + m]), 0, np.inf)
         return A
-    Ab = np.c_[A, b]
+    Ab = scipy.sparse.hstack((A,b))
     Cf = np.r_[C, f.reshape(nb, -1)]
-
-    for thr_ in np.linspace(3.5,2.5,maxIter):    
-        Cf = HALS4activity(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf, semi_nmf=semi_nmf)
+    count = 0
+    Yr = np.reshape(Y, (np.prod(dims), T), order='F')
+    for thr_ in np.linspace(3.5,2.5,maxIter):
+        count += 1
+        logging.info('Hals Iteration activity:' + str(count))
+        Cf = HALS4activity(Yr, Ab, Cf, semi_nmf=semi_nmf)
         Cf_processed = Cf.copy()
 
         if not update_bg:
@@ -1046,8 +1056,12 @@ def hals(Y, A, C, b, f, bSiz=3, maxIter=5, semi_nmf=False, update_bg=True, use_s
                         Cf_processed[i] = Cf_processed[i] + bl  
                     
         Cf = Cf_processed
-        Ab = HALS4shape(np.reshape(Y, (np.prod(dims), T), order='F'), Ab, Cf)
-        
+        logging.info('Hals Iteration shape:' + str(count))
+        Ab = HALS4shape(Yr, Ab.toarray(), Cf)
+        if count<maxIter:
+            Ab = scipy.sparse.coo_matrix(Ab)
+    
+    
     return Ab[:, :-nb], Cf[:-nb], Ab[:, -nb:], Cf[-nb:].reshape(nb, -1)
 
 def HALS4activity(Yr, A, C, iters=2, semi_nmf=False):
@@ -2208,7 +2222,7 @@ def whitened_matched_filter(data, locs, window):
     return datafilt
 
 
-def signal_filter(sg, freq, fr, order=3, mode='high'):
+def signal_filter(sg, freq, fr, order=3, mode='high', remove_mean=False):
     """
     Function for high/low passing the signal with butterworth filter
     
@@ -2231,7 +2245,14 @@ def signal_filter(sg, freq, fr, order=3, mode='high'):
     """
     normFreq = freq / (fr / 2)
     b, a = signal.butter(order, normFreq, mode)
-    sg = np.single(signal.filtfilt(b, a, sg, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    step = 10000
+    for i in range(0,sg.shape[0],step): # to make it scalable for large datasets
+        logging.info('Filtering pixels up to:'+str(i))  
+        temp_sig = sg[i:i+step]
+        if remove_mean:
+            temp_sig  -= temp_sig.mean(axis=1)[:,None]
+        sg[i:i+step] = np.single(signal.filtfilt(b, a, temp_sig, method='gust', padtype='odd', padlen=3 * (max(len(b), len(a)) - 1)))
+    
     return sg
 
 def extract_spikes(traces, threshold):
@@ -2241,3 +2262,56 @@ def extract_spikes(traces, threshold):
         spk = find_peaks(cc, threshold)[0]
         spikes.append(spk)
     return spikes
+
+#%%
+def compute_residuals(mov, Ain, b_in, f_in, Cin):
+    """
+    Compute the residual to be added to the nonnegative traces
+    """    
+    Yr = np.reshape(mov.transpose([1,2,0]), (Ain.shape[0], mov.shape[0]), order='F')
+    nA = (Ain.power(2).sum(axis=0))
+    nr = nA.size
+    YA = spdiags(old_div(1., nA), 0, nr, nr) * \
+        (Ain.T.dot(Yr) - (Ain.T.dot(b_in)).dot(f_in))
+    AA = spdiags(old_div(1., nA), 0, nr, nr) * (Ain.T.dot(Ain))
+    YrA = YA - AA.T.dot(Cin)
+    return YrA
+
+#% it is possible that this makes the computaiton slower. Not tested 
+def movie_iterator(fname, start_idx, end_idx, batch_size=1):
+    """
+    Parameters
+    ----------
+    fname : str
+        file name to be iterated over.
+    start_idx : int
+        start iteration in index.
+    end_idx : int
+        end iteration on index.
+
+    Yields
+    ------
+    iterator
+        frames and relative indexes
+
+    """
+    if isinstance(fname, list):
+        print('mapping tiff files')
+        memmap_image = cm.load(fname)
+        print(memmap_image.shape)
+        for idx in range(start_idx, end_idx, batch_size):
+            yield (idx, memmap_image[idx:idx+batch_size].astype(np.float32))
+    elif fname.endswith('.tif') or fname.endswith('.tiff'):
+        print('mapping tif file')
+        memmap_image = memmap(fname)
+        for idx in range(start_idx, end_idx, batch_size):
+            yield (idx, memmap_image[idx:idx+batch_size].astype(np.float32))
+    elif fname.endswith('.h5py') or fname.endswith('.hdf5') :
+        print('mapping CaImAn h5py/hdf5 file')
+        with h5py.File(fname, "r") as f:
+            memmap_image = f['mov']
+            # List all groups
+            for idx in range(start_idx, end_idx, batch_size):
+                yield (idx, f['mov'][idx:idx+batch_size].astype(np.float32))
+    else:
+        raise FileNotFoundError(fname)

@@ -22,7 +22,7 @@ import cv2
 import timeit
 import multiprocessing as mp
 from tensorflow.python.keras import backend as K
-from viola.caiman_functions import to_3D, to_2D
+from fiola.utilities import to_3D, to_2D
 import scipy
 import glob
 os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
@@ -37,7 +37,7 @@ if many:
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*.tif')
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/viola_movies/*.hdf5')
     names += glob.glob('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/*.hdf5')
-    j = 9 # 0,2,3,4,6,9,9,-1
+    j = 0 # 0,2,3,4,6,9,9,-1
     movie = names[j]
     # movie = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/k53_256.tif"
     mov = io.imread(movie)
