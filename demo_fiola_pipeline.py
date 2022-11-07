@@ -32,7 +32,7 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 #%% 
 def main():
 #%%
-    mode = 'calcium'                    # 'voltage' or 'calcium 'fluorescence indicator
+    mode = 'voltage'                    # 'voltage' or 'calcium 'fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
         folder = '/home/nel/caiman_data/example_movies/volpy'
@@ -90,8 +90,8 @@ def main():
        
     #    
     elif mode == 'calcium':
-        fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
-        #fnames = '/home/nel/caiman_data/example_movies/Sue_2x_3000_40_-46.tif'
+        #fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
+        fnames = '/home/nel/caiman_data/example_movies/Sue_2x_3000_40_-46.tif'
         fr = 30                         # sample rate of the movie
         
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
@@ -100,7 +100,7 @@ def main():
         offline_batch = 5               # number of frames for one batch to perform offline motion correction
         batch= 1                        # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
-        detrend = True                  # whether to remove the slow trend in the fluorescence data            
+        detrend = False                  # whether to remove the slow trend in the fluorescence data            
         dc_param = 0.9995               # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between
                                         # 0.99 and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
         do_deconvolve = True            # If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
@@ -140,7 +140,7 @@ def main():
         # run caiman initialization. User might need to change the parameters 
         # inside the file to get good initialization result
         caiman_file = run_caiman_init(fnames_init, pw_rigid=True, 
-                                      max_shifts=ms, gnb=nb, K=5, gSig=[4, 4])
+                                      max_shifts=ms, gnb=nb, rf=15, K=4, gSig=[4, 4])
         
         # load results of initialization
         cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
@@ -210,7 +210,7 @@ def main():
         
     for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total, batch_size=batch):
         if idx % 1000 == 0:
-                print(f'processed {idx} frames')        
+            print(f'processed {idx} frames')        
         fio.fit_online_frame(memmap_image) 
         online_trace[:, idx-num_frames_init:idx-num_frames_init+batch] = fio.pipeline.saoz.trace[:,idx-batch:idx]
         online_trace_deconvolved[:, idx-num_frames_init:idx-num_frames_init+batch] = fio.pipeline.saoz.trace_deconvolved[:,idx-batch-fio.params.retrieve['lag']:idx-fio.params.retrieve['lag']]
