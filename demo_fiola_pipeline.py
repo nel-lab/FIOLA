@@ -44,8 +44,8 @@ def main():
         
         num_frames_init =  10000        # number of frames used for initialization
         num_frames_total =  20000       # estimated total number of frames for processing, this is used for generating matrix to store data
-        offline_batch_size = 200        # number of frames for one batch to perform offline motion correction
-        batch_size = 1                  # number of frames processing at the same time using gpu 
+        offline_batch = 200             # number of frames for one batch to perform offline motion correction
+        batch = 1                       # number of frames processing at the same time using gpu 
         flip = True                     # whether to flip signal to find spikes   
         detrend = True                  # whether to remove the slow trend in the fluorescence data            
         do_deconvolve = True            # If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
@@ -65,8 +65,8 @@ def main():
             'mode': mode,
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
-            'offline_batch_size': offline_batch_size,
-            'batch_size':batch_size,
+            'offline_batch': offline_batch,
+            'batch':batch,
             'flip': flip,
             'detrend': detrend,
             'do_deconvolve': do_deconvolve,
@@ -97,8 +97,8 @@ def main():
         mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
         num_frames_init =   1000         # number of frames used for initialization
         num_frames_total =  2000        # estimated total number of frames for processing, this is used for generating matrix to store data
-        offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
-        batch_size= 1                   # number of frames processing at the same time using gpu 
+        offline_batch = 5               # number of frames for one batch to perform offline motion correction
+        batch= 1                        # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
         detrend = True                  # whether to remove the slow trend in the fluorescence data            
         dc_param = 0.9995               # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between
@@ -110,7 +110,7 @@ def main():
                                         # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
         n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
         nb = 1                          # number of background components
-        trace_with_neg=False            # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
+        trace_with_neg=True            # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
         lag = 5                         # lag for retrieving the online result.
                         
         options = {
@@ -119,8 +119,8 @@ def main():
             'mode': mode, 
             'num_frames_init': num_frames_init, 
             'num_frames_total':num_frames_total,
-            'offline_batch_size': offline_batch_size,
-            'batch_size':batch_size,
+            'offline_batch': offline_batch,
+            'batch':batch,
             'flip': flip,
             'detrend': detrend,
             'dc_param': dc_param,            
@@ -161,7 +161,7 @@ def main():
         params = fiolaparams(params_dict=options)
         fio = FIOLA(params=params)
         # run motion correction on GPU on the initialization movie
-        mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch_size'], min_mov=mov.min())             
+        mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov, template, fio.params.mc_nnls['offline_batch'], min_mov=mov.min())             
         plt.plot(shifts_fiola)
         plt.xlabel('frames')
         plt.ylabel('pixels')                 
@@ -179,7 +179,7 @@ def main():
             Ab = fio.Ab # Ab includes spatial masks of all neurons and background
         else:
             Ab = np.hstack((estimates.A.toarray(), estimates.b))
-        trace_fiola, _ = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch_size']) 
+        trace_fiola, _ = fio.fit_gpu_nnls(mc_nn_mov, Ab, batch_size=fio.params.mc_nnls['offline_batch']) 
         plt.plot(trace_fiola[:-nb].T)
         plt.xlabel('frames')
         plt.ylabel('fluorescence signal')              
@@ -203,21 +203,21 @@ def main():
     Ab = Ab.astype(np.float32)        
     fio = fio.create_pipeline(mc_nn_mov, trace_fiola, template, Ab, min_mov=mov.min())
     #%% run online
-    time_per_step = np.zeros(num_frames_total-num_frames_init)
-    online_trace = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
-    online_trace_deconvolved = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1] - fio.params.hals['nb']), dtype=np.float32)
+    time_per_step = np.zeros((num_frames_total-num_frames_init) // batch)
+    online_trace = np.zeros((fio.Ab.shape[-1], num_frames_total-num_frames_init), dtype=np.float32)
+    online_trace_deconvolved = np.zeros((fio.Ab.shape[-1] - fio.params.hals['nb'], num_frames_total-num_frames_init), dtype=np.float32)
     start = time()
         
-    for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total):
+    for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total, batch_size=batch):
         if idx % 1000 == 0:
                 print(f'processed {idx} frames')        
         fio.fit_online_frame(memmap_image) 
-        online_trace[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
-        online_trace_deconvolved[idx-num_frames_init] = fio.pipeline.saoz.trace_deconvolved[:,idx-1-fio.params.retrieve['lag']]
-        time_per_step[idx-num_frames_init] = (time()-start)
+        online_trace[:, idx-num_frames_init:idx-num_frames_init+batch] = fio.pipeline.saoz.trace[:,idx-batch:idx]
+        online_trace_deconvolved[:, idx-num_frames_init:idx-num_frames_init+batch] = fio.pipeline.saoz.trace_deconvolved[:,idx-batch-fio.params.retrieve['lag']:idx-fio.params.retrieve['lag']]
+        time_per_step[(idx-num_frames_init)//batch] = (time()-start)
     
-    fio.pipeline.saoz.online_trace = online_trace.T
-    fio.pipeline.saoz.online_trace_deconvolved = online_trace_deconvolved.T
+    fio.pipeline.saoz.online_trace = online_trace
+    fio.pipeline.saoz.online_trace_deconvolved = online_trace_deconvolved
     logging.info(f'total time online: {time()-start}')
     logging.info(f'time per frame online: {(time()-start)/(num_frames_total-num_frames_init)}')
     plt.plot(np.diff(time_per_step),'.')

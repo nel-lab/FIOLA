@@ -9,9 +9,9 @@ import numpy as np
 
 class fiolaparams(object):
     def __init__(self, fnames=None, fr=400, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
-                 ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
+                 ms=[10,10], offline_batch=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
-                 update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch_size=1, use_fft=True, normalize_cc=True,
+                 update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch=1, use_fft=True, normalize_cc=True,
                  center_dims=None, num_layers=30, n_split=1, trace_with_neg=True, initialize_with_gpu=True, 
                  window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True,
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
@@ -45,9 +45,9 @@ class fiolaparams(object):
         
         self.mc_nnls = {
             'ms':ms, # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-            'offline_batch_size': offline_batch_size, # number of frames for one batch to perform offline analysis
+            'offline_batch': offline_batch, # number of frames for one batch to perform offline analysis
             'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
-            'batch_size':batch_size, # number of frames processing each time using gpu 
+            'batch':batch, # number of frames processing each time using gpu 
             'use_fft' : use_fft, # use FFT for convolution or not. Will use tf.nn.conv2D if False. The default is True.
             'normalize_cc' : normalize_cc, # whether to normalize the cross correlations coefficients or not. The default is True.        
             'center_dims':center_dims, # template dimensions for motion correction. If None, the input will the the shape of the FOV

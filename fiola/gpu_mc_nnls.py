@@ -739,7 +739,6 @@ class Pipeline(object):
             start = time.time()
             if self.flag > 0:
                 for i in range(len(traces_input)):
-                    start = time.time()
                     self.saoz.fit_next(traces_input[i:i+1].T, self.n)
                     self.n += 1
             self.deconv_times.append(time.time() - start)

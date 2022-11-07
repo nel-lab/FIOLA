@@ -30,9 +30,9 @@ from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, norma
 
 class FIOLA(object):
     def __init__(self, fnames=None, fr=400, mode='voltage', init_method='binary_masks', num_frames_init=10000, num_frames_total=20000, 
-                 ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
+                 ms=[10,10], offline_batch=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
-                 update_bg=True, use_spikes=False, batch_size=1, use_fft=True, normalize_cc=True,
+                 update_bg=True, use_spikes=False, batch=1, use_fft=True, normalize_cc=True,
                  center_dims=None, num_layers=10, n_split=1, initialize_with_gpu=True, 
                  window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True, 
                  do_scale=False, template_window=2, robust_std=False, freq=15, adaptive_threshold=True, 
@@ -51,7 +51,7 @@ class FIOLA(object):
           saoz = self.fit_spike_extraction(trace_init)
           self.Ab = Ab
           logging.info('compiling new models for online analysis')
-          self.pipeline = Pipeline(self.params.data['mode'], mov, template, self.params.mc_nnls['batch_size'], Ab, saoz, 
+          self.pipeline = Pipeline(self.params.data['mode'], mov, template, self.params.mc_nnls['batch'], Ab, saoz, 
                                    ms_h=self.params.mc_nnls['ms'][0], ms_w=self.params.mc_nnls['ms'][1], min_mov=mov.min(),
                                    use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                                    center_dims=self.params.mc_nnls['center_dims'], return_shifts=False, 
