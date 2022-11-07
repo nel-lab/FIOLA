@@ -165,8 +165,12 @@ class SignalAnalysisOnlineZ(object):
                 for tp in range(tm):
                     if tp > 0:
                         self.t_d[:, tp] = self.trace[:self.N, tp] - self.trace[:self.N, tp - 1] + self.dc_param * self.t_d[:, tp - 1]
+                self.median = np.median(trace_in[:self.N], axis=1)
+                self.t_d = self.t_d - self.median[:, np.newaxis]
             else:
                 self.t_d = self.trace[:self.N].copy()
+                self.median = np.median(trace_in[:self.N], axis=1)
+                self.t_d = self.t_d - self.median[:, np.newaxis]
             
             t_start = time()
             #idx=0
@@ -260,7 +264,7 @@ class SignalAnalysisOnlineZ(object):
                 self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)] - self.trace[:self.N, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
             else:
                 self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)]
-                
+                                
             if self.do_deconvolve:
                 temp = self.t_d[:, n:(n+1)].copy()        
                 temp -= self.median[:, -1:]
@@ -322,8 +326,10 @@ class SignalAnalysisOnlineZ(object):
                 
             if self.detrend:
                 self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)] - self.trace[:self.N, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
+                self.t_d[:, n:(n + 1)] = self.t_d[:, n:(n + 1)] - self.median[:, np.newaxis]
             else:
                 self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)]
+                self.t_d[:, n:(n + 1)] = self.t_d[:, n:(n + 1)] - self.median[:, np.newaxis]
 
             if self.do_deconvolve:
                 if self.p>0: # deconvolve/denoise

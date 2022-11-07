@@ -40,7 +40,7 @@ logging.basicConfig(format=
                     "[%(process)d] %(message)s",
                     level=logging.INFO)
 #%%    
-def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, K = 5, gSig = [4, 4]):
+def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, rf=15, K = 5, gSig = [4, 4]):
     """
     Run caiman for initialization.
     
@@ -54,6 +54,8 @@ def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, K = 5, gS
         maximum shifts allowed for x axis and y axis. The default is [6, 6].
     gnb : int
         number of background components. The default is 2.
+    rf: int
+        half-size of the patches in pixels. e.g., if rf=25, patches are 50x50. The default value is 15.
     K : int
         number of components per patch. The default is 5.
     gSig : list
@@ -130,8 +132,6 @@ def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, K = 5, gS
     #   parameters for source extraction and deconvolution
     p = 1                    # order of the autoregressive system
     merge_thr = 0.85         # merging threshold, max correlation allowed
-    rf = 15
-    # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 6          # amount of overlap between the patches in pixels
     # initialization method (if analyzing dendritic data using 'sparse_nmf')
     method_init = 'greedy_roi'
@@ -184,7 +184,7 @@ def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, K = 5, gS
     time_end = time() 
     print(time_end- time_init)
     #  COMPONENT EVALUATION
-    min_SNR = 1.1  # signal to noise ratio for accepting a component
+    min_SNR = 2  # signal to noise ratio for accepting a component
     rval_thr = 0.85  # space correlation threshold for accepting a component
     cnn_thr = 0.15  # threshold for CNN based classifier
     cnn_lowest = 0.0 # neurons with cnn probability lower than this value are rejected
