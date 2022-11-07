@@ -43,7 +43,7 @@ pip install -e .
 ## Demo
 It takes 5 mins to run the demo on a normal desktop computer
 
-Google colab demo can be found at the following link: https://colab.research.google.com/drive/1yKoyi1Fz9bzNtOhrjuC8h12_WzWHYIvz?usp=sharing
+Google colab demo can be found at the following link: https://colab.research.google.com/drive/1VSc4yvsLfRRcSgjDzRB4jCK9cmEgrWMu?usp=sharing
 
 Python demo: demo_fiola_pipeline.py. 
 
