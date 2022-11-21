@@ -37,7 +37,7 @@ from viola.match_spikes import match_spikes_greedy, compute_F1
 from use_cases.test_run_viola import run_viola # must be in use_cases folder
         
 #%%
-ROOT_FOLDER = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/multiple_neurons'
+ROOT_FOLDER = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/original_data/multiple_neurons'
 names = sorted(list(os.listdir(ROOT_FOLDER)))
 frate_all = np.array([300, 400, 1000])
 #freq_all = np.array([15]*16 + [5,5,15])
@@ -278,22 +278,16 @@ save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/Fi
 #plt.savefig(os.path.join(save_folder, name + '_spatial.pdf'))
 
 #%%
-folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons'
+from paper_reproduction.Fig7.Fig7_utilities import *
+
+folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons'
 files = sorted(os.listdir(folder))
 viola = []
 viola_std = []
 volpy = []
 volpy_std = []
-for file in files:
-    mm = np.load(os.path.join(folder, file), allow_pickle=True)
-    print(mm)
-    spnr = np.nanmean(mm, axis=0)
-    std = np.nanstd(mm, axis=0)
-    viola.append(spnr[0])
-    volpy.append(spnr[1])
-    viola_std.append(std[0])
-    volpy_std.append(std[1])
-labels = names
+
+labels = ['L1', 'zebra', 'HPC']
 x = np.arange(len(labels))  # the label locations
 width = 0.35  # the width of the bars    
 from matplotlib import gridspec
@@ -301,8 +295,23 @@ fig = plt.figure(figsize=(8, 6))
 #gs = gridspec.GridSpec(1, 2, width_ratios=[9, 1]) 
 ax0 = plt.subplot()
 #ax1 = plt.subplot(gs[1])
-rects1 = ax0.bar(x+1 - width/2, viola, width, yerr=viola_std, label=f'Fiola')
-rects2 = ax0.bar(x+1 + width/2, volpy, width, yerr=volpy_std, label=f'VolPy')
+
+for i, file in enumerate(files):
+    mm = np.load(os.path.join(folder, file), allow_pickle=True)
+    mm = mm[~np.isnan(mm[:, 0])]
+    print(mm)
+    spnr = np.nanmean(mm, axis=0)
+    std = np.nanstd(mm, axis=0)
+    viola.append(spnr[0])
+    volpy.append(spnr[1])
+    viola_std.append(std[0])
+    volpy_std.append(std[1])
+    
+    ax0.scatter(rand_jitter([i+1 - width/2]*mm.shape[0], dev=0.01), mm[:, 0], facecolor='none', alpha=1, s=15, zorder=2, color='black')
+    ax0.scatter(rand_jitter([i+1 + width/2]*mm.shape[0], dev=0.01), mm[:, 1], facecolor='none', alpha=1, s=15, zorder=2, color='black')
+
+rects1 = ax0.bar(x+1 - width/2, viola, width, yerr=viola_std, label=f'Fiola', capsize=5)
+rects2 = ax0.bar(x+1 + width/2, volpy, width, yerr=volpy_std, label=f'VolPy', capsize=5)
 
 # Add some text for labels, title and custom x-axis tick labels, etc.
 ax0.spines['top'].set_visible(False)
@@ -317,19 +326,11 @@ ax0.legend()
 ax0.legend(ncol=2, frameon=False, loc=0)
 plt.tight_layout()
 
-#save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1'
-#plt.savefig(os.path.join(save_folder, 'SpNR_multiple_neurons.pdf'))
+save_folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0'
+plt.savefig(os.path.join(save_folder, 'SpNR_multiple_neurons_v3.10.pdf'))
 
 
 
     
-#%%
-for name in names:
-    try:
-        #os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
-        os.makedirs(os.path.join(ROOT_FOLDER, name, 'viola'))
-        print('make folder')
-    except:
-        print('already exist')
         
 

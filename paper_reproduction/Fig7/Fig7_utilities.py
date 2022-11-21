@@ -316,7 +316,7 @@ def barplot_annotate_brackets(data, center1, center2, height, dy, yerr=None):
 
 
 from scipy.stats import wilcoxon, ttest_rel, ttest_ind
-def barplot_pvalue(r_all, methods, colors, ax, width=0.2):
+def barplot_pvalue(r_all, methods, colors, ax, dev=0.1, width=0.2, capsize=0, alpha=1):
     """
     Plot bar plot with p_values and significance
     """
@@ -329,9 +329,11 @@ def barplot_pvalue(r_all, methods, colors, ax, width=0.2):
             shift = len(methods) // 2
     
         for j, method in enumerate(methods):
+            ax.scatter(rand_jitter([batch + width * (j - shift)] * len(rr[method]), dev=dev), rr[method], color='black', alpha=alpha, s=15, zorder=2, facecolor='none')
             ax.bar(batch + width * (j - shift), [np.mean(rr[method])], width=width,
-            yerr=[[0], [np.std(rr[method])]],
-            color=colors[j], label=f'{method}')
+            yerr=[[np.std(rr[method])], [np.std(rr[method])]],
+            color=colors[j], label=f'{method}', alpha=1, capsize=capsize)
+
     
             for k in range(j+1, len(methods)):
                 dat = ttest_rel(rr[methods[j]], rr[methods[k]], alternative='two-sided').pvalue 
@@ -345,4 +347,5 @@ def barplot_pvalue(r_all, methods, colors, ax, width=0.2):
                                               height = 0.1 * (j + k)/2 + np.array(list(rr.values())).max(), 
                                               dy=0.003)
     
-        
+def rand_jitter(arr, dev=10):    
+    return arr + np.random.randn(len(arr)) * dev        

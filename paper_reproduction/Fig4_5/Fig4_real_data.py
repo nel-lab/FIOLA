@@ -226,9 +226,9 @@ for batch in batches:
     r_all.append(rr)
     rr = {}
 
-fig = plt.figure()
+fig = plt.figure(figsize=(8, 10))
 ax = plt.subplot(111)
-barplot_pvalue(r_all, methods, colors, ax, width=0.3)
+barplot_pvalue(r_all, methods, colors, ax, width=0.3, dev=0.003, capsize=8)
 
 ax.set_xlabel('')
 ax.set_ylabel('F1 score')
@@ -239,7 +239,7 @@ handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
 plt.legend(by_label.values(), by_label.keys())
 plt.tight_layout()
-#plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig4h.pdf')
+plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4/Fig4h_v3.10.pdf')
 
 #%% Fig5 b
 fig, ax = plt.subplots(1, 1)

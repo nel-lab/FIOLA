@@ -513,7 +513,7 @@ plt.tight_layout()
 #plt.savefig(savef + 'Fig7_supp_deconvolution_v3.8.pdf')  
 
 #%%
-lag = ['lag1', 'lag3'][1]
+#lag = ['lag1', 'lag3'][1]
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
 r = np.load(ff+f'Fig7_supp_dec_lag_v3.8.npy', allow_pickle=True).item()
 #p = np.load(ff+f'Fig7c_prediction_{lag}_v3.8.npy', allow_pickle=True).item()
@@ -532,6 +532,7 @@ colors = ['C0', 'C0', 'C0', 'C0', 'C0', 'C0', 'C3', 'C6']
 for idx in range(len(list(r.keys()))):
     if idx < 5:
         ax1.errorbar(num[idx], r_mean[idx], yerr=r_std[idx], fmt='o', capsize=5, color=colors[idx], label=methods[idx])
+        ax1.scatter(rand_jitter([num[idx]]*5, dev=0.01), list(r.values())[idx], color=colors[idx], alpha=0.6, s=15, facecolor='none')
 
 ax1.locator_params(axis='y', nbins=8)
 ax1.locator_params(axis='x', nbins=4)
@@ -540,7 +541,7 @@ ax1.set_xlabel('Lag (frame)')
 ax1.legend()
 ax1.set_ylim([0.85, 0.95])
 plt.tight_layout()
-plt.savefig(savef + 'Fig7_supp_deconvolution_b_v3.8.pdf')  
+plt.savefig(savef + 'Fig7_supp_deconvolution_b_v3.10.pdf')  
 
 
 

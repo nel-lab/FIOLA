@@ -580,8 +580,10 @@ methods = ['viola', 'volpy', 'meanroi']
 #%%
 amps = [0, 1, 2]
 spk_amps = [0.075, 0.125, 0.175]
-colors = ['C0', 'C4']#['C0', 'C1', 'C4']
-methods = ['viola', 'meanroi_online']#['viola', 'volpy', 'meanroi_online']
+#colors = ['C0', 'C1', 'C4']
+colors = ['C0', 'C4']
+#methods = ['viola', 'volpy', 'meanroi']
+methods = ['viola', 'meanroi_online']
 
 for amp in amps:
     r_all = []
@@ -600,11 +602,11 @@ for amp in amps:
     
     fig = plt.figure()
     ax = plt.subplot(111)
-    barplot_pvalue(r_all, methods, colors, ax)
+    barplot_pvalue(r_all, methods, colors, ax, dev=0.01, alpha=0.8, capsize=3)
                     
     ax.set_xlabel('overlapping area')
     ax.set_ylabel('F1 score')
-    ax.set_ylim([0.3, 1.2])
+    ax.set_ylim([0, 1.2])
     ax.set_xticks([0, 1, 2, 3])
     lab = ['0%', '16%', '36%', '63%']
     ax.set_xticklabels(lab)
@@ -614,7 +616,7 @@ for amp in amps:
     plt.legend(by_label.values(), by_label.keys())
     ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
     #plt.savefig(os.path.join(ff, f'Fig4h_{spk_amps[amp]}_{methods[2]}.pdf'))
-    #plt.savefig(os.path.join(ff, f'Fig4h_{spk_amps[amp]}_{methods[1]}_1.pdf'))
+    plt.savefig(os.path.join(ff, f'Fig4h_{spk_amps[amp]}_{methods}_v3.10.pdf'))
 
 #%% Fig4g
 trace_with_neg = False
@@ -657,20 +659,20 @@ for batch in batches:
     r_all.append(rr)
     rr = {}
 
-fig = plt.figure()
+fig = plt.figure(figsize=(4.8, 6.4))
 ax = plt.subplot(111)
-barplot_pvalue(r_all, methods, colors, ax, width=0.12)
+barplot_pvalue(r_all, methods, colors, ax, width=0.12, dev=0.005, capsize=5)
 
 ax.set_xlabel('spike amplitude')
 ax.set_ylabel('F1 score')
-ax.set_ylim([0.3,1.2])
+#ax.set_ylim([0.3,1.2])
 ax.set_xticks([0, 1, 2])
 ax.set_xticklabels(['0.075', '0.125', '0.175'])
 handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
 plt.legend(by_label.values(), by_label.keys())
 plt.tight_layout()
-#plt.savefig(os.path.join(ff, f'Fig4g_pvalue.pdf'))
+plt.savefig(os.path.join(ff, f'Fig4_supp_layer_v3.10.pdf'))
 
 
 
@@ -786,7 +788,7 @@ for batch in batches:
 
 fig = plt.figure(figsize=(10, 8))
 ax = plt.subplot(111)
-barplot_pvalue(r_all, methods, colors, ax, width=0.2)
+barplot_pvalue(r_all, methods, colors, ax, width=0.2, alpha=0, capsize=5)
 
 ax.set_xlabel('spike amplitude')
 ax.set_ylabel('F1 score')
@@ -797,7 +799,7 @@ handles, labels = plt.gca().get_legend_handles_labels()
 by_label = dict(zip(labels, handles))
 plt.legend(by_label.values(), by_label.keys())
 plt.tight_layout()
-plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig_supp_simulation_ttest_rel_new.pdf')
+plt.savefig('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/supp/Fig_supp_simulation_ttest_rel_new_v3.10.pdf')
 
 #%% Fig supp. F1 score vs Number of iterations (timing)
 fig = plt.figure()
