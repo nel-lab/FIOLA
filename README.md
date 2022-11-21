@@ -32,11 +32,9 @@ pip install h5py==2.10.0
 
 
 ## Demo
-It takes 5 mins to run the demo on a normal desktop computer
+It takes 5 mins to run the demo on a normal desktop computer. Python demo: demo_fiola_pipeline.py. 
 
 Google colab demo can be found at the following link: https://colab.research.google.com/drive/1VSc4yvsLfRRcSgjDzRB4jCK9cmEgrWMu?usp=sharing
-
-Python demo: demo_fiola_pipeline.py. 
 
 The output is online extracted of traces from the demo movie
 
