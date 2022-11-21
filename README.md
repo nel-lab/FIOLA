@@ -4,7 +4,7 @@ An accelerated pipeline for Fluorescence Imaging OnLine Analysis.
 FIOLA exploits computational graphs and accelerated hardware to preprocess fluorescence imaging movies to extract neural activity at speeds in excess of 300Hz on standard fields of view for calcium imaging and at over 400Hz for voltage imaging movies.
 
 ## Requirements
-Tested on Ubuntu 18.04 operating systems. Software dependencies can be found in requirements_with_caiman.txt file. Tested with python 3.8, tensorflow 2.5.0. Need GPU to run the pipeline.
+Tested on Ubuntu 18.04 operating systems. Software dependencies can be found in requirements_with_caiman.txt file. FIOLA is mainly tested with python 3.8, tensorflow 2.4.1. It is also compatible with tensorflow 2.5.0. Need GPU to run the pipeline.
 
 ## Installation guide
 It takes 5 mins to run the installation on a normal desktop computers:
