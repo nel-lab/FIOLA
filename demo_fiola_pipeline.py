@@ -32,10 +32,10 @@ logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to r
 #%% 
 def main():
 #%%
-    mode = 'voltage'                    # 'voltage' or 'calcium 'fluorescence indicator
+    mode = 'voltage'                    # 'voltage' or 'calcium' fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
-        folder = '/home/nel/caiman_data/example_movies/volpy'
+        folder = cm.paths.caiman_datadir() + '/example_movies/volpy'
         fnames = download_demo(folder, 'demo_voltage_imaging.hdf5')
         
         # setting params
@@ -90,17 +90,18 @@ def main():
        
     #    
     elif mode == 'calcium':
-        #fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
-        fnames = '/home/nel/caiman_data/example_movies/Sue_2x_3000_40_-46.tif'
+        folder = cm.paths.caiman_datadir() + '/example_movies'
+        # fnames = folder + '/demoMovie.tif'
+        fnames = folder + '/Sue_2x_3000_40_-46.tif'
         fr = 30                         # sample rate of the movie
         
-        mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-        num_frames_init =   1000         # number of frames used for initialization
+        mode = 'calcium'                # 'voltage' or 'calcium' fluorescence indicator
+        num_frames_init =   1000        # number of frames used for initialization
         num_frames_total =  2000        # estimated total number of frames for processing, this is used for generating matrix to store data
         offline_batch = 5               # number of frames for one batch to perform offline motion correction
         batch= 1                        # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
-        detrend = False                  # whether to remove the slow trend in the fluorescence data            
+        detrend = False                 # whether to remove the slow trend in the fluorescence data
         dc_param = 0.9995               # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between
                                         # 0.99 and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
         do_deconvolve = True            # If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
@@ -110,7 +111,7 @@ def main():
                                         # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
         n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
         nb = 1                          # number of background components
-        trace_with_neg=True            # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
+        trace_with_neg=True             # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
         lag = 5                         # lag for retrieving the online result.
                         
         options = {
