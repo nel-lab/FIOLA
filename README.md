@@ -23,10 +23,8 @@ conda create --name fiola python==3.8
 conda activate fiola
 pip install -r requirements_with_caiman.txt
 pip install -e.
-cd CaImAn
+cd ../CaImAn
 pip install -e . 
-conda install spyder
-pip install jinja2==3.0.1
 pip install h5py==2.10.0
 ```
 
