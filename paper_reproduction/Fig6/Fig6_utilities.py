@@ -320,6 +320,11 @@ def barplot_pvalue(r_all, methods, colors, ax, dev=0.1, width=0.2, capsize=0, al
     """
     Plot bar plot with p_values and significance
     """
+    p_value = {}
+    #labels = ['FIOLA', 'VolPy', 'MeanROI']
+    labels = methods
+    #labels = methods.copy()
+    #labels[-1] = 'CaImAn_Batch'
     for batch in range(len(r_all)):
         rr = r_all[batch]
         
@@ -338,7 +343,7 @@ def barplot_pvalue(r_all, methods, colors, ax, dev=0.1, width=0.2, capsize=0, al
             for k in range(j+1, len(methods)):
                 dat = ttest_rel(rr[methods[j]], rr[methods[k]], alternative='two-sided').pvalue 
                 #dat = ttest_ind(rr[methods[j]], rr[methods[k]], alternative='two-sided').pvalue 
-
+                
                 if dat <= 0.05:
                     print(f'batch: {batch}; {methods[j]}, {methods[k]}; {np.round(dat, 4)}')
                     print(f'batch: {batch}; {methods[j]}, {methods[k]}; {np.round(dat, 10)}')
@@ -346,6 +351,11 @@ def barplot_pvalue(r_all, methods, colors, ax, dev=0.1, width=0.2, capsize=0, al
                     barplot_annotate_brackets(dat, batch + width * (j - shift), batch + width * (k - shift), 
                                               height = 0.1 * (j + k)/2 + np.array(list(rr.values())).max(), 
                                               dy=0.003)
-    
+                if f'{labels[j]} vs {labels[k]}' in p_value:
+                    p_value[f'{labels[j]} vs {labels[k]}'].append(float(f'{dat:.2e}'))
+                else:
+                    p_value[f'{labels[j]} vs {labels[k]}'] = []
+                    p_value[f'{labels[j]} vs {labels[k]}'].append(float(f'{dat:.2e}'))
+    return p_value
 def rand_jitter(arr, dev=10):    
     return arr + np.random.randn(len(arr)) * dev        

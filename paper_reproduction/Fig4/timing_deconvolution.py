@@ -1,3 +1,8 @@
+import sys
+sys.path.append('/home/nel/CODE/VIOLA')
+
+
+
 import matplotlib.pyplot as plt
 import numpy as np
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
@@ -61,48 +66,49 @@ np.save('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_
         [timing, t500, t100])
 
 #%% Plot
-plt.figure()
-for t, l, c in ((t100, '100 neurons', 'orange'), (t500, '500 neurons', 'blue')):
-    plt.plot(t.mean(0), label=l, color=c, lw=1)
-    plt.fill_between(range(5000), (t.mean(0)-t.std(0)/np.sqrt(runs-1)),
-                     (t.mean(0)+t.std(0)/np.sqrt(runs-1)), color=c, alpha=.3)
-plt.legend(loc=2, frameon=False)
-plt.xlabel('Frames')
-plt.ylabel('Time (ms)')
-plt.gca().spines['top'].set_visible(False)
-plt.gca().spines['right'].set_visible(False)
-plt.tight_layout(pad=.1)
-#plt.savefig('timing_deconv_mean+-SEM.pdf')
-
-plt.figure()
-for t, l, c in ((t100, '100 neurons', 'orange'), (t500, '500 neurons', 'blue')):
-    plt.plot(np.median(t, 0), label=l, color=c, lw=1)
-    plt.fill_between(range(5000), np.percentile(t, 25, 0),
-                     np.percentile(t, 75, 0), color=c, alpha=.5)
-plt.legend(loc=2, frameon=False)
-plt.xlabel('Frames')
-plt.ylabel('Time (ms)')
-plt.gca().spines['top'].set_visible(False)
-plt.gca().spines['right'].set_visible(False)
-plt.tight_layout(pad=.1)
-#plt.savefig('timing_deconv_quartiles.pdf')
-
-
-plt.figure(figsize=(6.4, 4.8))
-plt.bar(np.arange(-.2, 5), np.mean(timing, 1)[::2], yerr=np.std(timing, 1)[::2],
-        color='C0', label='FIOLA', width=.4)
-plt.bar(np.arange(.2, 6), np.mean(timing, 1)[1::2], yerr=np.std(timing, 1)[1::2],
-        color='C1', label='CaImAn', width=.4)
-plt.legend(loc=2, frameon=False)
-plt.xticks(range(6), ['AR1', 'AR2', 'AR1', 'AR2', 'AR1', 'AR2'])
-plt.xlabel('100 neurons' + ' '*5 + '200 neurons' + ' '*5 + '500 neurons')
-plt.ylabel('Time (ms)')
-plt.gca().spines['top'].set_visible(False)
-plt.gca().spines['right'].set_visible(False)
-plt.tight_layout(pad=.1)
-#plt.savefig('timing_deconv.pdf')
-
-
-
-
-
+if False:
+    plt.figure()
+    for t, l, c in ((t100, '100 neurons', 'orange'), (t500, '500 neurons', 'blue')):
+        plt.plot(t.mean(0), label=l, color=c, lw=1)
+        plt.fill_between(range(5000), (t.mean(0)-t.std(0)/np.sqrt(runs-1)),
+                         (t.mean(0)+t.std(0)/np.sqrt(runs-1)), color=c, alpha=.3)
+    plt.legend(loc=2, frameon=False)
+    plt.xlabel('Frames')
+    plt.ylabel('Time (ms)')
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.tight_layout(pad=.1)
+    #plt.savefig('timing_deconv_mean+-SEM.pdf')
+    
+    plt.figure()
+    for t, l, c in ((t100, '100 neurons', 'orange'), (t500, '500 neurons', 'blue')):
+        plt.plot(np.median(t, 0), label=l, color=c, lw=1)
+        plt.fill_between(range(5000), np.percentile(t, 25, 0),
+                         np.percentile(t, 75, 0), color=c, alpha=.5)
+    plt.legend(loc=2, frameon=False)
+    plt.xlabel('Frames')
+    plt.ylabel('Time (ms)')
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.tight_layout(pad=.1)
+    #plt.savefig('timing_deconv_quartiles.pdf')
+    
+    
+    plt.figure(figsize=(6.4, 4.8))
+    plt.bar(np.arange(-.2, 5), np.mean(timing, 1)[::2], yerr=np.std(timing, 1)[::2],
+            color='C0', label='FIOLA', width=.4)
+    plt.bar(np.arange(.2, 6), np.mean(timing, 1)[1::2], yerr=np.std(timing, 1)[1::2],
+            color='C1', label='CaImAn', width=.4)
+    plt.legend(loc=2, frameon=False)
+    plt.xticks(range(6), ['AR1', 'AR2', 'AR1', 'AR2', 'AR1', 'AR2'])
+    plt.xlabel('100 neurons' + ' '*5 + '200 neurons' + ' '*5 + '500 neurons')
+    plt.ylabel('Time (ms)')
+    plt.gca().spines['top'].set_visible(False)
+    plt.gca().spines['right'].set_visible(False)
+    plt.tight_layout(pad=.1)
+    #plt.savefig('timing_deconv.pdf')
+    
+    
+    
+    
+    

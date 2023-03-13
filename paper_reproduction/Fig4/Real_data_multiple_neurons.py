@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Feb 17 10:14:20 2021
-@author: @caichangjia
-"""
-
+#!/usr/bin/env python
 import h5py
 import matplotlib
 matplotlib.rcParams['pdf.fonttype'] = 42
@@ -257,78 +251,6 @@ plt.tight_layout()
 save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/Fig6'
 #plt.savefig(os.path.join(save_folder, name + '.pdf'))
 #plt.savefig('/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/picture/Figures/multiple_neurons/06152017Fish1-2.pdf')
-
-#%% Spatial contours
-Cn = mov[0]
-vmax = np.percentile(Cn, 99)
-vmin = np.percentile(Cn, 5)
-plt.figure()
-plt.imshow(Cn, interpolation='None', vmax=vmax, vmin=vmin, cmap=plt.cm.gray)
-plt.axis('off')
-#plt.title('Neurons location')
-d1, d2 = Cn.shape
-#cm1 = com(mask.copy().reshape((N,-1), order='F').transpose(), d1, d2)
-colors='yellow'
-from skimage import measure
-for n, idx in enumerate(idx_list):
-    contours = measure.find_contours(mask0[idx], 0.5)[0]
-    plt.plot(contours[:, 1], contours[:, 0], linewidth=1, color=colorsets[np.mod(n,9)])
-
-save_folder = '/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v2.1/Fig6'
-#plt.savefig(os.path.join(save_folder, name + '_spatial.pdf'))
-
-#%%
-from paper_reproduction.Fig7.Fig7_utilities import *
-
-folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_multiple_neurons'
-files = sorted(os.listdir(folder))
-viola = []
-viola_std = []
-volpy = []
-volpy_std = []
-
-labels = ['L1', 'zebra', 'HPC']
-x = np.arange(len(labels))  # the label locations
-width = 0.35  # the width of the bars    
-from matplotlib import gridspec
-fig = plt.figure(figsize=(8, 6)) 
-#gs = gridspec.GridSpec(1, 2, width_ratios=[9, 1]) 
-ax0 = plt.subplot()
-#ax1 = plt.subplot(gs[1])
-
-for i, file in enumerate(files):
-    mm = np.load(os.path.join(folder, file), allow_pickle=True)
-    mm = mm[~np.isnan(mm[:, 0])]
-    print(mm)
-    spnr = np.nanmean(mm, axis=0)
-    std = np.nanstd(mm, axis=0)
-    viola.append(spnr[0])
-    volpy.append(spnr[1])
-    viola_std.append(std[0])
-    volpy_std.append(std[1])
-    
-    ax0.scatter(rand_jitter([i+1 - width/2]*mm.shape[0], dev=0.01), mm[:, 0], facecolor='none', alpha=1, s=15, zorder=2, color='black')
-    ax0.scatter(rand_jitter([i+1 + width/2]*mm.shape[0], dev=0.01), mm[:, 1], facecolor='none', alpha=1, s=15, zorder=2, color='black')
-
-rects1 = ax0.bar(x+1 - width/2, viola, width, yerr=viola_std, label=f'Fiola', capsize=5)
-rects2 = ax0.bar(x+1 + width/2, volpy, width, yerr=volpy_std, label=f'VolPy', capsize=5)
-
-# Add some text for labels, title and custom x-axis tick labels, etc.
-ax0.spines['top'].set_visible(False)
-ax0.spines['right'].set_visible(False)
-ax0.spines['bottom'].set_visible(False)
-ax0.set_xlabel(names)
-ax0.set_xticks(x+1)
-ax0.set_ylabel('SpNR')
-ax0.xaxis.set_ticks_position('none') 
-ax0.yaxis.set_tick_params(length=8)
-ax0.legend()
-ax0.legend(ncol=2, frameon=False, loc=0)
-plt.tight_layout()
-
-save_folder = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0'
-plt.savefig(os.path.join(save_folder, 'SpNR_multiple_neurons_v3.10.pdf'))
-
 
 
     
