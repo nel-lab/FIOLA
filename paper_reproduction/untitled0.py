@@ -11,7 +11,29 @@ import openpyxl
 import glob
 import os
 import numpy as np
-#%% files for 3
+
+#%% save function
+def multiple_dfs(df_list, sheets, file_name, spaces, text):
+    try:
+        book=openpyxl.load_workbook(file_name)
+        print("existing workbook")
+    except:
+        book=openpyxl.Workbook()
+        print("new workbook")
+        book.save(file_name)
+        
+    writer = pd.ExcelWriter(file_name, engine="openpyxl")
+    writer.book = book
+    writer.sheets = {ws.title: ws for ws in sheets}
+    print(writer.sheets)
+    
+    for i,dataframe in enumerate(df_list):
+        row=3
+        dataframe.to_excel(writer,sheet_name=sheets[i], startrow=row, startcol=0, index=False, na_rep="NA")
+        row = row+ len(dataframe.index)+ spaces+ 1
+        # writer.sheets[sheets[i]].append(list(dataframe["times"][0]))
+        writer.sheets[sheets[i]].cell(1,1).value=text
+        writer.save()
 #%% 3b
 lh_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls.npy")
 lh_nnls_files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls.npy")
@@ -38,13 +60,50 @@ for f in sorted(nnls_files):
 #%% 3c
 snr_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_SNR.npy")
 rscore_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_rscore.npy")
-
+incl_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_incl.npy")
+dfc = pd.DataFrame()
+max_len = 485
+for f in sorted(snr_files):
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+for f in sorted(rscore_files)[:-1]:
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+for f in sorted(incl_files)[:-1]:
+    dat = np.load(f,  allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
 #%% 3d
-k53_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_*_nnls_time.npy")
-cm_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_*_cm.npy")
-#%% 3e
-time_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_nnls_*_time.npy")
-nnls_files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/v_nnls_*.npy")
+k53_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_*_*_nnls_time.npy")
+cm_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_cm_*_nnls_time.npy")
+dfd = pd.DataFrame()
+max_len = 2999
+for f in sorted(k53_nnls_time_files):
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfd[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+for f in sorted(cm_nnls_time_files):
+    dat = np.load(f, allow_pickle=True)[()]["T_track"][3000:-1]
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfd[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+#%% files for 3e
+iter_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_nnls_*_time.npy")
+fi_nnls_files = glob.glob('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/v_nnls_*.npy')
+#%% 3e processing omitted = > all files  used  for 3d  were  saved in  previous  sheets
+#%% Fiig  3  save  all
+excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"
+text = "Timing data for fiola"
+sheets = ["iterative nnls data", "SNR, rscore, included neurons for 3c", "3d timings"]
+dfs = [dfb, dfc, dfd]
+excel_name = os.path.join(excel_folder, "FIOLA3.xlsx")
+multiple_dfs(dfs, sheets, excel_name, 2, "test")
 
 #%% files for 5a
 fiola_all = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/*/*_times.npy")
@@ -110,28 +169,6 @@ for i,val in enumerate(all_files_headers):
     filler = [None]* (max_len-len(values[i]))
     dfc[val] = np.concatenate((values[i], filler))
 dfs.append(dfc)
-#%%
-def multiple_dfs(df_list, sheets, file_name, spaces, text):
-    try:
-        book=openpyxl.load_workbook(file_name)
-        print("existing workbook")
-    except:
-        book=openpyxl.Workbook()
-        print("new workbook")
-        book.save(file_name)
-        
-    writer = pd.ExcelWriter(file_name, engine="openpyxl")
-    writer.book = book
-    writer.sheets = {ws.title: ws for ws in sheets}
-    print(writer.sheets)
-    
-    for i,dataframe in enumerate(df_list):
-        row=3
-        dataframe.to_excel(writer,sheet_name=sheets[i], startrow=row, startcol=0, index=False, na_rep="NA")
-        row = row+ len(dataframe.index)+ spaces+ 1
-        # writer.sheets[sheets[i]].append(list(dataframe["times"][0]))
-        writer.sheets[sheets[i]].cell(1,1).value=text
-        writer.save()
   
 #%%
 excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"

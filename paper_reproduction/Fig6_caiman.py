@@ -70,7 +70,7 @@ def main():
     # set up some additional supporting parameters needed for the algorithm
     # (these are default values but can change depending on dataset properties)
     init_batch = 1500  # number of frames for initialization (presumably from the first file)
-    K = 90  # initial number of components
+    K = 490  # initial number of components
     epochs = 2  # number of passes over the data
     show_movie = False # show the movie as the data gets processed
 
@@ -125,8 +125,15 @@ def main():
     plt.xlabel('Frame #')
     plt.ylabel('Processing time [ms]')
 #%% save data
-    base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/26feb_finalsub/cm"
-    dim = str(Cn.shape[0])
+    base_file = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/15mar_finalsub/cm"
+    dim = str(512)
     neurs = str(500)
-    np.save(base_file+"_"+dim+"_"+neurs+".npy",T_motion+T_track)
+    save_obj = { 
+        "T_motion": T_motion, 
+        "fiola": 1000*np.diff(cnm.fiola_timing),
+        "T_detect": T_detect,
+        "T_shapes": T_shapes,
+        "T_track": T_track
+    }
+    np.save(base_file+"_"+dim+"_"+neurs+".npy",save_obj)
     np.save(base_file+"params_"+dim+"_"+neurs+".npy",params_dict)

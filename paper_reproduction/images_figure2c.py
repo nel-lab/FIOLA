@@ -30,7 +30,7 @@ tf.keras.backend.set_floatx("float32")
 #%% load caiman outputs
 datasets = ["N00",  "N01", "N02", "N03", "N04", "YST", "k53"]
 dataset = datasets[0]
-base_folder = "/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
+base_folder = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
 A = np.load(base_folder + dataset + "_half_A.npy", allow_pickle=True)[()].toarray()
 b = np.load(base_folder + dataset + "_half_b.npy",allow_pickle=True)[()]
 C = np.load(base_folder + dataset + "_C.npy", allow_pickle=True)[()]
@@ -154,10 +154,10 @@ plt.scatter(-snrs,rs,alpha=0.2)
 metrics = {}
 for d in datasets[:-1]:
     print(d)
-    snrs  = np.load("/home/nel/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"+d+"_SNR.npy")
+    snrs  = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"+d+"_SNR.npy")
     print(np.mean(snrs))
     included_comps = np.load(base_folder  + d +"_incl.npy")
-    snrs = snrs[included_comps+num_bckg]
+    snrs = snrs[included_comps+2]
     rs = np.load(base_folder +  d + "_rscore.npy")
     # plt.scatter(-snrs, rs, alpha=0.2)
     # plt.yscale("log", nonposy="clip")
