@@ -134,21 +134,24 @@ for n in nmes:
     if "s" in n:
         temp="test_19-09-22/"
         data_fr_custom[n] = 1000*np.array(np.load(base_file + temp + n +
-                                            ".npy", allow_pickle=True))
+                                            ".npy", allow_pickle=True))[0:]
                                     
         
     else:
         if "cm" in n:
             multiplier = 1
+            offset=1
         else:
             multiplier = 1000
+            offset=1500
         data_fr_custom[n] = multiplier * \
             np.array(np.load(base_file + n + ".npy",
                      allow_pickle=True)[()]["mc"][1:])
     print(n, data_fr_custom[n].shape)
-#%% set up statistics for Fig 3c
+#%% set up statistics for Fig 2c
 count = 0
 for key in data_fr_custom.keys():
+    print(data_fr_custom[key].shape)
     stats[key] = cbook.boxplot_stats(data_fr_custom[key], labels=str(count))[0]
     stats[key]["q1"], stats[key]["q3"] = np.percentile(
         data_fr_custom[key], [5, 95])
@@ -162,12 +165,13 @@ for key in data_fr_custom.keys():
     stats[key]["fliers"] = outliers
     count += 1
 
-#%% Plot Fig 3c for timings
+#%% Plot Fig 2c for timings
 colors = ["coral", "blue", "orange", "green", "green", "coral", "blue", "orange", "green", "green"]
 fig, ax = plt.subplots(1, 1)
 bplot = ax.bxp(stats.values(),  positions=range(10),  patch_artist=True)
 ax.set_yscale("log")
 ax.set_xticklabels(nmes)
+ax.set_ylim([0, 10000])
 for patch, color in zip(bplot["boxes"], colors):
     patch.set_facecolor(color)       
 
