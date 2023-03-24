@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from scipy.sparse import spdiags
 from past.utils import old_div
 from tifffile import memmap, imread
-import caiman as cm
+#import caiman as cm
 
 from fiola.external.cell_magic_wand import cell_magic_wand_single_point
 

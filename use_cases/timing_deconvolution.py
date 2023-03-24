@@ -26,7 +26,7 @@ def run(N=100, p=1, new=True, seed=0, T=10000, Tinit=5000, sn=.1, firerate=.2, f
     # deconvolve
     if new: # FIOLA
         saoz = SignalAnalysisOnlineZ(
-            mode='calcium', p=p)
+            mode='calcium', p=p, flip=False)
         saoz.fit(traces[:, :Tinit], T) # initial batch
         for n in range(Tinit, T): # online frame by frame
             saoz.fit_next(traces[:, n:n+1], n)
@@ -51,12 +51,14 @@ t100 = np.array([run(100, seed=seed) for seed in range(runs)])
 
 timing = []
 for N in (100, 200, 500):
+    print(f'now processing {N}')
     for p in (1, 2):
         for new in (True, False):
             timing.append(run(N, p, new))
 
-np.savez_compressed('timing.npz', timing=timing, t100=t100,t500=t500)
-
+#np.savez_compressed('timing.npz', timing=timing, t100=t100,t500=t500)
+np.save('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/result/test_speed_spike_extraction/calcium_new.npy', 
+        [timing, t500, t100])
 
 #%% Plot
 plt.figure()
@@ -70,7 +72,7 @@ plt.ylabel('Time (ms)')
 plt.gca().spines['top'].set_visible(False)
 plt.gca().spines['right'].set_visible(False)
 plt.tight_layout(pad=.1)
-plt.savefig('timing_deconv_mean+-SEM.pdf')
+#plt.savefig('timing_deconv_mean+-SEM.pdf')
 
 plt.figure()
 for t, l, c in ((t100, '100 neurons', 'orange'), (t500, '500 neurons', 'blue')):
@@ -83,7 +85,7 @@ plt.ylabel('Time (ms)')
 plt.gca().spines['top'].set_visible(False)
 plt.gca().spines['right'].set_visible(False)
 plt.tight_layout(pad=.1)
-plt.savefig('timing_deconv_quartiles.pdf')
+#plt.savefig('timing_deconv_quartiles.pdf')
 
 
 plt.figure(figsize=(6.4, 4.8))
@@ -98,4 +100,9 @@ plt.ylabel('Time (ms)')
 plt.gca().spines['top'].set_visible(False)
 plt.gca().spines['right'].set_visible(False)
 plt.tight_layout(pad=.1)
-plt.savefig('timing_deconv.pdf')
+#plt.savefig('timing_deconv.pdf')
+
+
+
+
+

@@ -5,8 +5,8 @@ is based on template matching method
 @author: @caichangjia @andrea.giovannucci
 """
 import logging
-from math import exp, log
 import matplotlib.pyplot as plt
+import multiprocessing
 import numpy as np
 from queue import Queue
 from scipy.ndimage import median_filter
@@ -138,14 +138,22 @@ class SignalAnalysisOnlineZ(object):
                 self.t_d = self.trace[:self.N, :].copy()
                 
             if self.do_deconvolve:
-                for idx, tr in enumerate(self.t_d[:, :tm]):  
-                    output_list = find_spikes_tm(tr, self.freq, self.fr, self.do_scale, self.filt_window, self.template_window,
-                                                     self.robust_std, self.adaptive_threshold, self.minimal_thresh, self.do_plot)
-                    self.index_track[idx] = output_list[0].shape[0]
+                if multiprocessing.cpu_count() > 6:
+                    PROCESSES = multiprocessing.cpu_count() - 6
+                else:
+                    PROCESSES = 1
+                with multiprocessing.Pool(PROCESSES) as pool:
+                    params = [(tr, self.freq, self.fr, self.do_scale, self.filt_window, self.template_window,
+                                                     self.robust_std, self.adaptive_threshold, self.minimal_thresh, self.do_plot) for tr in self.t_d[:, :tm]]
+                    multiple_results = [pool.apply_async(find_spikes_tm, p) for p in params]
+                    init_output = [res.get(timeout=1) for res in multiple_results]
+                
+                for idx in range(len(self.t_d[:, :tm])):
+                    self.index_track[idx] = init_output[idx][0].shape[0]
                     self.index[idx, :self.index_track[idx]], self.thresh[idx], self.PTA[idx], self.t0[idx, :tm], \
                         self.t[idx, :tm], self.t_s[idx, :tm], self.t_sub[idx, :tm], self.median[idx], self.scale[idx], \
                             self.thresh_factor[idx], self.median2[idx], self.std[idx], \
-                                self.peak_to_std[idx, :self.index_track[idx]], self.peak_level[idx] = output_list
+                                self.peak_to_std[idx, :self.index_track[idx]], self.peak_level[idx] = init_output[idx]
                     self.trace_deconvolved[idx][self.index[idx]] = 1
                     self.trace_deconvolved[idx, 0] = 0 # exclude the first frame
             else:
@@ -165,8 +173,6 @@ class SignalAnalysisOnlineZ(object):
                 for tp in range(tm):
                     if tp > 0:
                         self.t_d[:, tp] = self.trace[:self.N, tp] - self.trace[:self.N, tp - 1] + self.dc_param * self.t_d[:, tp - 1]
-                self.median = np.median(trace_in[:self.N], axis=1)
-                self.t_d = self.t_d - self.median[:, np.newaxis]
             else:
                 self.t_d = self.trace[:self.N].copy()
                 self.median = np.median(trace_in[:self.N], axis=1)
@@ -326,7 +332,6 @@ class SignalAnalysisOnlineZ(object):
                 
             if self.detrend:
                 self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)] - self.trace[:self.N, (n - 1):n] + self.dc_param * self.t_d[:, (n - 1):n]
-                self.t_d[:, n:(n + 1)] = self.t_d[:, n:(n + 1)] - self.median[:, np.newaxis]
             else:
                 self.t_d[:, n:(n + 1)] = self.trace[:self.N, n:(n + 1)]
                 self.t_d[:, n:(n + 1)] = self.t_d[:, n:(n + 1)] - self.median[:, np.newaxis]
@@ -638,8 +643,5 @@ def find_spikes_tm(img, freq, fr, do_scale=False, filt_window=15, template_windo
         peak_level = data[index] / std 
 
     peak_level = np.percentile(peak_level, 95)
-
-        
-        
-
+    
     return index, thresh2, PTA, t0, t, t_s, sub, median, scale, thresh_factor, median2, std, peak_to_std, peak_level 

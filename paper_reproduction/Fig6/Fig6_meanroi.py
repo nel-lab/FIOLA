@@ -25,7 +25,7 @@ from fiola.demo_initialize_calcium import run_caiman_init
 from fiola.fiolaparams import fiolaparams
 from fiola.fiola import FIOLA
 from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
-from Fig7.Fig7_utilities import *
+from Fig6.Fig6_utilities import *
 
 logging.basicConfig(format=
                     "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\

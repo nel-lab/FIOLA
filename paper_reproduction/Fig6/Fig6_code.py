@@ -1,10 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Nov 30 09:37:36 2021
-
-@author: nel
-"""
 import caiman as cm
 from caiman.base.rois import com
 from caiman.source_extraction.cnmf.cnmf import load_CNMF
@@ -35,13 +29,13 @@ mpl.rcParams.update({'pdf.fonttype' : 42,
 import sys
 sys.path.append('/home/nel/CODE/VIOLA/paper_reproduction')
 from time import time
-from Fig7.Fig7_caiman_pipeline import run_caiman_fig7
-from Fig7.Fig7_utilities import *
+from Fig6.Fig6_caiman_pipeline import run_caiman_fig6
+from Fig6.Fig6_utilities import *
 
 #base_folder = '/media/nel/storage/fiola/F2_20190415'
 #base_folder = '/media/nel/storage/fiola/R6_20200210T2100'
 base_folder = '/media/nel/storage/fiola/R2_20190219'
-savef = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig7/'
+savef = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig6/'
 for file in os.listdir(base_folder):
     if '.nwb' in file:
         path = os.path.join(base_folder, file)
@@ -107,11 +101,11 @@ tracec = cnm2.estimates.S
 traces = np.load('/media/nel/storage/fiola/R2_20190219/test/test_full/suite2p_result_non_rigid_v3.1/plane0/spks.npy')
 #onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/full_nonrigid/mov_R2_20190219T210000_caiman_online_results_v3.0_new_params_min_snr_2.0.hdf5')
 #onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.13.hdf5')
-#onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.14.hdf5')
-#onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.16.hdf5')
-onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.20.hdf5')
+onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.14.hdf5')
+#onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_final_v3.20.hdf5')
 onacid_comp = onacid.estimates.idx_components
-traceo = onacid.estimates.online_deconvolved_trace[onacid_comp]
+#traceo = onacid.estimates.online_deconvolved_trace[onacid_comp]['5']
+traceo = onacid.estimates.online_deconvolved_trace['5'][onacid_comp]
 onacid.estimates.A = onacid.estimates.A[:, onacid_comp]
 onacid.time_neuron_added = onacid.time_neuron_added[onacid_comp]
 #cnm = load_CNMF('/media/nel/storage/fiola/R2_20190219/3000/memmap__d1_796_d2_512_d3_1_order_C_frames_3000__v3.7.hdf5')
@@ -135,6 +129,25 @@ t_raw = {'FIOLA3000': t3000.T, 'FIOLA1500': t1500.T, 'FIOLA1000': t1000.T, 'FIOL
           'CaImAn_Online': traceo.T, 'Suite2p': traces.T, 'CaImAn':tracec.T}
 #t_raw = {'FIOLA3000': t3000.T, 'CaImAn_Online': traceo.T}
 
+t_g, t_rs, t_rm = run_trace_preprocess(t_raw, selection, sigma=12)
+
+#%% Supp
+sp_raw = {'Suite2p': stats}
+for i in [500, 1000, 1500, 3000, 5000, 7000, 10000]:
+    sp_raw[f'CaImAn_Online_{i}'] = onacid
+selection = select_neurons_within_regions(sp_raw, y_limit=[30, 777])
+iscell = np.load('/media/nel/storage/fiola/R2_20190219/test/test_full/suite2p_result_non_rigid_v3.1/plane0/iscell.npy')
+s_selected = np.where(iscell[:, 1] >=0.05)[0]
+selection['Suite2p'] = np.intersect1d(selection['Suite2p'], s_selected)
+
+for i in [500, 1000, 1500, 3000, 5000, 7000, 10000]:
+    o_selected = np.where(onacid.time_neuron_added[:, 1] < i)[0]
+    selection[f'CaImAn_Online_{i}'] = np.intersect1d(selection[f'CaImAn_Online_{i}'], o_selected)
+
+sp_processed = run_spatial_preprocess(sp_raw, selection)
+t_raw = {'Suite2p': traces.T}
+for i in [500, 1000, 1500, 3000, 5000, 7000, 10000]:
+    t_raw[f'CaImAn_Online_{i}'] = traceo.T
 t_g, t_rs, t_rm = run_trace_preprocess(t_raw, selection, sigma=12)
 
 #%%
@@ -207,10 +220,13 @@ t_g = t_g1.copy()
 #     ttest[3000-lag-1:-lag-1, :] = t_g[f'FIOLA_lag{lag}']
 #     t_g1[f'FIOLA_lag{lag}'] = ttest
 # t_g = t_g1.copy()
-#%% Fig 7c decoding performance through cross-validation
+#%% Fig 6c decoding performance through cross-validation
 start = time()
 t_test = t_g.copy()
-t_test = {'FIOLA3000': t_g['FIOLA3000'], 'CaImAn_Online': t_g['CaImAn_Online']}
+#t_test = {'FIOLA3000': t_g['FIOLA3000'], 'CaImAn_Online': t_g['CaImAn_Online']}
+#t_test = {'CaImAn_Online_10000': t_g['CaImAn_Online_10000']}
+#t_test = {'CaImAn_Online': t_g['CaImAn_Online']}
+
 #t_test = {'Suite2p': t_g['Suite2p'], 'CaImAn':t_g['CaImAn']}
 #t_test = {'FIOLA_10': t_g['FIOLA_10']}
 t_s = 3000
@@ -229,14 +245,13 @@ for key, tr in t_test.items():
     print(f'average decoding performance: {np.mean(r[key])}')
 end = time()
 print(f'processing time {end-start}')
-
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-#np.save(ff+'Fig7c_result_lag5_v3.9.npy', r); np.save(ff+'Fig7c_prediction_lag5_v3.9.npy', p)
-#np.save(ff+'Fig7_supp_dec_lag_v3.8.npy', r); np.save(ff+'Fig7_supp_dec_lag_prediction_v3.8.npy', p)
-#np.save(ff+'Fig7_supp_layers_result_lag_5_v3.9.npy', r); np.save(ff+'Fig7_supp_layers_prediction_lag_5_v3.9.npy', p)
-#np.save(ff+'Fig7_supp_s2p_rigid_result_v3.8.npy', r)
+np.save(ff+'Fig6c_result_lag5_v4.0.npy', r); np.save(ff+'Fig6c_prediction_lag5_v4.0.npy', p)
+#np.save(ff+'Fig6_supp_dec_lag_v3.8.npy', r); np.save(ff+'Fig6_supp_dec_lag_prediction_v3.8.npy', p)
+#np.save(ff+'Fig6_supp_layers_result_lag_5_v3.9.npy', r); np.save(ff+'Fig6_supp_layers_prediction_lag_5_v3.9.npy', p)
+#np.save(ff+'Fig6_supp_s2p_rigid_result_v3.8.npy', r)
 
-#%% Fig 7d decoding performance across time
+#%% Fig 6d decoding performance across time
 train = np.array([3000, 13000])
 flag = 0
 from copy import deepcopy
@@ -274,9 +289,9 @@ for key, tr in deepcopy(t_test).items():
     r[key] = s        
     print(f'average decoding performance: {np.mean(r[key])}')
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-np.save(ff+'Fig7d_result_lag5_v3.9.npy', r)
+np.save(ff+'Fig6d_result_lag5_v3.9.npy', r)
 
-#%% Fig 7e Decoding position at different speed group
+#%% Fig 6e Decoding position at different speed group
 s_tt = s_t[t_s:t_e]
 speed_s = speed[t_s:t_e][s_tt]
 low_spd = np.percentile(speed_s, 33)
@@ -312,468 +327,80 @@ for key, tr in t_test.items():
 end = time()
 print(f'processing time {end-start}')
 
-np.save(ff+'Fig7e_result_lag5_v3.9.npy', r)
-np.save(ff+'Fig7e_prediction_lag5_v3.9.npy', p)
+np.save(ff+'Fig6e_result_lag5_v3.9.npy', r)
+np.save(ff+'Fig6e_prediction_lag5_v3.9.npy', p)
 
-#%% Figure 7c
-lag = ['lag1', 'lag3', 'lag5'][2]
+
+#%% Supp Fig decoding performance with different number of frames for initialization
+#train = np.array([3000, 13000])
+flag = 0
+from copy import deepcopy
+t_test = {key:t_g[key] for key in ('FIOLA3000', 'Suite2p') if key in t_g}
+rr = []
+
+for train in [[3000, i] for i in range(4000, 19000, 1000)]:
+    print(train)
+    #t_test = {key:t_g[key] for key in (['FIOLA3000', 'CaImAn_Online']) if key in t_g}
+    #t_test = t_g.copy()
+    #t_s = 3000
+    #t_e = 31500
+    dec = [pos_s, spd_s][0].copy()
+    alpha_list = [10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000]
+    
+    r = {}
+    for key, tr in deepcopy(t_test).items():
+        s = []
+        print(key)
+        s_tt = s_t[train[0]:train[1]]
+        X = tr[train[0]:train[1]][s_tt]
+        Y = dec[train[0]:train[1]][s_tt]       
+        X = StandardScaler().fit_transform(X)
+        Y = StandardScaler().fit_transform(Y[:, None])[:, 0]
+        alpha_best = cross_validation_regularizer_strength(x=X, y=Y, normalize=True, n_splits=5, alpha_list=alpha_list)
+        clf = Ridge(alpha=alpha_best)
+        clf.fit(X, Y)  
+        
+        for test in [[18000, 30000]]:#[[i, i+4000] for i in range(18000, 28000, 2000)]:
+            print(test)
+            s_tt = s_t[test[0]:test[1]]
+            x = tr[test[0]:test[1]][s_tt]
+            y = dec[test[0]:test[1]][s_tt]   
+            x = StandardScaler().fit_transform(x)
+            y = StandardScaler().fit_transform(y[:, None])[:, 0]        
+            s.append(clf.score(x, y))    
+        r[key] = s        
+        print(f'average decoding performance: {np.mean(r[key])}')
+    rr.append(r)
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-r = np.load(ff+f'Fig7c_result_{lag}_v3.9.npy', allow_pickle=True).item()
-p = np.load(ff+f'Fig7c_prediction_{lag}_v3.9.npy', allow_pickle=True).item()
-fig = plt.figure() 
-ax1 = plt.subplot()
-rr = list(r.values())
-methods = list(r.keys())
-#num = [tt.shape[1] for tt in t_g.values()]
-num = [1307, 1065, 907, 549, 2019, 1788, 1990]
-r_mean = [np.mean(x) for x in rr]
-r_std = [np.std(x) for x in rr]
+np.save(ff+'Fig6_supp_decoding_frames_result_lag5_v3.8.npy', rr)
 
-colors = ['C0', 'C0', 'C0', 'C0', 'C1', 'C2', 'C3', 'C6']
-
-for idx in range(len(list(r.keys()))):
-    ax1.errorbar(num[idx], r_mean[idx], yerr=r_std[idx], fmt='o', capsize=5, color=colors[idx], label=methods[idx])
-
-    method = methods[idx]
-    
-    for mm in ['CaImAn', 'CaImAn_Online', 'Suite2p']:
-        d1 = ttest_rel(r[method], r[mm], alternative='two-sided').pvalue 
-        print(method)
-        print(mm)
-        print(d1)
-    
-    
-    if 'FIOLA' in method:
-        dat = ttest_rel(r[method], r['Suite2p'], alternative='two-sided').pvalue 
-        #print(method)
-        #print(dat)
-        #print(r[method])
-        #print(r['Suite2p'])
-        barplot_annotate_brackets(dat, num[idx], num[5], 
-                                  height = 0.003+ 0.005 * idx + np.max([max(r[method]), max(r['Suite2p'])]), 
-                                  dy=0.003)
-
-ax1.locator_params(axis='y', nbins=8)
-ax1.locator_params(axis='x', nbins=4)
-ax1.set_ylabel('Decoding R square')
-ax1.set_xlabel('Number of neurons')
-ax1.legend()
-plt.tight_layout()
-
-plt.savefig(savef + f'Fig7c_pos_{lag}_v3.9.pdf')
-#plt.savefig(savef + 'Fig_supp_spd_v3.1.pdf')
-# 0.17898542457533081
-# 0.0055860117488064406
-# 0.023733082648987967
-# 0.0035924052250248485
-
-#%% Fig 7d 
-r = np.load(ff+f'Fig7d_result_lag5_v3.9.npy', allow_pickle=True).item()
-xx = np.array(list(range(13000, 28000, 2000)))
-#xx = np.array(xx) - 13000
-#fig = plt.figure(figsize=(8, 6)) 
-methods = list(r.keys())
-fig = plt.figure() 
-ax1 = plt.subplot()
-colors = ['C0', 'C1', 'C2', 'C3']
-
-for idx in [0, 1, 2, 3]:
-    #if 'Fiola' in methods[idx]:
-    ax1.plot(xx, list(r.values())[idx], label=list(r.keys())[idx], color=colors[idx])
-
-#[ax1.plot(xx, x) for x in r_all]
-#ax1.plot(xx, np.array(r['Suite2p']) - np.array(r['FIOLA3000']), label='diff between Suite2p and FIOLA', color='purple') 
-#ax1.plot(xx, np.array(r['CaImAn_Online']) - np.array(r['FIOLA3000']), label='diff between CaImAn Online and FIOLA', color='pink') 
-ax1.set_xlabel('Frame')
-ax1.set_ylabel('Decoding R^2')
-ax1.locator_params(axis='y', nbins=6)
-ax1.locator_params(axis='x', nbins=4)
-#ax1.xaxis.set_ticks_position('none') 
-#ax1.yaxis.set_ticks_position('none') 
-#ax1.set_xticks([])
-#ax1.set_yticks([])
-#ax1.set_ylim([-0.1,1])
-plt.savefig(savef + f'Fig7d_{lag}_v3.9.pdf')
-
-#%%
-import numpy as np
-from scipy import stats
-from sklearn.linear_model import LinearRegression
-
-slopes = []
-intercepts = []
-
-xx = np.array(range(8))
-for key in ['FIOLA3000', 'CaImAn_Online', 'Suite2p', 'CaImAn']:
-    X = np.array(xx)[:, None]
-    #y = np.array(r['Suite2p']) - np.array(r['FIOLA3000'])
-    y = np.array(r[key])# - np.array(r['FIOLA3000'])
-    
-    slope, intercept, r_value, p_value, std_err = stats.linregress(xx,y)
-    slopes.append(slope)
-    intercepts.append(intercept)
-    print(key)
-    print(f'p_value:{p_value}')
-    print(f'slope:{slope}')
-    print(f'intercept:{intercept}')
-
-plt.scatter(slopes, intercepts, color=['C0', 'C1', 'C2', 'C3'])
-# #%%
-# fig, ax = plt.subplots(figsize=(8,8))
-# mean = [[np.mean(list(r.values())[idx][:4]), np.mean(list(r.values())[idx][4:])] for idx in [0, 1, 2, 3]] 
-# std = [[np.std(list(r.values())[idx][:4]), np.std(list(r.values())[idx][4:])] for idx in [0, 1, 2, 3]] 
-# for idx in [0, 1, 2, 3]:
-#     ax.bar(np.array([0, 0.6]) + idx * 0.1, mean[idx], width=0.1, yerr=std[idx], color=colors[idx], label=list(r.keys())[idx])
-#     method = methods[idx]
-#     dat = ttest_ind(r[method][:4], r[method][-4:], alternative='greater').pvalue 
-#     print(dat) 
-#     barplot_annotate_brackets(dat, idx*0.1, idx*0.1+0.6, 
-#                               height = 0.95+ 0.03 * idx, 
-#                               dy=0.003)
-
-# ax.set_ylim([0.3,1.1])
-# #ax.set_xlabel('Frame')
-# ax.set_ylabel('Decoding R^2')
-# ax.legend()
-# plt.tight_layout()
-# #plt.savefig(savef + f'Fig7d_small_{lag}_v3.8.pdf')
-# # 0.010530810321843241
-# # 0.009157310787153716
-# # 0.014374410454194287
-# # 0.009964330324046627
-# #%%
-# ff = '/media/nel/storage/fiola/R2_20190219/result/'
-# #r = np.load(ff+f'Fig7d_result_lag3_v3.8.npy', allow_pickle=True).item()
-# r = np.load(ff+f'Fig7d_result_lag5_v3.8.npy', allow_pickle=True).item()
-# #r['FIOLA3000'] = r1['FIOLA3000']
-# #r['CaImAn_Online'] = r1['CaImAn_Online']
-# amps = [0]
-# spk_amps = [0]
-# colors = ['C0', 'C1', 'C2', 'C3']
-# methods = ['FIOLA3000', 'CaImAn_Online', 'Suite2p', 'CaImAn']
-
-# for amp in amps:
-#     r_all = []
-#     rr = {}
-#     batches = [0, 1]
-#     n_batch = len(batches)
-    
-#     for batch in batches:
-#         for jj, method in enumerate(methods):
-#             # for idx, key in enumerate(r[method].keys()):    
-#             #     if idx == batch:
-#             rr[method] =  r[method][batch * 4 : (batch + 1) * 4]
-#         r_all.append(rr)
-#         rr = {}
-    
-#     fig = plt.figure()
-#     ax = plt.subplot(111)
-#     barplot_pvalue(r_all, methods, colors, ax)
-                    
-#     ax.set_xlabel('Speed group')
-#     ax.set_ylabel('Decoding R^2')
-#     #ax.set_ylim([0.4,1.1])
-    
-
-#%%
-t_s = 3000
-t_e = 31930
-s_tt = s_t[t_s:t_e]
-speed_s = speed[t_s:t_e][s_tt]
-low_spd = np.percentile(speed_s, 33)
-mid_spd = np.percentile(speed_s, 66)
-t1 = np.where(speed_s <= low_spd)[0]
-t2 = np.where(np.logical_and(speed_s > low_spd, speed_s < mid_spd))[0]
-t3 = np.where(speed_s > mid_spd)[0]
-plt.plot(speed_s)
-plt.hlines([low_spd, mid_spd], 0, 30000, linestyles='dashed', color='black')
-
+#%% Fig 6 supp decoding caiman online different frames
 start = time()
-t_test = {key:t_g[key] for key in ('FIOLA3000', 'CaImAn_Online', 'Suite2p', 'CaImAn') if key in t_g}
-tt = [t1, t2, t3]
-spd_group = ['low', 'mid', 'high']
+t_test = t_g.copy()
+#t_test = {'FIOLA3000': t_g['FIOLA3000'], 'CaImAn_Online': t_g['CaImAn_Online']}
+#t_test = {'Suite2p': t_g['Suite2p'], 'CaImAn':t_g['CaImAn']}
+#t_test = {'FIOLA_10': t_g['FIOLA_10']}
+t_s = 3000
+t_e = 31900
+dec = [pos_s, spd_s][0].copy()
 
-
-
-#%%
-ff = '/media/nel/storage/fiola/R2_20190219/result/'
-r = np.load(ff+f'Fig7e_result_{lag}_v3.9.npy', allow_pickle=True).item()
-amps = [0]
-spk_amps = [0]
-colors = ['C0', 'C1', 'C2', 'C3']
-methods = ['FIOLA3000', 'CaImAn_Online', 'Suite2p', 'CaImAn']
-
-for amp in amps:
-    r_all = []
-    rr = {}
-    batches = [0, 1, 2]
-    n_batch = len(batches)
-    
-    for batch in batches:
-        for jj, method in enumerate(methods):
-            for idx, key in enumerate(r[method].keys()):    
-                if idx == batch:
-                    rr[method] =  r[method][key]
-        r_all.append(rr)
-        rr = {}
-    
-    fig = plt.figure()
-    ax = plt.subplot(111)
-    barplot_pvalue(r_all, methods, colors, ax)
-                    
-    ax.set_xlabel('Speed group')
-    ax.set_ylabel('Decoding R^2')
-    ax.set_ylim([0.4,1.2])
-    
-    ff = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/figures/v3.0/Fig4'
-plt.savefig(savef + f'Fig7e_{lag}_v3.9.pdf')
-
-
-#%% Fig 7g timing for init + acquisition + online exp
-f_data = []
-for init_frames in [3000, 1500, 1000, 500]:
-    ff = f'/media/nel/storage/fiola/R2_20190219/{init_frames}'
-    files = os.listdir(ff)
-    file = [os.path.join(ff, file) for file in files if 'lag_3_test_v3.21' in file][0]
-    print(len(files))
-    r = np.load(file, allow_pickle=True)
-    f_data.append((r.item().timing['init'] - r.item().timing['start']))
-f_data = np.array(f_data)[:, None]
-
-#%%
-t_3000 = - np.diff(list(cnm3000.estimates.timing.values()))[0]
-t_1500 = - np.diff(list(cnm1500.estimates.timing.values()))[0]
-t_1000 = - np.diff(list(cnm1000.estimates.timing.values()))[0]
-t_500 = - np.diff(list(cnm500.estimates.timing.values()))[0]
-data = np.array([t_3000, t_1500, t_1000, t_500])[:, None]
-data = np.hstack([np.array([3000/15.46, 1500/15.46, 1000/15.46, 500/15.46])[:, None], data, f_data,
-                 np.array([1800, 1800, 1800, 1800])[:, None]])
-
-# np.array([(31932 - 3000)/15.46, (31932 - 1500)/15.46, (31932 - 1000)/15.46, (31932 - 500)/15.46])[:, None]
-data = data/60
-fig = plt.figure(figsize=(8, 6)) 
-ax1 = plt.subplot()
-ax1.bar(range(4), data[:, 0], label='acquision for init')
-ax1.bar(range(4), data[:, 1] + data[:, 2], bottom=data[:, 0], label='init time')
-ax1.bar(range(4), data[:, 3], bottom=data[:, 2] + data[:, 1] + data[:, 0], label='online exp time')
-ax1.legend(frameon=False)
-ax1.spines['top'].set_visible(False)
-ax1.spines['right'].set_visible(False)
-ax1.spines['bottom'].set_visible(False)
-#ax1.spines['left'].set_visible(False)
-ax1.set_xlabel('init batch size (frames)')
-ax1.set_ylabel('time (mins)')
-
-ax1.xaxis.set_ticks_position('none') 
-#ax1.yaxis.set_ticks_position('none') 
-ax1.set_xticks([0, 1, 2, 3])
-ax1.set_xticklabels(['3000', '1500', '1000', '500' ])
-ax1.set_yticks([0, 10, 20, 30, 40])
-#ax1.set_yticks([])
-#ax1.set_ylim([0,1])
-#plt.show()
-plt.savefig(savef + 'Fig7f_init_time_v3.7.pdf')
-
-#%% Fig 7h timing for all methods
-t_init = []
-for init_frames in [500, 1000, 1500, 3000]:
-    caiman_file = f'/media/nel/storage/fiola/R2_20190219/{init_frames}/memmap__d1_796_d2_512_d3_1_order_C_frames_{init_frames}__v3.7.hdf5'
-    cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
-    t_init.append(-np.diff(list(cnm2.estimates.timing.values()))[0])
-t_init = np.array(t_init)
-
-t_init1 = []
-for init_frames in [500, 1000, 1500, 3000]:
-    ff = f'/media/nel/storage/fiola/R2_20190219/{init_frames}'
-    files = os.listdir(ff)
-    file = [os.path.join(ff, file) for file in files if 'test_v3.15' in file][0]
-    r = np.load(file, allow_pickle=True)
-    t_init1.append((r.item().timing['init'] - r.item().timing['start']))
-t_init1 = np.array(t_init1)
-
-
-t_online = []
-for idx, num_frames in enumerate([500, 1000, 1500, 3000]):
-    for i in [1, 2, 3]:
-        file = f'/media/nel/storage/fiola/R2_20190219/{num_frames}/fiola_result_init_frames_{num_frames}_iteration_{i}_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_test_v3.15.npy'
-        r = np.load(file, allow_pickle=True).item()
-        t_online.append(np.diff(list(r.timing.values())[1:3])[0])
-tt = np.array(t_online).reshape((3,4), order='F').copy()
-t_online = np.array(t_online).reshape((3,4), order='F')[2]
-
-#%%
-onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.16.hdf5')
-t_onacid = onacid.time_spend.sum()
-t_s2p = 1836.44
-t_s2p_rigid = 970
-caiman = load_CNMF('/media/nel/storage/fiola/R2_20190219/memmap__d1_796_d2_512_d3_1_order_C_frames_31933__v3.7.hdf5')
-t_caiman = -np.diff(list(caiman.estimates.timing.values()))
-
-data = np.zeros((2, 4))
-data[0, :4] = t_init + t_init1
-data[1, :4] = t_online
-
-
-#%%
-colors = [ 'C0', 'C1', 'C2', 'C3', 'C4', 'C6']
-fig, ax1 = plt.subplots()
-ax1.bar(range(4), data[0,:4]/60, label='FIOLA_init', color=colors[4])
-ax1.bar(range(4), data[1,:4]/60, bottom=data[0, :4]/60, label='FIOLA_online', color=colors[0])
-ax1.bar(4, t_onacid/60, label='CaImAn_Online', color=colors[1])
-ax1.bar(5, t_s2p/60, label='Suite2p', color=colors[2])
-ax1.bar(6, t_caiman/60, label='CaImAn', color=colors[3])
-#ax1.bar(7, t_s2p_rigid/60, label='Suite2p_rigid', color=colors[5])
-
-ax1.legend()
-#ax1.set_xlabel('method')
-ax1.set_ylabel('time (mins)')
-ax1.xaxis.set_ticks_position('none') 
-#ax1.yaxis.set_ticks_position('none') 
-ax1.set_xticks([])
-#ax1.set_xticklabels(['Fiola 3000', 'Fiola 1500', 'Fiola 1000', 'Fiola 500' ])
-#ax1.set_yticks([])
-#ax1.set_ylim([0,1])
-plt.savefig(savef+'Fig7g_total_time_v3.9.pdf')
-
-#%% supp timing s2p
-colors = [ 'C0', 'C3', 'C7', 'C4']
-fig, ax1 = plt.subplots()
-ax1.bar(range(1), data[0,-1]/60, label='FIOLA_init', color=colors[-1])
-ax1.bar(range(1), data[1,-1]/60, bottom=data[0, -1]/60, label='FIOLA_online', color=colors[0])
-ax1.bar(1, t_s2p/60, label='Suite2p', color=colors[1])
-ax1.bar(2, t_s2p_rigid/60, label='Suite2p_rigid', color=colors[2])
-#ax1.bar(7, t_s2p_rigid/60, label='Suite2p_rigid', color=colors[5])
-
-ax1.legend()
-#ax1.set_xlabel('method')
-ax1.set_ylabel('time (mins)')
-ax1.xaxis.set_ticks_position('none') 
-#ax1.yaxis.set_ticks_position('none') 
-ax1.set_xticks([])
-#ax1.set_xticklabels(['Fiola 3000', 'Fiola 1500', 'Fiola 1000', 'Fiola 500' ])
-#ax1.set_yticks([])
-#ax1.set_ylim([0,1])
-plt.savefig(savef+'Fig7_supp_s2p_rigid_timing_v3.8.pdf')
-
-
-#%% Fig h
-data_fr_custom = {}
-for idx, num_frames in enumerate([500, 1000, 1500, 3000]):
-    for i in [1]:
-        file = f'/media/nel/storage/fiola/R2_20190219/{num_frames}/fiola_result_init_frames_{num_frames}_iteration_{i}_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_test_v3.15.npy'
-        #file = f'/media/nel/storage/fiola/R2_20190219/{num_frames}/fiola_result_init_frames_{num_frames}_iteration_{i}_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_lag_3_test_v3.21.npy'
-        r = np.load(file, allow_pickle=True).item()
-        data_fr_custom[num_frames] = np.diff(list(r.timing.values())[3])[1:] * 1000
-
-for key in data_fr_custom.keys():
-    print(np.mean(data_fr_custom[key]))
-#%%
-import matplotlib.cbook as cbook
-stats = {}
-count = 0
-for key in data_fr_custom.keys():
+r = {}
+p = {}
+alpha_list = [10, 50, 100, 500, 1000, 5000, 10000, 50000, 100000]
+for key, tr in t_test.items():
     print(key)
-    stats[key] = cbook.boxplot_stats(data_fr_custom[key], labels=str(count))[0]
-    stats[key]["q1"], stats[key]["q3"] = np.percentile(
-        data_fr_custom[key], [5, 95])
-    stats[key]["whislo"], stats[key]["whishi"] = np.percentile(
-        data_fr_custom[key], [0.1, 99.9])
+    s_tt = s_t[t_s:t_e]
+    X = tr[t_s:t_e][s_tt]
+    Y = dec[t_s:t_e][s_tt]
+    r[key], p[key] = cross_validation_ridge(X, Y, normalize=True, n_splits=5, alpha_list=alpha_list)
+    print(f'average decoding performance: {np.mean(r[key])}')
+end = time()
+print(f'processing time {end-start}')
 
-    # stats[key]["whishi"] = stats[key]["q3"] + 1.5*(stats[key]["q3"]-stats[key]["q1"])
-    # stats[key]["whislo"] = stats[key]["q1"] - 1.5*(stats[key]["q3"]-stats[key]["q1"])
-    outliers = []
-    for val in stats[key]["fliers"]:
-        if val >= stats[key]['whishi'] or val <= stats[key]["whislo"]:
-            outliers.append(val)
-    stats[key]["fliers"] = outliers
-    count += 1
-
-colors = ["C0", "C0", "C0", "C0"]
-fig, ax = plt.subplots(1, 1)
-bplot = ax.bxp(stats.values(),  positions=range(4),  patch_artist=True)
-ax.set_yscale("log")
-ax.set_xticklabels(data_fr_custom.keys())
-
-for patch, color in zip(bplot["boxes"], colors):
-    print(color)
-    patch.set_facecolor(color)
-    
-ax.hlines(1/15.46*1000, -0.5, 3, linestyle='dashed', color='black', label='frame rate')
-ax.legend()
-#ax.set_xticks([])
-ax.set_xlabel('Init frames')
-ax.set_ylabel('Time per frame (ms)')    
-#plt.savefig(savef+'Fig7h_tpf_v3.72.pdf')
-
-
-#%% Fig supp timing vs accuracy trade off
-files = ['/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_3_num_layers_30_trace_with_neg_False_center_dims_(398, 256)_test_num_layers_v3.15.npy', 
-         '/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_3_num_layers_10_trace_with_neg_False_center_dims_(398, 256)_test_num_layers_v3.15.npy', 
-         '/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_3_num_layers_5_trace_with_neg_False_center_dims_(398, 256)_test_num_layers_v3.15.npy', 
-         '/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_3_num_layers_3_trace_with_neg_False_center_dims_(398, 256)_test_num_layers_v3.15.npy', 
-         '/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_3_num_layers_1_trace_with_neg_False_center_dims_(398, 256)_test_num_layers_v3.15.npy']
-layers = [30, 10, 5, 3, 1]
-#r = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_layers_result_v3.7.npy', allow_pickle=True).item()
-r = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_layers_result_lag_5_v3.8.npy', allow_pickle=True).item()
-mean = []
-std = []
-tpf = []
-for idx, layer in enumerate(layers):
-    for j in np.arange(1, 4):
-        file = f'/media/nel/storage/fiola/R2_20190219/3000/fiola_result_init_frames_3000_iteration_{j}_num_layers_{layer}_trace_with_neg_False_center_dims_(398, 256)_test_num_layers_v3.15.npy'
-        re = np.load(file, allow_pickle=True).item()
-        tpf.append(np.diff(list(re.timing.values())[3]).mean())
-    mean.append(np.mean(r['FIOLA'+str(layers[idx])]))
-    std.append(np.std(r['FIOLA'+str(layers[idx])]))
-tpf = np.array(tpf) * 1000
-#
-tpfm = np.array(tpf).reshape(5, 3).mean(1)
-tpfs = np.array(tpf).reshape(5, 3).std(1)
-
-#%%
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-rr = np.load(ff+'Fig7c_result_lag5_v3.9.npy', allow_pickle=True).item()
+np.save(ff+'Fig6_supp_onacid_result_lag5_v3.10.npy', r)
 
-r['CaImAn_Online'] = rr['CaImAn_Online']
-r['Suite2p'] = rr['Suite2p']
-r['CaImAn'] = rr['CaImAn']
 
-for key in ['CaImAn_Online', 'Suite2p', 'CaImAn']:
-    mean.append(np.mean(r[key]))
-    std.append(np.std(r[key]))
-#%%
-onacid = load_CNMF('/media/nel/storage/fiola/R2_20190219/mov_R2_20190219T210000_caiman_online_results_v3.16.hdf5')
-t_onacid = onacid.time_spend.sum()
-t_s2p = 1836.44
-t_s2p_rigid = 970
-caiman = load_CNMF('/media/nel/storage/fiola/R2_20190219/memmap__d1_796_d2_512_d3_1_order_C_frames_31933__v3.7.hdf5')
-t_caiman = -np.diff(list(caiman.estimates.timing.values()))[0]
-
-tpfm = np.append(tpfm, np.array([t_onacid / 31932, t_s2p/31932, t_caiman/31932]) * 1000)
-
-#%%
-ff = '/media/nel/storage/fiola/R2_20190219/result/'
-fig = plt.figure() 
-ax1 = plt.subplot()
-#rr = list(r.values())
-methods = list(r.keys())
-#num = [tt.shape[1] for tt in rr.values()]
-
-colors = ['C5', 'C6', 'C7', 'C8', 'C9', 'C1', 'C2', 'C3', 'C4']
-
-for idx in range(len(list(r.keys()))):
-    #if idx < 5:
-        try:
-            ax1.errorbar(tpfm[idx], mean[idx], yerr=std[idx], xerr=tpfs[idx], fmt='o', capsize=5, color=colors[idx], label=layers[idx])
-        except:
-            ax1.errorbar(tpfm[idx], mean[idx], yerr=std[idx], fmt='o', capsize=5, color=colors[idx], label=list(r.keys())[idx])
-
-ax1.set_ylabel('decoding R square')
-ax1.set_xlabel('time per frame (ms)')
-ax1.set_ylim([0.8, 0.96])
-ax1.legend()
-#plt.savefig(savef + 'Fig7_supp_num_layers_lag5_b_v3.8.pdf')
-plt.savefig(savef + 'Fig7_supp_num_layers_lag5_a_v3.9.pdf')
 
 
 #%%
@@ -787,7 +414,7 @@ for idx, method in enumerate(list(r.keys())):
         data[f'{method}_time_std'] = tpfs[idx]
     except:
         print('skip')
-np.save(savef +  'Fig7_supp_num_layers_v3.72_data.npy', data)
+np.save(savef +  'Fig6_supp_num_layers_v3.72_data.npy', data)
         
 
 #%%
@@ -839,20 +466,20 @@ end = time()
 print(f'processing time {end-start}')
 
 aa = np.array([list(result[key].values()) for key in result.keys()])
-plt.plot(list(range(-6, 8, 2)), aa); plt.legend(list(range(0, 16, 2))); plt.xlabel('lag'); plt.ylabel('R2'); plt.savefig(savef + 'Fig7_lag_gaussian1.pdf')
-plt.plot(list(range(0, 16, 2)), aa.T); plt.legend(list(range(-6, 8, 2))); plt.xlabel('gaussian filter size'); plt.ylabel('R2'); plt.savefig(savef + 'Fig7_lag_gaussian2.pdf')
+plt.plot(list(range(-6, 8, 2)), aa); plt.legend(list(range(0, 16, 2))); plt.xlabel('lag'); plt.ylabel('R2'); plt.savefig(savef + 'Fig6_lag_gaussian1.pdf')
+plt.plot(list(range(0, 16, 2)), aa.T); plt.legend(list(range(-6, 8, 2))); plt.xlabel('gaussian filter size'); plt.ylabel('R2'); plt.savefig(savef + 'Fig6_lag_gaussian2.pdf')
 
 #%% Decoding vs threshold
 plt.plot([1389, 1311, 1225, 1116, 932, 817], [np.mean(r[rr]) for rr in r.keys()]); plt.ylabel('R square'); plt.xlabel('num neurons'); 
-plt.savefig(savef+'Fig7_Rsquare_num_neurons.pdf')
+plt.savefig(savef+'Fig6_Rsquare_num_neurons.pdf')
 
 #for i in range(len(method)):
 #    ax1.annotate(method[i], (xx[i] + 10, yy[i] - 0.02))    
 #%%
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-r = np.load(ff+'Fig7c_result_v3.7.npy', allow_pickle=True).item()
-p = np.load(ff+'Fig7c_prediction_v3.7.npy', allow_pickle=True).item()
-r1 = np.load(ff + 'Fig7_supp_dec_lag_v3.8.npy', allow_pickle=True).item()
+r = np.load(ff+'Fig6c_result_v3.7.npy', allow_pickle=True).item()
+p = np.load(ff+'Fig6c_prediction_v3.7.npy', allow_pickle=True).item()
+r1 = np.load(ff + 'Fig6_supp_dec_lag_v3.8.npy', allow_pickle=True).item()
 fig = plt.figure() 
 ax1 = plt.subplot()
 rr = list(r.values())
@@ -884,7 +511,7 @@ ax1.set_ylabel('Decoding R square')
 ax1.set_xlabel('Number of neurons')
 ax1.legend()
 
-#plt.savefig(savef + 'Fig7c_pos_v3.7.pdf')
+#plt.savefig(savef + 'Fig6c_pos_v3.7.pdf')
 #plt.savefig(savef + 'Fig_supp_spd_v3.1.pdf')
 # 0.17898542457533081
 # 0.0055860117488064406
@@ -893,8 +520,8 @@ ax1.legend()
 
 #%% supp suite2p rigid
 ff = '/media/nel/storage/fiola/R2_20190219/result/'
-r = np.load(ff+'Fig7c_result_v3.7.npy', allow_pickle=True).item()
-r1 = np.load(ff + 'Fig7_supp_s2p_rigid_result_v3.8.npy', allow_pickle=True).item()
+r = np.load(ff+'Fig6c_result_v3.7.npy', allow_pickle=True).item()
+r1 = np.load(ff + 'Fig6_supp_s2p_rigid_result_v3.8.npy', allow_pickle=True).item()
 fig = plt.figure() 
 ax1 = plt.subplot()
 rrr = {}
@@ -934,11 +561,11 @@ ax1.set_ylabel('Decoding R square')
 ax1.set_xlabel('Number of neurons')
 ax1.set_ylim([0.88, 0.95])
 ax1.legend()
-plt.savefig(savef + 'Fig7_supp_s2p_rigid_v3.8.pdf')
+plt.savefig(savef + 'Fig6_supp_s2p_rigid_v3.8.pdf')
 
 #%%
-r = np.load(ff+'Fig7c_result_v3.7.npy', allow_pickle=True).item()
-r1 = np.load(ff + 'Fig7_supp_dec_lag_v3.8.npy', allow_pickle=True).item()
+r = np.load(ff+'Fig6c_result_v3.7.npy', allow_pickle=True).item()
+r1 = np.load(ff + 'Fig6_supp_dec_lag_v3.8.npy', allow_pickle=True).item()
 for method in r1.keys():
     print(method)
     for compared in ['Suite2p', 'CaImAn', 'CaImAn_Online']:
@@ -2040,9 +1667,9 @@ def run_fiola(mov, cnm, select, fnames='/'):
 #%% init
 fnames_init = os.path.join(base_folder, '5000', 'mov_raw_5000.hdf5')
 fnames_all = os.path.join(base_folder, 'mov_raw.hdf5')
-run_caiman_fig7(fnames_init, pw_rigid=True, motion_correction_only=False, K=5)
-run_caiman_fig7(fnames_all, pw_rigid=False, motion_correction_only=True)
-run_caiman_fig7(fnames_all, pw_rigid=True, motion_correction_only=False, K=8)
+run_caiman_fig6(fnames_init, pw_rigid=True, motion_correction_only=False, K=5)
+run_caiman_fig6(fnames_all, pw_rigid=False, motion_correction_only=True)
+run_caiman_fig6(fnames_all, pw_rigid=True, motion_correction_only=False, K=8)
 
 
 t_test = t_g.copy()
@@ -2457,8 +2084,8 @@ ax1.set_xticklabels(areas)
 ax1.set_xticks(list(range(len(areas))))
 #ax1.set_yticks([])
 ax1.set_ylim([0,1])
-plt.savefig(savef+ 'Fig7_fiola_mroi_remove_frames_with_dec.pdf')
-#plt.savefig(savef + 'Fig7_fiola_mroi_remove_frames.pdf')
+plt.savefig(savef+ 'Fig6_fiola_mroi_remove_frames_with_dec.pdf')
+#plt.savefig(savef + 'Fig6_fiola_mroi_remove_frames.pdf')
 
 # r['FIOLA']['FIOLA3000_0.125']
 # r['MeanROI']['MeanROI_0.125']
@@ -2592,7 +2219,7 @@ for key, pr in p.items():
 plt.legend(['gt']+[k+f':{round(r[k][0], 2)}' for k in key_list])
 plt.xlabel('frames')
 plt.ylabel('location after z-score')
-plt.savefig(savef + 'Fig7c_supp_postion_prediction_v3.5.pdf')
+plt.savefig(savef + 'Fig6c_supp_postion_prediction_v3.5.pdf')
 
 #%% statistical tests
 import numpy as np
@@ -2710,9 +2337,9 @@ t2 = StandardScaler().fit_transform(t2.T).T
 view_compare_components(t1=t1, t2=t2, A=cnm.estimates.A.toarray().copy(), img=cnm.estimates.Cn, area=1/8)
 #%% Supp fiola v suite2p v meanroi
 areas = [1, 1/2, 1/4, 1/8, 1/16, 1/32, 1/64]
-rr1 = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_downsampling_result_FIOLA_v3.5.npy', allow_pickle=True).item()
-rr2 = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_downsampling_result_MeanROI_v3.5.npy', allow_pickle=True).item()
-rr3 = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_downsampling_result_Suite2p_v3.5.npy', allow_pickle=True).item()
+rr1 = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig6_supp_downsampling_result_FIOLA_v3.5.npy', allow_pickle=True).item()
+rr2 = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig6_supp_downsampling_result_MeanROI_v3.5.npy', allow_pickle=True).item()
+rr3 = np.load('/media/nel/storage/fiola/R2_20190219/result/Fig6_supp_downsampling_result_Suite2p_v3.5.npy', allow_pickle=True).item()
 r = {'FIOLA':rr1, 'MeanROI':rr2, 'Suite2p':rr3 }
 
 # significance
@@ -2760,7 +2387,7 @@ ax1.set_ylabel('Decoding R^2')
 ax1.xaxis.set_ticks_position('none') 
 ax1.set_xticklabels(areas)
 ax1.set_xticks(np.array(list(range(len(areas))))+width)
-plt.savefig(savef+ 'Fig7_fiola_mroi_significance.pdf')
+plt.savefig(savef+ 'Fig6_fiola_mroi_significance.pdf')
 #ax1.set_yticks([])
 #ax1.set_ylim([0.2,1])
 
@@ -2808,7 +2435,7 @@ for iteration in range(5):
             print(f'average decoding performance: {np.mean(r[key])}')
         end = time()
         ff = '/media/nel/storage/fiola/R2_20190219/result/'
-        np.save(ff+f'Fig7_supp_downsampling_result_{method}_{iteration}_v3.7.npy', r)
+        np.save(ff+f'Fig6_supp_downsampling_result_{method}_{iteration}_v3.7.npy', r)
 
 #%%
 num_neurons = [1307, 700, 500, 300, 100]
@@ -2816,7 +2443,7 @@ for iteration in range(5):
     fig = plt.figure(figsize=(10, 10)) 
     ax1 = plt.subplot()
     for idx, method in enumerate(['FIOLA', 'MeanROI']):
-        file = f'/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_downsampling_result_{method}_{iteration}_v3.7.npy'
+        file = f'/media/nel/storage/fiola/R2_20190219/result/Fig6_supp_downsampling_result_{method}_{iteration}_v3.7.npy'
         rr = np.load(file, allow_pickle=True).item()
         mean = [np.mean(r) for r in rr.values()]
         std = [np.std(r) for r in rr.values()]
@@ -2829,7 +2456,7 @@ M_mean = np.zeros((5, 5))
 for iteration in range(5):
     
     for idx, method in enumerate(['FIOLA', 'MeanROI']):
-        file = f'/media/nel/storage/fiola/R2_20190219/result/Fig7_supp_downsampling_result_{method}_{iteration}_v3.7.npy'
+        file = f'/media/nel/storage/fiola/R2_20190219/result/Fig6_supp_downsampling_result_{method}_{iteration}_v3.7.npy'
         rr = np.load(file, allow_pickle=True).item()
         # mean = [np.mean(r) for r in rr.values()]
         # std = [np.std(r) for r in rr.values()]
@@ -2858,7 +2485,7 @@ ax1.xaxis.set_ticks_position('none')
 ax1.set_xticklabels(np.array(num_neurons)[::-1])
 ax1.set_xticks(np.array(list(range(len(num_neurons))))+0.1)
 ax1.legend()
-plt.savefig(savef+ 'Fig7_supp_fiola_mroi_v3.7.pdf')
+plt.savefig(savef+ 'Fig6_supp_fiola_mroi_v3.7.pdf')
 
 
 temp = []
@@ -2887,11 +2514,11 @@ for method in ['FIOLA', 'MeanROI']:
         print(f'average decoding performance: {np.mean(r[key])}')
     end = time()
     ff = '/media/nel/storage/fiola/R2_20190219/result/'
-    np.save(ff+f'Fig7_supp_downsampling_result_{method}_no_dec_v3.5.npy', r)
+    np.save(ff+f'Fig6_supp_downsampling_result_{method}_no_dec_v3.5.npy', r)
 [{rr: np.mean(r[rr])} for rr in r.keys()]
 
 #%%
-# r = np.load(ff+'Fig7e_result_v3.7.npy', allow_pickle=True).item()
+# r = np.load(ff+'Fig6e_result_v3.7.npy', allow_pickle=True).item()
 # methods = list(r.keys())
 # fig = plt.figure(figsize=(8, 6)) 
 # ax1 = plt.subplot()
@@ -2926,7 +2553,7 @@ for method in ['FIOLA', 'MeanROI']:
 # ax1.set_xticks(list(range(len(spd_group))))
 # #ax1.set_yticks([])
 # ax1.set_ylim([0.4,1])
-# #plt.savefig(savef + 'Fig7e_pos_v3.7.pdf')
+# #plt.savefig(savef + 'Fig6e_pos_v3.7.pdf')
 
 #%%
 fig, ax1 = plt.subplots()
@@ -2938,4 +2565,4 @@ ax1.set_xlabel('init batch size (frames)')
 ax1.set_ylabel('time (ms)')
 ax1.set_xticks([0, 1, 2, 3])
 ax1.set_xticklabels(['500', '1000', '1500', '3000' ])
-#plt.savefig(savef+'Fig7h_tpf_v3.7.pdf')
+#plt.savefig(savef+'Fig6h_tpf_v3.7.pdf')

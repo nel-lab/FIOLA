@@ -60,7 +60,7 @@ logging.basicConfig(format=
                     level=logging.WARNING)
 
 #%%
-def run_caiman_fig7(fnames, pw_rigid=False, motion_correction_only=False, K=5):
+def run_caiman_fig6(fnames, pw_rigid=False, motion_correction_only=False, K=5):
     start = time()    
     # fnames = ['/media/nel/DATA/fiola/R2_20190219/3000/mov_R2_20190219T210000_3000.hdf5']
     # fnames = ['/media/nel/storage/fiola/R6_20200210T2100/mov_R6_20200210T2100.hdf5']

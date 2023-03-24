@@ -109,8 +109,21 @@ fiola_shiftPath = files_fiola[idx]
 fiola_full_shifts = np.load(fiola_shiftPath)
 cm_full_shifts = np.load(cm_shiftpath)
 output_ops = np.load(files_ops[idx], allow_pickle=True)[()]
-# %%  plot for  quality control
-x = 0
+#%% save  2a  data
+import csv
+def  save_to_csv(path, data,  header):
+    with open(path,  "w") as my_file:
+        escritor = csv.writer(my_file)
+        lector = csv.reader(my_file)
+        escritor.writerow([header])
+        rw = escritor.next()
+        rw.append(k)
+        for pt in data:
+            
+            escritor.writerow([pt])
+    
+# %%  plot for  quality control 2a
+x = 1
 x2 = "xoff" if x else "yoff"
 show_nr = 1
 # procedure:x-shifts  in cm/fiola align  with y-shifts (yoff) in s2p and vice-versa.
@@ -131,6 +144,7 @@ plt.plot((-s2p_rigid_shifts_y+np.mean(s2p_rigid_shifts_y))[1500:])
 
 # plt.plot(output_ops["yoff1"][1500:]*2+1)
 # plt.plot(fiola_full_shifts[1500:,1])
+
 # %%  error  calculation  using cm online  as the  reference  point for 2b
 files_voltage = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/*cm_on_shifts.npy"))
 files = files_cm + files_voltage
@@ -178,8 +192,8 @@ for i, f in enumerate(files):
     dataset_y["alg"] += ["full_fiola"]*start + \
         ["crop_fiola"]*start + ["suite2p"]*start
     dataset_y["dset"] += [names[i]]*3*start
-    if i==2:
-        break
+    # if i==2:
+    #     break
 # %% box plot generation for 2b (motion correction)
 df = pd.DataFrame(dataset_y)
 ax = sns.boxplot(x=df["dset"],
@@ -289,15 +303,16 @@ for n in nmes:
             multiplier = 1000
         else:
             multiplier = 10
-        if "512" in n:
-            temp="test_19-09-22/"
-            data_fr_custom[n] = 10*np.array(np.load(base_file + temp + n +
-                                            ".npy", allow_pickle=True))
+        # if "512" in n:
+        temp="test_19-09-22/"
+        #     temp=""
+        # data_fr_custom[n] = 10*np.array(np.load(base_file + temp + n +
+        #                                      ".npy", allow_pickle=True))
                                     
-            print(n)
-        else:
-            data_fr_custom[n] = multiplier*np.array(np.load(base_file + temp + n +
-                                        ".npy", allow_pickle=True)[()]["fiola_batchStart"][1:])
+        #     print(n)
+        # else:
+        data_fr_custom[n] = 1000*np.array(np.load(base_file + temp + n +
+                                        ".npy", allow_pickle=True)[()][1:])
     else:
         if "cm" in n:
             multiplier = 1
@@ -527,6 +542,7 @@ for file in files:
     v5_traces = np.load(file[:-8] + "v_nnls_5.npy")
     v10_traces = np.load(file[:-8]+ "v_nnls_10.npy")
     v30_traces = np.load(file[:-8] + "v_nnls_30.npy")
+    print(file, len(v5_traces))
     if "02" in  file:
         break
     #rscore5.append(np.corrcoef(nnls_traces, v5_traces))
@@ -548,7 +564,7 @@ for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
         ti_mean = np.nanmedian(ti)
         # ti_err = np.nanstd(ti)
         x.append(ti_mean)
-        # xerr.append(ti_err)
+        xerr.append(ti_err)
         xlow.append(x[-1]-np.quantile(ti,0.25))
         xhigh.append(np.quantile(ti,0.75)-x[-1])
         offset = offsets[i]
@@ -557,6 +573,8 @@ for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
         nn_sp = nn_sp[offset:offset+len(nn_vi)]
         r = []
         count = 0
+        bad=0
+        print(f, nn_sp.shape, ti.shape)
         for (s,v) in zip(nn_sp, nn_vi):
             r_indiv = pearsonr(s,v)[0]
             if r_indiv <= 0:
@@ -573,7 +591,9 @@ for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
         # yerr.append(np.nanstd(r))
         ylow.append(y[-1]-np.nanquantile(r,0.25))
         yhigh.append(np.nanquantile(r,0.75)-y[-1])
-        print(np.nanquantile(r,0.25), np.nanquantile(r,0.75),ylow,yhigh)
+        # print(np.nanquantile(r,0.25), np.nanquantile(r,0.75),ylow,yhigh)
+        print(bad, y[-1]-np.nanquantile(r,0.25))
+    # ax.errorbar(x,y,xerr=xerr,yerr=yerr,marker="o", label=f)
     ax.errorbar(x, y, xerr=np.vstack([xlow,xhigh]),yerr=np.vstack([ylow,yhigh]), marker="o", label=f)
     plt.yscale('log')
     plt.legend()
@@ -583,7 +603,7 @@ for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
 exp = lambda x: 10**(x)
 log = lambda x: np.log10(x) 
 # ax.set_yscale("function", functions=(exp, log)) 
-plt.axhline(y=0.999)
+# plt.axhline(y=0.999)
 ax.set_yticks([0.5,0.9, 0.95, 0.999])  
         
     

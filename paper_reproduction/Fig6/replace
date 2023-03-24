@@ -1,0 +1,9 @@
+#!/bin/bash
+for filename in *; do
+    echo "${filename}"
+    sed -i 's/Fig6/Fig6/g' ${filename}
+    sed -i 's/fig6/fig6/g' ${filename}
+    sed -i 's/Fig 6/Fig 6/g' ${filename}
+    sed -i 's/fig 6/fig 6/g' ${filename}
+done
+

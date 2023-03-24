@@ -24,6 +24,7 @@ mc_avg = []
 mc_std = []
 nnls_avg = []
 nnls_std = []
+dsets = []
 for dims in [512, 1024]:
     mc_file = str(dims).join(base_file_mc.split("*"))
     mc = np.diff(np.load(mc_file))*1000
@@ -35,6 +36,8 @@ for dims in [512, 1024]:
         mc_std.append(np.std(mc))
         nnls_avg.append(np.mean(nnls))
         nnls_std.append(np.std(nnls))
+        dsets.append(mc)
+        dsets.append(nnls+np.mean(mc))
 
 #%% Eager MC/NNLS Figure plot
 labels = ["512_100", "512_500", "1024_100", "1024_500"]
@@ -42,7 +45,9 @@ width = 0.25
 fig, ax = plt.subplots()
 ax.bar(labels, mc_avg, width, yerr=mc_std)
 ax.bar(labels, nnls_avg, width, yerr=nnls_std, bottom=mc_avg)
+ax.boxplot(dsets,whis=(1, 99))
 ax.set_ylabel("ms")
+ax.set_yscale("log")
 ax.legend()
 plt.show()
 #%% Supplementary Figure 7

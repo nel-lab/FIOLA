@@ -26,22 +26,23 @@ fiola_all = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_onlin
 fiola_crop = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Crop/time*.npy")
 cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/26feb_finalsub/cm_*.npy"))
 fiola_batch = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Batch/Neurs/times_*.npy")
-def filter_helper(dims, path):
+def filter_helper( path):
+    dims = ["256","768", "crop"]
     return all(x not in path for x in dims)
-fiola_all = sorted(list(filter(lambda x: filter_helper(["1024","512","768", "crop"], x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
-fiola_crop = sorted(list(filter(lambda x: filter_helper(["1024","512","768"], x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
-fiola_batch = sorted(list(filter(lambda x: filter_helper(["1024","512","768"], x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
-cm_times = sorted(list(filter(lambda x: filter_helper(["1024","512","768"], x), cm_times)))
+fiola_all = sorted(list(filter(lambda x: filter_helper(x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
+fiola_crop = sorted(list(filter(lambda x: filter_helper( x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
+fiola_batch = sorted(list(filter(lambda x: filter_helper(x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
+cm_times = sorted(list(filter(lambda x: filter_helper( x), cm_times)))
 
 #%% calculate means and stdevs
-cou = 12 #24 for full figure
+cou = 24 #24 for full figure
 offset = 4 #4 for full figure
 
 batch, grph, crop, cm = [0]*cou,[0]*cou,[0]*cou,[0]*cou
 batch_sd, grph_sd, crop_sd, cm_sd = [0]*cou,[0]*cou,[0]*cou,[0]*cou
 batch_all,grph_all,crop_all,cm_all = [],[],[],[]
 dsets = []
-for i in range(3): # 6 for full figure
+for i in range(6): # 6 for full figure
 
     cm_data = np.load(cm_times[i], allow_pickle=True)[()][3000:]
     cm[i*offset]  = np.mean(cm_data)
@@ -69,14 +70,14 @@ for i in range(3): # 6 for full figure
           # "sep100_512","grph100_512","egr100_512","sep500_512","grph500_512","egr500_512"]
 # labels = ["b100","g100","c100","b200","g200","c200","b500","g500","c500"]
 # labels = ["b100", "f100","c100", "x100","b200","f200","c200", "x200","b500","f500","c500", "x500"]
-labels = range(1,13) # range(24) for full fig
+labels = range(1, 25) # range(24) for full fig
 
 fig, ax = plt.subplots()
 ax.bar(labels, cm, yerr=cm_sd, label="caiman",zorder=1)
 ax.bar(labels, grph, yerr=grph_sd,  label="full pipeline",zorder=1)
 ax.bar(labels, crop, yerr=crop_sd, label="crop",zorder=1)
 ax.bar(labels, batch, yerr=batch_sd, label="batch", zorder=1)
-ax.boxplot(dsets, whis=(0.1,99.9))
+# ax.boxplot(dsets, whis=(0.1,99.9))
 # ax.violinplot(dsets, widths=0.8, showextrema=False)
 """
 Uncomment for scatter plot

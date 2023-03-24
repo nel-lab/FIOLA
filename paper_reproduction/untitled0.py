@@ -1,105 +1,181 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu May 12 10:26:49 2022
+Created on Fri Mar 10 01:17:34 2023
 
 @author: nel
 """
 
-import logging
-import matplotlib.pyplot as plt
+import pandas as pd
+import openpyxl
+import glob
+import os
 import numpy as np
-from tensorflow.python.client import device_lib
-from time import time
-import scipy
 
-from fiola.demo_initialize_calcium import run_caiman_init
-import pyximport
-pyximport.install()
-from fiola.fiolaparams import fiolaparams
-from fiola.fiola import FIOLA
-from caiman.source_extraction.cnmf.utilities import get_file_size
-import caiman as cm
-from fiola.utilities import download_demo, load, play, bin_median, to_2D, local_correlations, movie_iterator, compute_residuals
-
-logging.basicConfig(format=
-                    "%(relativeCreated)12d [%(filename)s:%(funcName)20s():%(lineno)s]"\
-                    "[%(process)d] %(message)s",
-                    level=logging.INFO)
+#%% save function
+def multiple_dfs(df_list, sheets, file_name, spaces, text):
+    try:
+        book=openpyxl.load_workbook(file_name)
+        print("existing workbook")
+    except:
+        book=openpyxl.Workbook()
+        print("new workbook")
+        book.save(file_name)
+        
+    writer = pd.ExcelWriter(file_name, engine="openpyxl")
+    writer.book = book
+    writer.sheets = {ws.title: ws for ws in sheets}
+    print(writer.sheets)
     
-logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.4.1
-
+    for i,dataframe in enumerate(df_list):
+        row=3
+        dataframe.to_excel(writer,sheet_name=sheets[i], startrow=row, startcol=0, index=False, na_rep="NA")
+        row = row+ len(dataframe.index)+ spaces+ 1
+        # writer.sheets[sheets[i]].append(list(dataframe["times"][0]))
+        writer.sheets[sheets[i]].cell(1,1).value=text
+        writer.save()
+#%% 3b
+lh_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls.npy")
+lh_nnls_files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls.npy")
+nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/v_nnls_*.npy")
+nnls_files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/v_nnls_*.npy")
 #%%
-fnames = '/home/nel/caiman_data/example_movies/demoMovie/demoMovie.tif'
-#fnames = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.01.01/mov_N.01.01.tif"
-# path_ROIs = download_demo(folder, 'demo_voltage_imaging_ROIs.hdf5')
-# mask = load(path_ROIs)
-#A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/N01_A.npy", allow_pickle=True)[()]
-#b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/N01_b.npy", allow_pickle=True)[()]
-# A = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_A.npy",allow_pickle=True)[()]
-# b = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/k53_b.npy",allow_pickle=True)[()]
-#mask = np.concatenate((A.toarray()[:,-500:],b),axis=1)
-# mask = None
+dfb = pd.DataFrame()
+max_len = 20000
+for f in sorted(lh_nnls_files):
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    for i in range(dat.shape[0]):
+        cell_dat = dat[i]
+        filler = [None]*(max_len-len(cell_dat))
+        dfb[f.split("/")[-2]+str(i)+ "_lawson_hanson"] = np.concatenate((cell_dat, filler))
+for f in sorted(nnls_files):
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    for i in range(dat.shape[0]):
+        cell_dat = dat[i]
+        filler = [None]*(max_len-len(cell_dat))
+        dfb[f.split("/")[-2]+ "_"+ f.split("_")[-1][:-4] +"iters"] = np.concatenate((cell_dat, filler))
+    
+#%% 3c
+snr_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_SNR.npy")
+rscore_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_rscore.npy")
+incl_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_incl.npy")
+dfc = pd.DataFrame()
+max_len = 485
+for f in sorted(snr_files):
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+for f in sorted(rscore_files)[:-1]:
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+for f in sorted(incl_files)[:-1]:
+    dat = np.load(f,  allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+#%% 3d
+k53_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_*_*_nnls_time.npy")
+cm_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_cm_*_nnls_time.npy")
+dfd = pd.DataFrame()
+max_len = 2999
+for f in sorted(k53_nnls_time_files):
+    dat = np.load(f, allow_pickle=True)
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfd[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+for f in sorted(cm_nnls_time_files):
+    dat = np.load(f, allow_pickle=True)[()]["T_track"][3000:-1]
+    print(dat.shape)
+    filler = [None]*(max_len-dat.shape[0])
+    dfd[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+#%% files for 3e
+iter_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_nnls_*_time.npy")
+fi_nnls_files = glob.glob('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/v_nnls_*.npy')
+#%% 3e processing omitted = > all files  used  for 3d  were  saved in  previous  sheets
+#%% Fiig  3  save  all
+excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"
+text = "Timing data for fiola"
+sheets = ["iterative nnls data", "SNR, rscore, included neurons for 3c", "3d timings"]
+dfs = [dfb, dfc, dfd]
+excel_name = os.path.join(excel_folder, "FIOLA3.xlsx")
+multiple_dfs(dfs, sheets, excel_name, 2, "test")
 
-fr = 30                         # sample rate of the movie
-ROIs = None                     # a 3D matrix contains all region of interests
-
-mode = 'calcium'                # 'voltage' or 'calcium 'fluorescence indicator
-num_frames_init =   500         # number of frames used for initialization
-num_frames_total =  2000        # estimated total number of frames for processing, this is used for generating matrix to store data
-offline_batch_size = 5          # number of frames for one batch to perform offline motion correction
-batch_size= 1                   # number of frames processing at the same time using gpu 
-flip = False                    # whether to flip signal to find spikes   
-detrend = True                  # whether to remove the slow trend in the fluorescence data            
-dc_param = 0.9995
-do_deconvolve = True            # If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
-ms = [5, 5]                     # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-center_dims = None              # template dimensions for motion correction. If None, the input will the the shape of the FOV
-hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
-                                # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
-n_split = 1                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
-nb = 2                          # number of background components
-trace_with_neg=False             # return trace with negative components (noise) if True; otherwise the trace is cutoff at 0
-                
-options = {
-    'fnames': fnames,
-    'fr': fr,
-    'ROIs': ROIs,
-    'mode': mode, 
-    'num_frames_init': num_frames_init, 
-    'num_frames_total':num_frames_total,
-    'offline_batch_size': offline_batch_size,
-    'batch_size':batch_size,
-    'flip': flip,
-    'detrend': detrend,
-    'dc_param': dc_param,            
-    'do_deconvolve': do_deconvolve,
-    'ms': ms,
-    'hals_movie': hals_movie,
-    'center_dims':center_dims, 
-    'n_split': n_split,
-    'nb' : nb, 
-    'trace_with_neg':trace_with_neg}
-
-mov = cm.load(fnames, subindices=range(num_frames_init))
-# fnames_init = fnames.split('.')[0] + '_init.tif'
-# mov.save(fnames_init)
-
-# run caiman initialization. User might need to change the parameters 
-# inside the file to get good initialization result
-# caiman_file = run_caiman_init(fnames_init)
-
-# load results of initialization
-#caiman_file = '/home/nel/caiman_data/example_movies/demoMovie/memmap__d1_60_d2_80_d3_1_order_C_frames_1500__init.hdf5'
-#cnm2 = cm.source_extraction.cnmf.cnmf.load_CNMF(caiman_file)
-#estimates = cnm2.estimates
-# template = cnm2.estimates.template
-# Cn = cnm2.estimates.Cn
-template= np.median(mov[:1500], axis=0)
-
+#%% files for 5a
+fiola_all = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/*/*_times.npy")
+fiola_crop = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Crop/time*.npy")
+cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/26feb_finalsub/cm_*.npy"))
+fiola_batch = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Batch/Neurs/times_*.npy")
+def filter_helper(dims, path):
+    return all(x not in path for x in dims)
+all_files = []
+all_files += sorted(list(filter(lambda x: filter_helper(["256","768", "crop"], x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
+all_files += sorted(list(filter(lambda x: filter_helper(["256","768"], x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
+all_files += sorted(list(filter(lambda x: filter_helper(["256","768"], x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
+all_files += sorted(list(filter(lambda x: filter_helper(["256","768"], x), cm_times)))
+all_files_headers = [f.split("/")[-1] for f in all_files]
+values = [np.load(fl, allow_pickle=True) for fl in all_files]
 #%%
-params = fiolaparams(params_dict=options)
-fio = FIOLA(params=params)
-# run motion correction on GPU on the initialization movie
-mc_nn_mov, shifts_fiola, _ = fio.fit_gpu_motion_correction(mov[:100], template, fio.params.mc_nnls['offline_batch_size'], min_mov=mov.min())             
-plt.plot(shifts_fiola)
+max_len = 2997
+dfa = pd.DataFrame()
+dfb = pd.DataFrame()
+for i,val in enumerate(all_files_headers):
+    if len(values[i]) > max_len:
+        values[i] = values[i][3000:]
+    filler = [None]* (max_len-len(values[i]))
+    dfa[val] = np.concatenate((values[i], filler))
+    
+   
+offset = 6 
+for i,val in enumerate(all_files_headers[offset:offset*2]):
+    j = i + offset
+    if len(values[j]) > max_len:
+        values[j] = values[j][3000:]
+    filler = [None]* (max_len-len(values[j]))
+    dfb[val] = np.concatenate((values[j], filler))
+
+dfs = [dfa, dfb]
+
+#%% files for 5c
+all_files = ['/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_graph/k53_512_mc.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_graph/k53_1024_mc.npy',
+'/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_512_100_nnls_time.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_512_500_nnls_time.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_1024_100_nnls_time.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_1024_500_nnls_time.npy',
+'/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Timing Johannes/k53/512_100_deconv.npy',
+                '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Timing Johannes/k53/512_500_deconv.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Timing Johannes/k53/1024_100_deconv.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Timing Johannes/k53/1024_500_deconv.npy',
+'/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_graph/k53_512_100.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_graph/k53_512_500.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_graph/k53_1024_100.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_graph/k53_1024_500.npy',
+'/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_eager/k53_512_100.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_eager/k53_512_500.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_eager/k53_1024_100.npy',
+ '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/fiola_eager/k53_1024_500.npy']
+all_files_headers = [fl.split("/")[-1] for fl in all_files]
+values = [np.load(fl, allow_pickle=True) for fl in all_files]
+#%%
+max_len = 3000
+dfc = pd.DataFrame()
+for i,val in enumerate(all_files_headers):
+
+    filler = [None]* (max_len-len(values[i]))
+    dfc[val] = np.concatenate((values[i], filler))
+dfs.append(dfc)
+  
+#%%
+excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"
+text = "Timing data for fiola"
+sheets = ["5a", "5b", "5c"]
+excel_name = os.path.join(excel_folder, "FIOLA5.xlsx")
+multiple_dfs(dfs, sheets, excel_name, 2, "test")
+
+#%% fig 2
+

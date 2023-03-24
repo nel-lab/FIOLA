@@ -4,7 +4,7 @@ for c in 500 1000 1500 3000
 do
 	for d in 5
 	do
-		python Fig7_fiola.py --iteration 1 --init_frames $c --num_layers 10 --trace_with_neg False --center_dims 398 256 --lag $d
+		python Fig6_fiola.py --iteration 1 --init_frames $c --num_layers 10 --trace_with_neg False --center_dims 398 256 --lag $d
 		killall -9 python
 		sleep 10		
 	done
