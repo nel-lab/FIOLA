@@ -14,6 +14,7 @@ from queue import Queue
 import scipy
 import os
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_XLA_FLAGS"] == "--tf_xla_enable_xla_devices"
 from scipy.optimize import nnls  
 import tensorflow as tf
 gpus = tf.config.experimental.list_physical_devices('GPU') 

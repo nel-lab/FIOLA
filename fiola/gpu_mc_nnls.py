@@ -11,6 +11,7 @@ import numpy as np
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TF_XLA_FLAGS"] == "--tfa_xla_enable_xla_devices"
 from queue import Queue
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
