@@ -41,12 +41,15 @@ from paper_reproduction.Fig4_5.test_run_fiola import run_fiola
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('--name_id', type=int, required=True)
+parser.add_argument('--iterations', type=int, required=True)
 parser.add_argument('--num_layers', type=int, required=True)
+parser.add_argument('--do_deconvolve', default=True, type=lambda x: (str(x).lower() == 'true'))
+#parser.add_argument('--do_deconvolve', type=bool, required=True)
 args = parser.parse_args()
 
 
 #%%
-def main(name_id=None, num_layers=None):
+def main(name_id=None, iterations=None, num_layers=None, do_deconvolve=None):
     mode = ['overlapping', 'non_overlapping', 'positron'][1]
     dropbox_folder = '/media/nel/storage/NEL-LAB Dropbox/'
     #dropbox_folder = '/Users/agiovann/Dropbox/'
@@ -93,6 +96,8 @@ def main(name_id=None, num_layers=None):
     step=2500
     template_window=2
     trace_with_neg=False
+    detrend=True
+    nb=1
     #num_layers = 30
         
     options = {
@@ -115,14 +120,18 @@ def main(name_id=None, num_layers=None):
         'step': step, 
         'template_window':template_window, 
         'num_layers': num_layers, 
-        'trace_with_neg':trace_with_neg}
+        'trace_with_neg':trace_with_neg, 
+        'detrend': detrend, 
+        'do_deconvolve': do_deconvolve}
     
     #%%
     fnames = os.path.join(ROOT_FOLDER, name, name+'.hdf5')
     print(f'NOW PROCESSING: {fnames}')
     path_ROIs = os.path.join(ROOT_FOLDER, name, 'viola', 'ROIs_gt.hdf5')
-    run_fiola(fnames, path_ROIs, fr=400, options=options)
+    run_fiola(fnames, path_ROIs, fr=400, options=options, 
+              save_name = f'fiola_result_iterations_{iterations}_num_layers_{num_layers}_do_deconvolve_{do_deconvolve}_v3.8')
     
 if __name__ == "__main__":
-    main(name_id=args.name_id, num_layers=args.num_layers)
+    main(name_id=args.name_id, iterations=args.iterations, num_layers=args.num_layers,
+         do_deconvolve=args.do_deconvolve)
 

@@ -1,0 +1,11 @@
+killall -9 python
+for c in 4 
+do  
+   python Fig6_fiola.py --iteration 1 --init_frames 3000 --num_layers 10 --trace_with_neg False --center_dims 398 256 --lag $c
+   killall -9 python
+   sleep 10		
+done
+
+
+
+

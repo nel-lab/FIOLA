@@ -40,11 +40,12 @@ parser.add_argument('--init_frames', type=int, required=True)
 parser.add_argument('--num_layers', type=int, required=True)
 parser.add_argument('--trace_with_neg', default=False, type=lambda x: (str(x).lower() == 'true'))
 parser.add_argument('--center_dims', nargs='+', type=int, required=True)
+parser.add_argument('--lag', type=int, required=True)
 #parser.add_argument('--include_bg', default=False, type=lambda x: (str(x).lower() == 'true'))
 args = parser.parse_args()
 
 #%% 
-def main(iteration=1, init_frames=None, num_layers=None, trace_with_neg=None, center_dims=None):    
+def main(iteration=1, init_frames=None, num_layers=None, trace_with_neg=None, center_dims=None, lag=None):    
     center_dims = tuple(args.center_dims)
     if center_dims[0] == 0:
         center_dims = None
@@ -72,7 +73,7 @@ def main(iteration=1, init_frames=None, num_layers=None, trace_with_neg=None, ce
         batch_size= 1                   # number of frames processing at the same time using gpu 
         flip = False                    # whether to flip signal to find spikes   
         ms = [6, 6]                     # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-        #center_dims = None              # template dimensions for motion correction. If None, the input will be the shape of the FOV
+        #center_dims = None             # template dimensions for motion correction. If None, the input will be the shape of the FOV
         hals_movie = 'hp_thresh'        # apply hals on the movie high-pass filtered and thresholded with 0 (hp_thresh); movie only high-pass filtered (hp); 
                                         # original movie (orig); no HALS needed if the input is from CaImAn (when init_method is 'caiman' or 'weighted_masks')
         n_split = 2                     # split neuron spatial footprints into n_split portion before performing matrix multiplication, increase the number when spatial masks are larger than 2GB
@@ -175,20 +176,20 @@ def main(iteration=1, init_frames=None, num_layers=None, trace_with_neg=None, ce
     
     #%% run online
     time_per_step = np.zeros(num_frames_total-num_frames_init)
-    # traces = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1]), dtype=np.float32)
-    # traces_deconvolved = np.zeros((num_frames_total-num_frames_init,fio.Ab.shape[-1] - 2), dtype=np.float32)
-    # lag=5
+    trace = np.zeros(((num_frames_total-num_frames_init), fio.Ab.shape[-1]), dtype=np.float32)
+    trace_deconvolved = np.zeros((num_frames_total-num_frames_init, fio.Ab.shape[-1] - 2), dtype=np.float32)
+    #lag = 5
+    print(f'{lag} !!!')
     start = time()
         
     for idx, memmap_image in movie_iterator(fnames, num_frames_init, num_frames_total):
         if idx % 1000 == 0:
             logging.info(f'{idx} frames processed online')    
         fio.fit_online_frame(memmap_image)   # fio.pipeline.saoz.trace[:, i] contains trace at timepoint i   
-        # traces[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
-        # traces_deconvolved[idx-num_frames_init-lag] = fio.pipeline.saoz.trace_deconvolved[:,idx-lag-1]
+        trace[idx-num_frames_init] = fio.pipeline.saoz.trace[:,idx-1]
+        trace_deconvolved[idx-num_frames_init] = fio.pipeline.saoz.trace_deconvolved[:,idx-lag-1]
         time_per_step[idx-num_frames_init] = (time()-start)
     
-    #traces = traces.T
     logging.info(f'total time online: {time()-start}')
     logging.info(f'time per frame online: {(time()-start)/(num_frames_total-num_frames_init)}')
     plt.plot(np.diff(time_per_step),'.')
@@ -199,13 +200,15 @@ def main(iteration=1, init_frames=None, num_layers=None, trace_with_neg=None, ce
     fio.compute_estimates()
     #fio.view_components(template)  
     fio.estimates.timing = timing
+    fio.estimates.online_trace = trace.T
+    fio.estimates.online_trace_deconvolved = trace_deconvolved.T
     plt.close('all')
     
     #%% save some interesting data
     if True:
-        np.save(folder + f'fiola_result_init_frames_{init_frames}_iteration_{iteration}_num_layers_{num_layers}_trace_with_neg_{trace_with_neg}_center_dims_{center_dims}_test_num_layers_v3.15', fio.estimates)
+        np.save(folder + f'fiola_result_init_frames_{init_frames}_iteration_{iteration}_num_layers_{num_layers}_trace_with_neg_{trace_with_neg}_center_dims_{center_dims}_lag_{lag}_test_v3.21', fio.estimates)
         
 #%%
 if __name__ == "__main__":
     main(iteration=args.iteration, init_frames=args.init_frames, 
-         num_layers=args.num_layers, trace_with_neg=args.trace_with_neg, center_dims=args.center_dims)
+         num_layers=args.num_layers, trace_with_neg=args.trace_with_neg, center_dims=args.center_dims, lag=args.lag)

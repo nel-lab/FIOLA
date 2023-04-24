@@ -93,12 +93,13 @@ for i in range(len(mask)):
 #%% FIGURE 2b
 # %% file p ath  boondogglery
 files_cm = sorted(glob.glob(
+
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*cm_on_shifts.npy"))
 files_fiola = sorted(glob.glob(
     "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/fig1/*viola_full_shifts.npy"))
 
 # %% suite2p output shifts (movementper frame fromregistration)
-idx=0
+idx=-3
 cm_shiftpath = files_cm[idx]
 #np.save(cm_shiftpath[:-16] + "s2p.npy",output_ops, allow_pickle=True)
 files_ops = sorted(glob.glob(
@@ -108,24 +109,42 @@ fiola_shiftPath = files_fiola[idx]
 fiola_full_shifts = np.load(fiola_shiftPath)
 cm_full_shifts = np.load(cm_shiftpath)
 output_ops = np.load(files_ops[idx], allow_pickle=True)[()]
-# %%  plot for  quality control
-x = 0
+#%% save  2a  data
+import csv
+def  save_to_csv(path, data,  header):
+    with open(path,  "w") as my_file:
+        escritor = csv.writer(my_file)
+        lector = csv.reader(my_file)
+        escritor.writerow([header])
+        rw = escritor.next()
+        rw.append(k)
+        for pt in data:
+            
+            escritor.writerow([pt])
+    
+# %%  plot for  quality control 2a
+x = 1
 x2 = "xoff" if x else "yoff"
 show_nr = 1
 # procedure:x-shifts  in cm/fiola align  with y-shifts (yoff) in s2p and vice-versa.
-start = 0  # n_time//2
+start = 1500  # n_time//2
 fiola_mean = np.mean(fiola_full_shifts[start:, x, 0, 0])
 cm_mean = np.mean(cm_full_shifts[start:, x])
 fiola_shifts = fiola_full_shifts[start:, x, 0, 0]-fiola_mean
 cm_shifts = cm_full_shifts[start:, x]-cm_mean
 s2p_shifts = (show_nr*output_ops[x2 + "1"]
               [start:][:, 0] + output_ops[x2][start:])
+s2p_rigid_shifts_x = output_ops["xoff"]
+s2p_rigid_shifts_y = output_ops["yoff"]
 plt.plot(fiola_shifts)
 plt.plot(cm_shifts)
 plt.plot(-s2p_shifts+np.mean(s2p_shifts))
+# plt.plot((-s2p_rigid_shifts_x+np.mean(s2p_rigid_shifts_x))[1500:])
+plt.plot((-s2p_rigid_shifts_y+np.mean(s2p_rigid_shifts_y))[1500:])
 
 # plt.plot(output_ops["yoff1"][1500:]*2+1)
 # plt.plot(fiola_full_shifts[1500:,1])
+
 # %%  error  calculation  using cm online  as the  reference  point for 2b
 files_voltage = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/*cm_on_shifts.npy"))
 files = files_cm + files_voltage
@@ -173,8 +192,8 @@ for i, f in enumerate(files):
     dataset_y["alg"] += ["full_fiola"]*start + \
         ["crop_fiola"]*start + ["suite2p"]*start
     dataset_y["dset"] += [names[i]]*3*start
-    if i==2:
-        break
+    # if i==2:
+    #     break
 # %% box plot generation for 2b (motion correction)
 df = pd.DataFrame(dataset_y)
 ax = sns.boxplot(x=df["dset"],
@@ -188,7 +207,7 @@ fr = 512
 file_folder = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_" + \
     str(fr)
 ops = suite2p.default_ops()
-ops['batch_size'] = 1
+ops['batch_size'] = 100
 ops['report_timing'] = True
 # basedon the suite2p source  code, only nonrigid will generate subpixel shifts
 ops['nonrigid'] = False
@@ -206,8 +225,9 @@ output_ops = suite2p.run_s2p(ops, db)
 t0 = output_ops["fiola_start"]
 t1 = output_ops["fiola_startRegInit"]
 t2 = output_ops["fiola_finishTemplate"]
-batchTimes = output_ops["fiola_batchStart"]
+batchTimes = output_ops["fiola_batchStart"][1:]
 t3 = batchTimes[0]
+print(np.quantile(batchTimes, 0.05),np.quantile(batchTimes, 0.5),np.quantile(batchTimes, 0.95))
 # %%  save results
 save = False
 if save:
@@ -278,13 +298,21 @@ nmes = ["512_fi", "512_fc", "512_cm", "512_s2", "512_s2r",
         "1024_fi", "1024_fc", "1024_cm", "1024_s2", "1024_s2r"]
 for n in nmes:
     if "s" in n:
+        temp=""
         if "r" in n:
             multiplier = 1000
         else:
             multiplier = 10
-        print(n)
-        data_fr_custom[n] = multiplier*np.array(np.load(base_file + n +
-                                        ".npy", allow_pickle=True)[()]["fiola_batchStart"][1:])
+        # if "512" in n:
+        temp="test_19-09-22/"
+        #     temp=""
+        # data_fr_custom[n] = 10*np.array(np.load(base_file + temp + n +
+        #                                      ".npy", allow_pickle=True))
+                                    
+        #     print(n)
+        # else:
+        data_fr_custom[n] = 1000*np.array(np.load(base_file + temp + n +
+                                        ".npy", allow_pickle=True)[()][1:])
     else:
         if "cm" in n:
             multiplier = 1
@@ -369,10 +397,11 @@ for patch, color in zip(bplot["boxes"], colors):
     print(color)
     patch.set_facecolor(color)
 
-#%% NNLS -- timing for N.... files (3c)
+#%% JUMP NNLS -- timing for N.... files (3c)
 from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline
 import timeit
 import time
+import tensorflow as tf
 import tensorflow.keras as keras
 from multiprocessing import Queue
 import glob
@@ -388,9 +417,9 @@ import numpy as np
 # movie_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.00.00/images*/*.tif"))
 movie_name = "k53"
 base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/"
-A_files = sorted(glob.glob(base_file + "*half_A.npy"))
-b_files = sorted(glob.glob(base_file + "*half_b.npy"))
-C_files = sorted(glob.glob(base_file+ "*half_noisyC.npy"))
+A_files = sorted(glob.glob(base_file + "*_A.npy"))
+b_files = sorted(glob.glob(base_file + "*_b.npy"))
+C_files = sorted(glob.glob(base_file+ "*_noisyC.npy"))
 movie_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/N.00.00/images*/*.tif"))
 #%% load file
 idx = 0
@@ -404,42 +433,95 @@ Ab = np.concatenate((A,b), axis=1)
 mov = cm.load(movie_files)
 mov = mov[mov.shape[0]//2:]
 fnames = movie_files
+
+#%% generate inputs
+from fiola.utilities import HALS4activity
+batch_size=1
+b = mov[0:batch_size].T.reshape((-1, batch_size), order='F')       
+C_init = np.dot(Ab.T, b)
+x0 = np.array([HALS4activity(Yr=b[:,i], A=Ab, C=C_init[:, i].copy(), iters=10) for i in range(batch_size)]).T
+x0 = x0[:, 0].astype(np.float32)
+neurs = 100
+dims = 512
+
 #%% create generator
 out = []
 q = Queue()
-q.put((np.concatenate((x0[None],x0[None]), axis=0)))
+q.put((np.concatenate((x0[None],x0[None]), axis=0)[:,:,None]))
+times2= []
 def generator():
     # print('hi')
     k=[[0.0]]
-    for fr in  mov:
+    for fr in mov:  # CHANGJIA: if you  change this to  mov, then run the cell  at line 451,  you'll see a 2 ms speedup. no idea why
         # print(fr.shape)
-        print("stuck?")
         z = q.get()
-        print(z.shape, "debug1")
+        # print(z.shape, "debug1")
         # print("unstuck")
-        yield{"m":fr[None,:,:,None], "y":z[0,:,None][None], "x":z[1,:,None][None], "k":k}
+        # times2.append(timeit.default_timer())
+        yield{"m":fr[None,None,:,:,None], "y":z[1][None], "x":z[0][None], "k":k}
              
 def get_frs():
-    dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32, 'y':tf.float32, 'x':tf.float32, 'k':tf.float32}, 
-                                             output_shapes={"m":(1,512,512,1), "y":(1, neurs, 1),"x":(1, neurs, 1), "k":(1, 1)})
+    dataset = tf.data.Dataset.from_generator(generator, output_types={'m':tf.float32, 
+                                                                      'y':tf.float32, 
+                                                                      'x':tf.float32, 
+                                                                      'k':tf.float32}, 
+                                             output_shapes={"m":(1,1,512,512,1), 
+                                                            "y":(1, neurs, 1),
+                                                            "x":(1, neurs, 1), 
+                                                            "k":(1, 1)})
     return dataset
+
 #%% set up nnls model
 iters = 30
-model = get_nnls_model((dims,dims), Ab.astype(np.float32), 1, iters,1,True)
+model = get_nnls_model((dims,dims), Ab.astype(np.float32), 1, iters,1,False)
 model.compile(optimizer='rmsprop', loss='mse')
 estimator  = tf.keras.estimator.model_to_estimator(model)
-times = []
 #%% run model
-start = timeit.default_timer()
-for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
-    # print(i, "PLES")
-    print(i.keys(), "LOOK HERE")
-    q.put(i['compute_trace_with_noise'])
-    times.append(timeit.default_timer()-start)
-plt.plot(np.diff(times[1:-1]))
+time_all = []
+for iteration in range(5):
+    times_nnls_fast = [0]*3000
+    traces_nnls = [0]*3000
+    count=0
+    start = timeit.default_timer()
+    for i in estimator.predict(input_fn=get_frs,yield_single_examples=False):
+        q.put(np.concatenate((i['nnls'],i['nnls_1'])))
+        traces_nnls[count] = i
+        times_nnls_fast[count] = timeit.default_timer() - start
+        count += 1
+    plt.plot(np.diff(times_nnls_fast[1:]))
+    time_all.append(times_nnls_fast)
+    
+ttt = [np.median(np.diff(tt[1:])) for tt in time_all]
+
+#%% run model
+times0,times1,traces = [],[],[]
+start2 = timeit.default_timer()
+
+
+tu2 = []
+for jj in range(10):
+
+    t_s = timeit.default_timer()
+    for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        # print(i, "PLES")
+        # print(i.keys(), "LOOK HERE")
+        start1 = timeit.default_timer()
+        times0.append(start1-start2)
+        q.put(np.concatenate((i['nnls'],i['nnls_1'])))
+        traces.append(i)
+        start2 = timeit.default_timer()
+        times1.append(start2-start1)
+    plt.plot((times1[1:-1]))
+    t_e = timeit.default_timer()
+    print((t_e - t_s)/500)
+    
+    tu2.append((t_e - t_s)/500)
+
+
 #%%
 into = [mov[0, :, :, None][None, :], x0, x0, [[0.0]]]
 start0 = timeit.default_timer()
+
 
 for i in range(1, 500):
     start = timeit.default_timer()
@@ -448,7 +530,7 @@ for i in range(1, 500):
     into = [mov[i+1, :, :, None][None, :], out[0], out[1], out[2]]
     # time.sleep(0.01)
 
-#%% NNLS- pearson's r x number iterations (3c)
+#%% NNLS- pearson's r x number iterations (3e)
 base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
 from sklearn.metrics import r2_score
 # files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls*.npy")
@@ -460,13 +542,14 @@ for file in files:
     v5_traces = np.load(file[:-8] + "v_nnls_5.npy")
     v10_traces = np.load(file[:-8]+ "v_nnls_10.npy")
     v30_traces = np.load(file[:-8] + "v_nnls_30.npy")
+    print(file, len(v5_traces))
     if "02" in  file:
         break
     #rscore5.append(np.corrcoef(nnls_traces, v5_traces))
     
 #%% graphing 
-save_r2  = {}
-from scipy.stats import sem
+save_r  = {}
+from scipy.stats import sem, pearsonr
 files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls*.npy"))
 offsets = [2,1,2,3,3,3] # background components
 bad = 0
@@ -474,42 +557,53 @@ fig, ax = plt.subplots()
 for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):
     x,y = [],[]
     xerr,yerr = [],[]
+    xlow,xhigh,ylow,yhigh = [],[],[],[]
     
     for t in ["5", "10", "30"]:
         ti = np.load(base_file + f+ "_nnls_" + t + "_time.npy")
-        ti_mean = np.mean(ti)
-        ti_err = sem(ti)
+        ti_mean = np.nanmedian(ti)
+        # ti_err = np.nanstd(ti)
         x.append(ti_mean)
         xerr.append(ti_err)
-        
+        xlow.append(x[-1]-np.quantile(ti,0.25))
+        xhigh.append(np.quantile(ti,0.75)-x[-1])
         offset = offsets[i]
         nn_sp = np.load(files[i])
         nn_vi = np.load(files[i][:-8]+ "v_nnls_" + t  +  ".npy")[:-offset,-nn_sp.shape[1]:]
         nn_sp = nn_sp[offset:offset+len(nn_vi)]
-        r2 = []
+        r = []
         count = 0
+        bad=0
+        print(f, nn_sp.shape, ti.shape)
         for (s,v) in zip(nn_sp, nn_vi):
-            r2_indiv = r2_score(s,v)
-            if r2_indiv <= 0:
-                r2_indiv = 0
+            r_indiv = pearsonr(s,v)[0]
+            if r_indiv <= 0:
+                r_indiv = 0
                 bad += 1
                 # plt.figure()
                 # plt.plot(s)
                 # plt.plot(v)
                 # plt.show()
-            r2.append(r2_indiv)
-                # yerr.append(sem(r2))
+            r.append(r_indiv)
+                # yerr.append(sem(r))
             count += 1
-        y.append(np.mean(r2))
-        yerr.append(sem(r2))
-    ax.errorbar(x, y, xerr=xerr,yerr=yerr, marker="o", label=f)
+        y.append(np.nanmedian(r))
+        # yerr.append(np.nanstd(r))
+        ylow.append(y[-1]-np.nanquantile(r,0.25))
+        yhigh.append(np.nanquantile(r,0.75)-y[-1])
+        # print(np.nanquantile(r,0.25), np.nanquantile(r,0.75),ylow,yhigh)
+        print(bad, y[-1]-np.nanquantile(r,0.25))
+    # ax.errorbar(x,y,xerr=xerr,yerr=yerr,marker="o", label=f)
+    ax.errorbar(x, y, xerr=np.vstack([xlow,xhigh]),yerr=np.vstack([ylow,yhigh]), marker="o", label=f)
+    plt.yscale('log')
     plt.legend()
         # break
-    save_r2[f+t]  = r2
+    save_r[f+t]  = r
         # plt.plot(r2)
 exp = lambda x: 10**(x)
 log = lambda x: np.log10(x) 
-ax.set_yscale("function", functions=(exp, log)) 
+# ax.set_yscale("function", functions=(exp, log)) 
+# plt.axhline(y=0.999)
 ax.set_yticks([0.5,0.9, 0.95, 0.999])  
         
     

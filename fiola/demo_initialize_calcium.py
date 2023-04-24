@@ -1,21 +1,7 @@
 #!/usr/bin/env python
 
 """
-Complete demo pipeline for processing two photon calcium imaging data using the
-CaImAn batch algorithm. The processing pipeline included motion correction,
-source extraction and deconvolution. The demo shows how to construct the
-params, MotionCorrect and cnmf objects and call the relevant functions. You
-can also run a large part of the pipeline with a single method (cnmf.fit_file)
-See inside for details.
-
-Demo is also available as a jupyter notebook (see demo_pipeline.ipynb)
-Dataset couresy of Sue Ann Koay and David Tank (Princeton University)
-
-This demo pertains to two photon data. For a complete analysis pipeline for
-one photon microendoscopic data see demo_pipeline_cnmfE.py
-
-copyright GNU General Public License v2.0
-authors: @agiovann and @epnev
+Demo for initializaing calcium spatial footprints. 
 """
 
 import cv2
@@ -54,7 +40,33 @@ logging.basicConfig(format=
                     "[%(process)d] %(message)s",
                     level=logging.INFO)
 #%%    
-def run_caiman_init(fnames):
+def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, rf=15, K = 5, gSig = [4, 4]):
+    """
+    Run caiman for initialization.
+    
+    Parameters
+    ----------
+    fnames : string
+        file name
+    pw_rigid : bool, 
+        flag to select rigid vs pw_rigid motion correction. The default is True.
+    max_shifts: list
+        maximum shifts allowed for x axis and y axis. The default is [6, 6].
+    gnb : int
+        number of background components. The default is 2.
+    rf: int
+        half-size of the patches in pixels. e.g., if rf=25, patches are 50x50. The default value is 15.
+    K : int
+        number of components per patch. The default is 5.
+    gSig : list
+        expected half size of neurons in pixels. The default is [4, 4].
+
+    Returns
+    -------
+    output_file : string
+        file with caiman output
+
+    """
     c, dview, n_processes = cm.cluster.setup_cluster(
             backend='local', n_processes=None, single_thread=False)
     
@@ -68,12 +80,8 @@ def run_caiman_init(fnames):
     decay_time = 0.4    # length of a typical transient in seconds
     dxy = (2., 2.)      # spatial resolution in x and y in (um per pixel)
     # note the lower than usual spatial resolution here
-    max_shift_um = (12., 12.)       # maximum shift in um
     patch_motion_um = (100., 100.)  # patch size for non-rigid correction in um
     # motion correction parameters
-    pw_rigid = True       # flag to select rigid vs pw_rigid motion correction
-    # maximum allowed rigid shift in pixels
-    max_shifts = [int(a/b) for a, b in zip(max_shift_um, dxy)]
     # start a new patch for pw-rigid motion correction every x pixels
     strides = tuple([int(a/b) for a, b in zip(patch_motion_um, dxy)])
     # overlap between pathes (size of patch in pixels: strides+overlaps)
@@ -123,13 +131,8 @@ def run_caiman_init(fnames):
     plt.imshow(Cn,vmax=0.5)
     #   parameters for source extraction and deconvolution
     p = 1                    # order of the autoregressive system
-    gnb = 2                  # number of global background components
     merge_thr = 0.85         # merging threshold, max correlation allowed
-    rf = 15
-    # half-size of the patches in pixels. e.g., if rf=25, patches are 50x50
     stride_cnmf = 6          # amount of overlap between the patches in pixels
-    K = 5                    # number of components per patch
-    gSig = [4, 4]            # expected half size of neurons in pixels
     # initialization method (if analyzing dendritic data using 'sparse_nmf')
     method_init = 'greedy_roi'
     ssub = 2                     # spatial subsampling during initialization
@@ -181,7 +184,7 @@ def run_caiman_init(fnames):
     time_end = time() 
     print(time_end- time_init)
     #  COMPONENT EVALUATION
-    min_SNR = 1.1  # signal to noise ratio for accepting a component
+    min_SNR = 2  # signal to noise ratio for accepting a component
     rval_thr = 0.85  # space correlation threshold for accepting a component
     cnn_thr = 0.15  # threshold for CNN based classifier
     cnn_lowest = 0.0 # neurons with cnn probability lower than this value are rejected
@@ -208,13 +211,13 @@ def run_caiman_init(fnames):
     # Extract DF/F values
     cnm2.estimates.detrend_df_f(quantileMin=8, frames_window=250)
     # Show final traces
-    cnm2.estimates.view_components(img=Cn)
+    #cnm2.estimates.view_components(img=Cn)
     #
     cnm2.mmap_F = f_F_mmap 
     cnm2.estimates.Cn = Cn
     cnm2.estimates.template = mc.total_template_rig
     cnm2.estimates.shifts = mc.shifts_rig
-    save_name = cnm2.mmap_file[:-5] + '_v3.7.hdf5'
+    save_name = cnm2.mmap_file[:-5] + '_caiman_init.hdf5'
     
     timing['end'] = time()
     print(timing)
@@ -228,6 +231,3 @@ def run_caiman_init(fnames):
         os.remove(log_file)
     plt.close('all')        
     return output_file
-
-if __name__ == "__main__":
-    run_caiman_init(fnames)

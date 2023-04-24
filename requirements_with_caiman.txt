@@ -2,11 +2,13 @@ bokeh
 coverage
 cython
 future
-h5py
+h5py>=2.10.0
 holoviews
+imageio_ffmpeg
 ipykernel
 ipython
 ipyparallel
+Jinja2==3.0.1
 jupyter
 keras
 matplotlib
@@ -22,7 +24,8 @@ pyqtgraph
 scikit-image
 scikit-learn
 scipy
-tensorflow
+tensorflow==2.5.0
+tensorflow-addons==0.13.0
 tifffile
 tk
 tqdm

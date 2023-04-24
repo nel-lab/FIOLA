@@ -8,16 +8,17 @@ import logging
 import numpy as np
 
 class fiolaparams(object):
-    def __init__(self, fnames=None, fr=400, ROIs=None, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
-                 ms=[10,10], offline_batch_size=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
+    def __init__(self, fnames=None, fr=400, mode='voltage', num_frames_init=10000, num_frames_total=20000, 
+                 ms=[10,10], offline_batch=200, border_to_0=0, freq_detrend = 1/3, do_plot_init=False, erosion=0, 
                  hals_movie='hp_thresh', use_rank_one_nmf=False, semi_nmf=False,
-                 update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch_size=1, use_fft=True, normalize_cc=True,
+                 update_bg=True, use_spikes=False, estimate_neuron_baseline=False, batch=1, use_fft=True, normalize_cc=True,
                  center_dims=None, num_layers=30, n_split=1, trace_with_neg=True, initialize_with_gpu=True, 
                  window = 10000, step = 5000, flip=True, detrend=True, dc_param=0.995, do_deconvolve=True,
                  do_scale=False, template_window=2, robust_std=False, freq=15,adaptive_threshold=True, 
                  minimal_thresh=3.0, online_filter_method = 'median_filter',
                  filt_window = 15, do_plot=False, nb=1, p=1, bas_nonneg=False,
                  fudge_factor=.96, optimize_g=0, params_dict={}):
+
         """Class for setting parameters for online fluorescece imaging analysis. Including parameters for the data, motion correction and
         spike detection. The prefered way to set parameters is by using the set function, where a subclass is determined
         and a dictionary is passed. The whole dictionary can also be initialized at once by passing a dictionary
@@ -26,7 +27,6 @@ class fiolaparams(object):
         self.data = {
             'fnames': fnames, # name of the movie
             'fr': fr, # sample rate of the movie
-            'ROIs': ROIs, # a 3-d matrix contains all region of interests
             'mode': mode, # 'voltage' or 'calcium 'fluorescence indicator
             'num_frames_init': num_frames_init, # number of frames used for initialization
             'num_frames_total':num_frames_total # estimated total number of frames for processing, this is used for generating matrix to store data            
@@ -47,9 +47,9 @@ class fiolaparams(object):
         
         self.mc_nnls = {
             'ms':ms, # maximum shift in x and y axis respectively. Will not perform motion correction if None.
-            'offline_batch_size': offline_batch_size, # number of frames for one batch to perform offline analysis
+            'offline_batch': offline_batch, # number of frames for one batch to perform offline analysis
             'border_to_0': border_to_0,  # border of the movie will copy signals from the nearby pixels
-            'batch_size':batch_size, # number of frames processing each time using gpu 
+            'batch':batch, # number of frames processing each time using gpu 
             'use_fft' : use_fft, # use FFT for convolution or not. Will use tf.nn.conv2D if False. The default is True.
             'normalize_cc' : normalize_cc, # whether to normalize the cross correlations coefficients or not. The default is True.        
             'center_dims':center_dims, # template dimensions for motion correction. If None, the input will the the shape of the FOV
@@ -64,7 +64,7 @@ class fiolaparams(object):
             'step': step, # step for updating statistics
             'flip': flip, # whether to flip signal to find spikes    
             'detrend': detrend, # whether to remove photobleaching
-            'dc_param': dc_param, # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between 0.9 
+            'dc_param': dc_param, # DC blocker parameter for removing the slow trend in the fluorescence data. It is usually between 0.99 
                                   # and 1. Higher value will remove less trend. No detrending will perform if detrend=False.
             'do_scale': do_scale, # whether to scale the input trace or not
             'do_deconvolve': do_deconvolve, #If True, perform spike detection for voltage imaging or deconvolution for calcium imaging.
@@ -81,6 +81,11 @@ class fiolaparams(object):
             'fudge_factor': fudge_factor, # fudge factor for reducing time constant bias
             'optimize_g': optimize_g, # Number of large, isolated events to consider for optimizing AR parameters.
         }
+        
+        self.retrieve = {
+            'lag': lag  # lag for retrieving the online result.
+        }
+        
 
         self.change_params(params_dict)
 
