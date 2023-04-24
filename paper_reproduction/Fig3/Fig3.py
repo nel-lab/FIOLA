@@ -20,7 +20,7 @@ datasets = ["N00",  "N01", "N02", "N03", "N04", "YST", "k53"]
 metrics = {}
 for d in datasets[:-1]:
     print(d)
-    snrs  = np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"+d+"_SNR.npy")
+    snrs  = -1* np.load("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"+d+"_SNR.npy")
     print(np.mean(snrs))
     included_comps = np.load(base_folder  + d +"_incl.npy")
     snrs = snrs[included_comps+2]  # 2 to account  for background

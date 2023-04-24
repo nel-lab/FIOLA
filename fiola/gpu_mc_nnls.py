@@ -11,6 +11,7 @@ import numpy as np
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0";
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+# os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
 from queue import Queue
 import tensorflow as tf
 tf.compat.v1.disable_eager_execution()
@@ -133,10 +134,10 @@ class MotionCorrect(keras.layers.Layer):
         ncc = tf.where(tf.math.is_nan(ncc), tf.zeros_like(ncc), ncc)
         sh_x, sh_y = self.extract_fractional_peak(ncc, self.ms_h, self.ms_w)
         self.shifts = [sh_x, sh_y]                
-        fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
-                                            interpolation="bilinear") + self.min_mov
+        #fr_corrected = tfa.image.translate(fr[0], (tf.squeeze(tf.stack([sh_y, sh_x], axis=1))), 
+        #                                    interpolation="bilinear") + self.min_mov
         
-        #fr_corrected = self.apply_shifts_dft_tf(fr[0], [-sh_x, -sh_y]) + self.min_mov
+        fr_corrected = self.apply_shifts_dft_tf(fr[0], [-sh_x, -sh_y]) + self.min_mov
         if self.return_shifts:
             return tf.reshape(tf.transpose(tf.squeeze(fr_corrected, axis=3), perm=[0,2,1]), (self.batch_size, self.shp_0[0]*self.shp_0[1])), self.shifts
         else:

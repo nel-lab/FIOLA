@@ -11,7 +11,6 @@ import tensorflow as tf
 from fiola.gpu_mc_nnls import get_nnls_model
 import matplotlib.cbook as cbook
 import seaborn as sns
-import suite2p
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -24,10 +23,10 @@ import h5py
 #%% load datasets for 6A
 fiola_all = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/*/*_times.npy")
 fiola_crop = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Crop/time*.npy")
-cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/26feb_finalsub/cm_*.npy"))
+cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/7apr/cm_*.npy"))
 fiola_batch = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Batch/Neurs/times_*.npy")
 def filter_helper( path):
-    dims = ["256","768", "crop"]
+    dims = ["256","768", "crop", "_C"]
     return all(x not in path for x in dims)
 fiola_all = sorted(list(filter(lambda x: filter_helper(x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
 fiola_crop = sorted(list(filter(lambda x: filter_helper( x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
@@ -44,7 +43,9 @@ batch_all,grph_all,crop_all,cm_all = [],[],[],[]
 dsets = []
 for i in range(6): # 6 for full figure
 
-    cm_data = np.load(cm_times[i], allow_pickle=True)[()][3000:]
+    cm_dict = np.load(cm_times[i], allow_pickle=True)[()]
+    cm_data = cm_dict["T_track"] + cm_dict["T_motion"] + cm_dict["T_shapes"]
+    print(len(cm_data), "cm")
     cm[i*offset]  = np.mean(cm_data)
     cm_sd[i*offset] =  np.std(cm_data)
     cm_all = np.concatenate([cm_all, cm_data])
@@ -53,16 +54,19 @@ for i in range(6): # 6 for full figure
     grph[i*offset+1]  = np.mean(grph_data)
     grph_sd[i*offset+1] =  np.std(grph_data)
     grph_all = np.concatenate([grph_all,grph_data])
+    print(len(grph_data), "fi")
     dsets.append(grph_data)
     crop_data = np.load(fiola_crop[i], allow_pickle=True)*1000
     crop[i*offset+2]  = np.mean(crop_data)
     crop_sd[i*offset+2] =  np.std(crop_data)
     crop_all = np.concatenate([crop_all,crop_data])
+    print(len(crop_data), "crop")
     dsets.append(crop_data)
     batch_data = np.load(fiola_batch[i], allow_pickle=True)*10
     batch[i*offset+3] = np.mean(batch_data)
     batch_sd[i*offset+3] = np.std(batch_data)
     batch_all = np.concatenate([batch_all,batch_data])
+    print(len(batch_data), "bat")
     dsets.append(batch_data) # order matters here!
 
 #%% plot for 6A
@@ -77,7 +81,7 @@ ax.bar(labels, cm, yerr=cm_sd, label="caiman",zorder=1)
 ax.bar(labels, grph, yerr=grph_sd,  label="full pipeline",zorder=1)
 ax.bar(labels, crop, yerr=crop_sd, label="crop",zorder=1)
 ax.bar(labels, batch, yerr=batch_sd, label="batch", zorder=1)
-# ax.boxplot(dsets, whis=(0.1,99.9))
+ax.boxplot(dsets, whis=(0.1,99.9))
 # ax.violinplot(dsets, widths=0.8, showextrema=False)
 """
 Uncomment for scatter plot

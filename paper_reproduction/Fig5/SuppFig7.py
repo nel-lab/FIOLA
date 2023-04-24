@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun May 22 14:03:58 2022
-
-@author: nel
-"""
 
 #%% Import all
 import tensorflow as tf
 from fiola.gpu_mc_nnls import get_nnls_model
 import matplotlib.cbook as cbook
 import seaborn as sns
-import suite2p
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -21,17 +14,18 @@ import glob
 from tifffile import imread
 import h5py
 
-#%% load datasets for 6A
+#%% load datasets for 7A
 fiola_all = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/*/*_times.npy")
 fiola_crop = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Crop/time*.npy")
-cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/26feb_finalsub/cm_*.npy"))
+cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/7apr/cm_*.npy"))
 fiola_batch = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Batch/Neurs/times_*.npy")
-def filter_helper(dims, path):
+def filter_helper( path):
+    dims = ["512","768", "1024", "crop", "_C"]
     return all(x not in path for x in dims)
-fiola_all = sorted(list(filter(lambda x: filter_helper(["1024","512","768", "crop"], x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
-fiola_crop = sorted(list(filter(lambda x: filter_helper(["1024","512","768"], x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
-fiola_batch = sorted(list(filter(lambda x: filter_helper(["1024","512","768"], x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
-cm_times = sorted(list(filter(lambda x: filter_helper(["1024","512","768"], x), cm_times)))
+fiola_all = sorted(list(filter(lambda x: filter_helper(x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
+fiola_crop = sorted(list(filter(lambda x: filter_helper( x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
+fiola_batch = sorted(list(filter(lambda x: filter_helper(x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
+cm_times = sorted(list(filter(lambda x: filter_helper( x), cm_times)))
 
 #%% calculate means and stdevs
 cou = 12 #24 for full figure
@@ -43,7 +37,9 @@ batch_all,grph_all,crop_all,cm_all = [],[],[],[]
 dsets = []
 for i in range(3): # 6 for full figure
 
-    cm_data = np.load(cm_times[i], allow_pickle=True)[()][3000:]
+    cm_dict = np.load(cm_times[i], allow_pickle=True)[()]
+    cm_data = cm_dict["T_track"] + cm_dict["T_motion"] + cm_dict["T_shapes"]
+    print(len(cm_data), "cm")
     cm[i*offset]  = np.mean(cm_data)
     cm_sd[i*offset] =  np.std(cm_data)
     cm_all = np.concatenate([cm_all, cm_data])
@@ -52,16 +48,19 @@ for i in range(3): # 6 for full figure
     grph[i*offset+1]  = np.mean(grph_data)
     grph_sd[i*offset+1] =  np.std(grph_data)
     grph_all = np.concatenate([grph_all,grph_data])
+    print(len(grph_data), "fi")
     dsets.append(grph_data)
     crop_data = np.load(fiola_crop[i], allow_pickle=True)*1000
     crop[i*offset+2]  = np.mean(crop_data)
     crop_sd[i*offset+2] =  np.std(crop_data)
     crop_all = np.concatenate([crop_all,crop_data])
+    print(len(crop_data), "crop")
     dsets.append(crop_data)
     batch_data = np.load(fiola_batch[i], allow_pickle=True)*10
     batch[i*offset+3] = np.mean(batch_data)
     batch_sd[i*offset+3] = np.std(batch_data)
     batch_all = np.concatenate([batch_all,batch_data])
+    print(len(batch_data), "bat")
     dsets.append(batch_data) # order matters here!
 
 #%% plot for 6A
@@ -69,7 +68,7 @@ for i in range(3): # 6 for full figure
           # "sep100_512","grph100_512","egr100_512","sep500_512","grph500_512","egr500_512"]
 # labels = ["b100","g100","c100","b200","g200","c200","b500","g500","c500"]
 # labels = ["b100", "f100","c100", "x100","b200","f200","c200", "x200","b500","f500","c500", "x500"]
-labels = range(1,13) # range(24) for full fig
+labels = range(1, 13) # range(24) for full fig
 
 fig, ax = plt.subplots()
 ax.bar(labels, cm, yerr=cm_sd, label="caiman",zorder=1)
