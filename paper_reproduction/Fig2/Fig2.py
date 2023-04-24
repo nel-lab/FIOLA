@@ -10,7 +10,6 @@ import tensorflow as tf
 from fiola.gpu_mc_nnls import get_nnls_model
 import matplotlib.cbook as cbook
 import seaborn as sns
-import suite2p
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -71,7 +70,7 @@ for i, f in enumerate(files):
     dataset_y["dset"] += [names[i]]*3*start
 
 # %% box plot generation for 2b (motion correction)
-df = pd.DataFrame(dataset_y)
+df = pd.DataFrame(dataset_x)
 ax = sns.boxplot(x=df["dset"],
             y=df["err"],
             hue=df["alg"],
@@ -128,6 +127,7 @@ for i, f in enumerate(["fc", "fi", "cm", "s2", "s2r"]):
 #%% Create statistics dictionary
 stats = {}
 data_fr_custom = {}
+base_file = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_'
 nmes = ["512_cm", "512_fi", "512_fc", "512_s2", "512_s2r",
         "1024_cm", "1024_fi", "1024_fc", "1024_s2", "1024_s2r"]
 for n in nmes:
@@ -135,8 +135,6 @@ for n in nmes:
         temp="test_19-09-22/"
         data_fr_custom[n] = 1000*np.array(np.load(base_file + temp + n +
                                             ".npy", allow_pickle=True))[0:]
-                                    
-        
     else:
         if "cm" in n:
             multiplier = 1
@@ -148,6 +146,7 @@ for n in nmes:
             np.array(np.load(base_file + n + ".npy",
                      allow_pickle=True)[()]["mc"][1:])
     print(n, data_fr_custom[n].shape)
+#%%
 #%% set up statistics for Fig 2c
 count = 0
 for key in data_fr_custom.keys():

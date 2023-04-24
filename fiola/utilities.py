@@ -11,6 +11,7 @@ from matplotlib import path as mpl_path
 import matplotlib.cm as mpl_cm
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Slider, Button  
 import numpy as np
 from numpy.fft import ifftshift
 from numpy.fft import fftn, ifftn
@@ -1250,6 +1251,94 @@ def normalize_piecewise(data, step=5000):
         data_norm.append(normalize(d))
     data_norm = np.hstack(data_norm)
     return data_norm
+
+######################################################################################
+# Below are functions for visualization
+def visualize(fio, img):
+    mode = fio.params.data['mode']
+
+    # Update function
+    def update(val):
+        ax[0].cla()
+        ax[1].cla()
+        ax[1].spines[['right', 'top']].set_visible(False)
+
+        i = int(idx_slider.val)    
+        spatial = spatials[indexes][i].copy()
+        ax[0].imshow(img, interpolation='None', cmap=plt.cm.gray, vmax=np.percentile(img, 98))
+        spatial[spatial == 0] = np.nan
+        ax[0].imshow(spatial, interpolation='None',
+                alpha=0.5, cmap=plt.cm.hot)
+        ax[0].set_title(f'neuron {indexes[i]}')
+        ax[0].axis('off')
+
+        if mode == 'voltage':
+            tr = fio.estimates.t[indexes][i]
+            spikes = np.delete(fio.estimates.index[indexes][i], fio.estimates.index[indexes][i]==0)
+            ax[1].plot(np.arange(0, fio.params.data['num_frames_init']), tr[:fio.params.data['num_frames_init']], color='lightsteelblue')
+            ax[1].plot(np.arange(fio.params.data['num_frames_init'], fio.params.data['num_frames_total']), tr[fio.params.data['num_frames_init']:fio.params.data['num_frames_total']], color='blue')
+            h_min = tr.max()
+            ax[1].plot(spikes, np.max(tr) * np.ones(spikes.shape),
+                    color='r', marker='.', markersize=5, fillstyle='none', linestyle='none')
+            ax[1].legend(['Init trace', 'Online trace', 'Spike time'])
+        elif mode == 'calcium':
+            tr = fio.estimates.trace[indexes][i]
+            tr = tr - np.median(tr) # remove median
+            tr_dec = fio.estimates.trace_deconvolved[indexes][i]
+            ax[1].plot(np.arange(0, fio.params.data['num_frames_init']), tr[:fio.params.data['num_frames_init']], color='lightsteelblue')
+            ax[1].plot(np.arange(fio.params.data['num_frames_init'], fio.params.data['num_frames_total']), tr[fio.params.data['num_frames_init']:fio.params.data['num_frames_total']], color='blue')
+            ax[1].plot(tr_dec, color='red')
+            ax[1].legend(['Init trace', 'Online trace', 'Deconvolved trace'])
+        ax[1].set_xlabel('Frames')
+        ax[1].set_ylabel('Signals')    
+        
+        fig.canvas.draw_idle() # redraw the plot
+
+    def forward(vl):
+        pos = idx_slider.val
+        idx_slider.set_val(pos + 1)
+
+    def backward(vl):
+        pos = idx_slider.val
+        idx_slider.set_val(pos - 1)
+
+    # spatial footprints
+    Ab = fio.estimates.Ab
+    indexes = list(range(Ab.shape[1]))[:-fio.params.hals['nb']]
+    spatials = Ab.reshape([img.shape[0], img.shape[1], -1], order='F').transpose([2, 0, 1])
+
+    # plots
+    fig, ax = plt.subplots(1, 2, figsize=(18, 10), gridspec_kw={'width_ratios': [1, 3]})
+    plt.subplots_adjust(bottom=0.25)
+
+    #Initial values
+    idx_min = 0   
+    idx_max = len(indexes) - 1 
+    idx_init = 0
+
+    # Slider, buttons layout and setting
+    slider_ax = plt.axes([0.1, 0.1, 0.8, 0.03])
+    axpos1 = plt.axes([0.05, 0.1, 0.05, 0.03])
+    axpos2 = plt.axes([0.9, 0.1, 0.05, 0.03])
+
+    idx_slider = Slider(ax=slider_ax,label='$\$',valmin=idx_min, valmax=idx_max, valinit=idx_init, valfmt="%i")
+    idx_slider.valtext.set_visible(False)
+    button1 = Button(axpos1, '<', color='w', hovercolor='b')
+    button2 = Button(axpos2, '>', color='w', hovercolor='b')
+    
+    #Initialising plot with solutions for idx_init
+    i = idx_init
+    update(i)
+
+    # Execute when parameter gets updated 
+    idx_slider.on_changed(update)
+    button1.on_clicked(backward)
+    button2.on_clicked(forward)
+    axpos1.button1 = button1
+    axpos2.button2 = button2
+    plt.show()
+
+
 
 #######################################################################################
 # Below are function from CaImAn 

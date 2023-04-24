@@ -35,29 +35,43 @@ def multiple_dfs(df_list, sheets, file_name, spaces, text):
         writer.sheets[sheets[i]].cell(1,1).value=text
         writer.save()
 #%% 3b
-lh_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls.npy")
-lh_nnls_files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls.npy")
-nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/v_nnls_*.npy")
-nnls_files += glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/v_nnls_*.npy")
-#%%
+# lh_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/nnls.npy")
+lh_nnls_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/nnls.npy"))
+# nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/v_nnls_*.npy")
+nnls_files = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/data/voltage_data/*/v_nnls_*.npy"))
+#%% uncomment this cell to add all traces (not recommended)
+# dfb = pd.DataFrame()
+# max_len = 20000
+# for f in sorted(lh_nnls_files):
+#     dat = np.load(f, allow_pickle=True)
+#     print(dat.shape)
+#     for i in range(dat.shape[0]):
+#         cell_dat = dat[i]
+#         filler = [None]*(max_len-len(cell_dat))
+#         dfb[f.split("/")[-2]+str(i)+ "_lawson_hanson"] = np.concatenate((cell_dat, filler))
+# for f in sorted(nnls_files):
+#     dat = np.load(f, allow_pickle=True)
+#     print(dat.shape)
+#     for i in range(dat.shape[0]):
+#         cell_dat = dat[i]
+#         filler = [None]*(max_len-len(cell_dat))
+#         dfb[f.split("/")[-2]+ "_"+ f.split("_")[-1][:-4] +"iters"] = np.concatenate((cell_dat, filler))
+#%% 3b, voltage
+from scipy.stats import pearsonr
 dfb = pd.DataFrame()
-max_len = 20000
-for f in sorted(lh_nnls_files):
-    dat = np.load(f, allow_pickle=True)
-    print(dat.shape)
-    for i in range(dat.shape[0]):
-        cell_dat = dat[i]
-        filler = [None]*(max_len-len(cell_dat))
-        dfb[f.split("/")[-2]+str(i)+ "_lawson_hanson"] = np.concatenate((cell_dat, filler))
-for f in sorted(nnls_files):
-    dat = np.load(f, allow_pickle=True)
-    print(dat.shape)
-    for i in range(dat.shape[0]):
-        cell_dat = dat[i]
-        filler = [None]*(max_len-len(cell_dat))
-        dfb[f.split("/")[-2]+ "_"+ f.split("_")[-1][:-4] +"iters"] = np.concatenate((cell_dat, filler))
-    
-#%% 3c
+max_len = 55
+for i, lf in enumerate(lh_nnls_files):
+    lh_dat = np.load(lf, allow_pickle=True)
+    for ff in nnls_files[i*3:i*3+3]:
+        fi_dat = np.load(ff, allow_pickle=True)
+        corrs = []
+        print(fi_dat.shape, lh_dat.shape)
+        for j in range(lh_dat.shape[0]):
+            corrs.append(pearsonr(fi_dat[j], lh_dat[j])[0])
+        filler = [None] * (max_len - fi_dat.shape[0])
+        dfb[ff.split("voltage_data/")[-1]] = np.concatenate((corrs, filler))
+        
+#%% 3b, c, e trace data
 snr_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_SNR.npy")
 rscore_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_rscore.npy")
 incl_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_incl.npy")
@@ -78,6 +92,13 @@ for f in sorted(incl_files)[:-1]:
     print(dat.shape)
     filler = [None]*(max_len-dat.shape[0])
     dfc[f.split("/")[-1][:-4]] = np.concatenate((dat, filler))
+#%% 3e iteration timings
+base_file  = "/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/"
+dfe = pd.DataFrame()
+for i,f in enumerate(["N00", "N01","N02","N03","N04","YST"]):  
+    for t in ["5", "10", "30"]:
+        ti = np.load(base_file + f+ "_nnls_" + t + "_time.npy")
+        dfe[" ".join([f, t, "iters timing"])] = ti
 #%% 3d
 k53_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_fi_*_*_nnls_time.npy")
 cm_nnls_time_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_cm_*_nnls_time.npy")
@@ -97,30 +118,37 @@ for f in sorted(cm_nnls_time_files):
 iter_nnls_files = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/CalciumComparison/*_nnls_*_time.npy")
 fi_nnls_files = glob.glob('/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/DATA_PAPER_ELIFE/*/v_nnls_*.npy')
 #%% 3e processing omitted = > all files  used  for 3d  were  saved in  previous  sheets
-#%% Fiig  3  save  all
+#%% Fig  3  save  all
 excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"
-text = "Timing data for fiola"
-sheets = ["iterative nnls data", "SNR, rscore, included neurons for 3c", "3d timings"]
-dfs = [dfb, dfc, dfd]
-excel_name = os.path.join(excel_folder, "FIOLA3.xlsx")
-multiple_dfs(dfs, sheets, excel_name, 2, "test")
+text = "NNLS benchmarking"
+sheets = ["3b"]
+dfs = [dfe]
+excel_name = os.path.join(excel_folder, "FIOLA3.1.xlsx")
+multiple_dfs(dfs, sheets, excel_name, 2, text)
 
 #%% files for 5a
 fiola_all = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/*/*_times.npy")
 fiola_crop = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Crop/time*.npy")
-cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/26feb_finalsub/cm_*.npy"))
+cm_times = sorted(glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/CMTimes/7apr/cm_*.npy"))
 fiola_batch = glob.glob("/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/FastResults/Batch/Neurs/times_*.npy")
-def filter_helper(dims, path):
+def filter_helper(path):
+    dims = ["256","768", "crop", "_C"]
     return all(x not in path for x in dims)
 all_files = []
-all_files += sorted(list(filter(lambda x: filter_helper(["256","768", "crop"], x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
-all_files += sorted(list(filter(lambda x: filter_helper(["256","768"], x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
-all_files += sorted(list(filter(lambda x: filter_helper(["256","768"], x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
-all_files += sorted(list(filter(lambda x: filter_helper(["256","768"], x), cm_times)))
+all_files += sorted(list(filter(lambda x: filter_helper(x), fiola_all)), key=lambda y: (int(y.split("/")[-2]), int(y.split("_")[-2])))
+all_files += sorted(list(filter(lambda x: filter_helper(x), fiola_crop)), key=lambda y: (int(y.split("_")[-1][:-4]), int(y.split("_")[-2])))
+all_files += sorted(list(filter(lambda x: filter_helper(x), fiola_batch)), key=lambda y: (int(y.split("_")[-2]), int(y.split("_")[-1][:-4])))
+all_files += sorted(list(filter(lambda x: filter_helper(x), cm_times)))
 all_files_headers = [f.split("/")[-1] for f in all_files]
-values = [np.load(fl, allow_pickle=True) for fl in all_files]
+values = []
+for fl in all_files:
+    if "cm" in fl:
+        v = np.load(fl, allow_pickle=True)[()]
+        values.append(v["T_motion"]+ v["T_track"]+ v["T_shapes"])
+    else:
+        values.append(np.load(fl, allow_pickle=True))
 #%%
-max_len = 2997
+max_len = 2999
 dfa = pd.DataFrame()
 dfb = pd.DataFrame()
 for i,val in enumerate(all_files_headers):
@@ -174,8 +202,39 @@ dfs.append(dfc)
 excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"
 text = "Timing data for fiola"
 sheets = ["5a", "5b", "5c"]
-excel_name = os.path.join(excel_folder, "FIOLA5.xlsx")
+excel_name = os.path.join(excel_folder, "FIOLA5_1.xlsx")
 multiple_dfs(dfs, sheets, excel_name, 2, "test")
 
-#%% fig 2
+#%% fig 2c
+df2c = pd.DataFrame()
+filler = [None]*3000
+stats = {}
+base_file = '/media/nel/storage/NEL-LAB Dropbox/NEL/Papers/VolPy_online/CalciumData/MotCorr/suite2p_shifts/k53_'
+nmes = ["512_cm", "512_fi", "512_fc", "512_s2", "512_s2r",
+        "1024_cm", "1024_fi", "1024_fc", "1024_s2", "1024_s2r"]
+for n in nmes:
+    if "s" in n:
+        temp="test_19-09-22/"
+        vals=1000*np.array(np.load(base_file + temp + n +
+                                            ".npy", allow_pickle=True))[0:]
+        
+    else:
+        if "cm" in n:
+            multiplier = 1
+            offset=1
+        else:
+            multiplier = 1000
+            offset=1500
+        vals = multiplier * \
+            np.array(np.load(base_file + n + ".npy",
+                     allow_pickle=True)[()]["mc"][1:])
+    df2c[n] = np.concatenate([vals, filler[len(vals):]])
+    print(n, df2c[n].size)
+#%%  write 2c to excel
+excel_folder = "../../../../media/nel/storage/NEL-LAB Dropbox/NEL/Papers/Nature Methods Resubmission/Data"
+text = "Timing data for fiola motion correction"
+sheets = ["2c"]
+excel_name = os.path.join(excel_folder, "FIOLA2.xlsx")
+df2c.columns = ["512x512_caiman","512x512_fiola", "512x512_croppedFiola", "512x512_s2pNonrigid", "512x512_s2pRigid", "1024x1024_caiman","1024x1024_fiola", "1024x1024_croppedFiola", "1024x1024_s2pNonrigid", "1024x1024_s2pRigid"]
+multiple_dfs([df2c], sheets, excel_name, 2, text)
 

@@ -12,6 +12,9 @@ import caiman as cm
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
 import pyximport
 pyximport.install()
 import scipy
@@ -28,11 +31,10 @@ logging.basicConfig(format=
                     "[%(process)d] %(message)s",
                     level=logging.INFO)    
 logging.info(device_lib.list_local_devices()) # if GPU is not detected, try to reinstall tensorflow with pip install tensorflow==2.5.0
-
 #%% 
 def main():
 #%%
-    mode = 'voltage'                    # 'voltage' or 'calcium' fluorescence indicator
+    mode = 'calcium'                    # 'voltage' or 'calcium' fluorescence indicator
     # Parameter setting
     if mode == 'voltage':
         folder = cm.paths.caiman_datadir() + '/example_movies/volpy'
