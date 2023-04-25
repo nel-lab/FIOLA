@@ -28,4 +28,4 @@ It takes 5 mins to run the demo on a normal desktop computer. The output is onli
 
 Python demo: demo_fiola_pipeline.ipynb 
 
-Google colab demo can be found at the following link: https://colab.research.google.com/drive/1VSc4yvsLfRRcSgjDzRB4jCK9cmEgrWMu?usp=sharing
+Google colab demo can be found at the following link: https://colab.research.google.com/drive/1y98SHqjAqalJ0LXvVF2drjtVdH8tzMa2?usp=sharing
