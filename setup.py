@@ -15,8 +15,8 @@ ext_modules = [
 
 setup(
     name="fiola",
-    version="0.1",
-    license="Proprietary",
+    version="1.0",
+    license="GPL-2.0",
     author="Changjia Cai, Cynthia Dong, Andrea Giovannucci",
     author_email="changjia@live.unc.edu",
     description="Real-time analysis of fluorescence imaging data",
@@ -26,7 +26,7 @@ setup(
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
-        'License :: Other/Proprietary License',
+        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
         "Operating System :: Linux",
         'Intended Audience :: Researchers',
         'Topic :: Fluorescence Imaging :: Analysis Tools',
