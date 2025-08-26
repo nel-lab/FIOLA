@@ -168,7 +168,7 @@ tifffile==2023.3.21
 tinycss2==1.2.1
 tk==0.1.0
 tomli==2.0.1
-tornado==6.2
+tornado==6.3.2
 tqdm==4.65.0
 traitlets==5.9.0
 typeguard==2.13.3
