@@ -394,14 +394,14 @@ class SignalAnalysisOnlineZ(object):
             self.t_update.append(time())
     
     def update_median(self, idx):
-        tt = self.t_d[idx, self.n - np.int(self.window*2.5):self.n]
+        tt = self.t_d[idx, self.n - int(self.window*2.5):self.n]
         if idx == 0:
             self.median = np.append(self.median, self.median[:, -1:], axis=1)
         self.median[idx, -1] = np.median(tt)
         return self
     
     def update_scale(self, idx):
-        tt = self.t_d[idx, self.n - np.int(self.window*2.5):self.n]
+        tt = self.t_d[idx, self.n - int(self.window*2.5):self.n]
         if idx == 0:
             self.scale = np.append(self.scale, self.scale[:, -1:], axis=1)
         self.scale[idx, -1] = - np.percentile(tt, 1)
@@ -414,7 +414,7 @@ class SignalAnalysisOnlineZ(object):
             self.thresh_factor = np.append(self.thresh_factor, self.thresh_factor[:, -1:], axis=1)   
             self.peak_level = np.append(self.peak_level, self.peak_level[:, -1:], axis=1)   
             self.std = np.append(self.std, self.std[:, -1:], axis=1)   
-        tt = self.t_s[idx, self.n - np.int(self.window * 2.5):self.n]
+        tt = self.t_s[idx, self.n - int(self.window * 2.5):self.n]
      
         if self.index[idx, self.index_track[idx]-100] > 300:       
             temp = self.peak_to_std[idx, self.index_track[idx]-100:self.index_track[idx]]

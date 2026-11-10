@@ -296,7 +296,7 @@ def apply_shifts_dft(src_freq, shifts, diffphase, is_freq=True, border_nan=True)
             src_freq = np.dstack([np.real(src_freq), np.imag(src_freq)])
             src_freq = fftn(src_freq, flags=cv2.DFT_COMPLEX_OUTPUT + cv2.DFT_SCALE)
             src_freq = src_freq[:, :, 0] + 1j * src_freq[:, :, 1]
-            src_freq = np.array(src_freq, dtype=np.complex128, copy=False)
+            src_freq = np.asarray(src_freq, dtype=np.complex128)
 
     if not is3D:
         shifts = shifts[::-1]
@@ -332,12 +332,12 @@ def apply_shifts_dft(src_freq, shifts, diffphase, is_freq=True, border_nan=True)
     if border_nan is not False:
         max_w, max_h, min_w, min_h = 0, 0, 0, 0
         max_h, max_w = np.ceil(np.maximum(
-            (max_h, max_w), shifts[:2])).astype(np.int)
+            (max_h, max_w), shifts[:2])).astype(int)
         min_h, min_w = np.floor(np.minimum(
-            (min_h, min_w), shifts[:2])).astype(np.int)
+            (min_h, min_w), shifts[:2])).astype(int)
         if is3D:
-            max_d = np.ceil(np.maximum(0, shifts[2])).astype(np.int)
-            min_d = np.floor(np.minimum(0, shifts[2])).astype(np.int)
+            max_d = np.ceil(np.maximum(0, shifts[2])).astype(int)
+            min_d = np.floor(np.minimum(0, shifts[2])).astype(int)
         if border_nan is True:
             new_img[:max_h, :] = np.nan
             if min_h < 0:
@@ -1535,7 +1535,7 @@ def bin_median(mat, window=10, exclude_nans=True):
     T, d1, d2 = np.shape(mat)
     if T < window:
         window = T
-    num_windows = np.int(old_div(T, window))
+    num_windows = int(old_div(T, window))
     num_frames = num_windows * window
     if exclude_nans:
         img = np.nanmedian(np.nanmean(np.reshape(
@@ -1561,7 +1561,7 @@ def bin_median_3d(self, window=10):
 
     """
     T, d1, d2, d3 = np.shape(self)
-    num_windows = np.int(old_div(T, window))
+    num_windows = int(old_div(T, window))
     num_frames = num_windows * window
     return np.nanmedian(np.nanmean(np.reshape(self[:num_frames], (window, num_windows, d1, d2, d3)), axis=0),
                         axis=0)
@@ -2301,7 +2301,7 @@ def whitened_matched_filter(data, locs, window):
     Nf2 = np.concatenate([pxx, np.flipud(pxx[1:-1])])
     scaling_vector = 1 / np.sqrt(Nf2)
 
-    cc = np.pad(data.copy(),(0,np.int(2**N-len(data))),'constant')    
+    cc = np.pad(data.copy(),(0,int(2**N-len(data))),'constant')    
     dd = (cv2.dft(cc,flags=cv2.DFT_SCALE+cv2.DFT_COMPLEX_OUTPUT)[:,0,:]*scaling_vector[:,np.newaxis])[:,np.newaxis,:]
     dataScaled = cv2.idft(dd)[:,0,0]
     PTDscaled = dataScaled[(locs[:, np.newaxis] + window)]

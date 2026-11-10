@@ -32,7 +32,6 @@ from caiman.source_extraction.cnmf import cnmf as cnmf
 from caiman.source_extraction.cnmf import params as params
 from caiman.utils.utils import download_demo
 from caiman.summary_images import local_correlations_movie_offline
-from caiman.source_extraction.cnmf.utilities import get_file_size
 
 
 logging.basicConfig(format=
@@ -158,7 +157,7 @@ def run_caiman_init(fnames, pw_rigid = True, max_shifts=[6, 6], gnb=2, rf=15, K 
     opts.change_params(params_dict=opts_dict);
     #  RUN CNMF ON PATCHES
     cnm = cnmf.CNMF(n_processes, params=opts, dview=dview)
-    cnm = cnm.fit(images)
+    cnm.fit(images)
     #  COMPONENT EVALUATION
     min_SNR = 1.0  # signal to noise ratio for accepting a component
     rval_thr = 0.75  # space correlation threshold for accepting a component

@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=77", "cython>=3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fiola"
+version = "1.0"
+description = "Real-time analysis of fluorescence imaging data"
+readme = "README.md"
+license = "GPL-2.0-only"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Changjia Cai", email = "changjia@live.unc.edu" },
+    { name = "Cynthia Dong" },
+    { name = "Andrea Giovannucci" },
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "future",
+    "h5py",
+    "matplotlib",
+    "numpy",
+    "opencv-python",
+    "requests",
+    "scikit-image",
+    "scikit-learn",
+    "scipy",
+    # the 2.21 wheel cannot load libcusolver, so TF falls back to the CPU
+    "tensorflow[and-cuda]>=2.20,!=2.21.*",
+    "tf-keras",
+    "tifffile",
+]
+
+[project.optional-dependencies]
+# needed for calcium imaging (initialization and deconvolution) and the demo, not on PyPI
+caiman = ["caiman @ git+https://github.com/flatironinstitute/CaImAn@v1.13.2"]
+
+[project.urls]
+Homepage = "https://github.com/nel-lab/FIOLA"
+
+[tool.setuptools.packages.find]
+include = ["fiola*"]
