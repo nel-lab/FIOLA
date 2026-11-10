@@ -14,16 +14,14 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 # os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices"
 from queue import Queue
 import tensorflow as tf
-tf.compat.v1.disable_eager_execution()
 tf.get_logger().setLevel("ERROR")
 tf.autograph.set_verbosity(0)
-import tensorflow.keras as keras
+import tf_keras as keras
 from tensorflow.signal import fft3d, ifft3d, ifftshift
 from threading import Thread
 import timeit
 import time
 from fiola.utilities import HALS4activity
-import tensorflow_addons as tfa
 
 #%%
 class MotionCorrect(keras.layers.Layer):
@@ -364,7 +362,7 @@ def get_mc_model(template, batch_size, **kwargs):
     template = template.astype(np.float32)
     
     # input layer for one frame of the movie
-    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m")  
+    fr_in = keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m")  
 
     # initialization of the motion correction layer, initialized with the template
     mc_layer = MotionCorrect(template, batch_size, **kwargs)   
@@ -426,10 +424,10 @@ def get_nnls_model(dims, Ab, batch_size, num_layers, n_split, trace_with_neg):
     Ab = Ab.astype(np.float32)
     num_components = Ab.shape[-1]
 
-    y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
-    x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
-    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
-    k_in = tf.keras.layers.Input(shape=(1,), name="k") #Input layer for the counter within the NNLS layers
+    y_in = keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
+    x_in = keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
+    fr_in = keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie
+    k_in = keras.layers.Input(shape=(1,), name="k") #Input layer for the counter within the NNLS layers
  
     # calculations to initialize NNLS
     AtA = Ab.T@Ab
@@ -469,10 +467,10 @@ def get_model(template, Ab, batch_size, num_layers, n_split, trace_with_neg, **k
     """
     shp_x, shp_y = template.shape[0], template.shape[1] #dimensions of the movie
     num_components = Ab.shape[-1]
-    y_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
-    x_in = tf.keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
-    fr_in = tf.keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie 
-    k_in = tf.keras.layers.Input(shape=(1,), name="k")
+    y_in = keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="y") # Input Layer for components
+    x_in = keras.layers.Input(shape=tf.TensorShape([num_components, batch_size]), name="x") # Input layer for components
+    fr_in = keras.layers.Input(shape=tf.TensorShape([batch_size, shp_x, shp_y, 1]), name="m") #Input layer for one frame of the movie
+    k_in = keras.layers.Input(shape=(1,), name="k")
 
     # calculations to initialize 
     AtA = Ab.T@Ab
@@ -546,7 +544,16 @@ def get_model(template, Ab, batch_size, num_layers, n_split, trace_with_neg, **k
 #     return model
 
     
-class Pipeline_mc_nnls(object): 
+def run_model(model, dataset):
+    """
+    run the model on each element of the dataset, yields the outputs keyed by output name
+    """
+    compiled_model = tf.function(model)
+    for inputs in dataset:
+        outputs = tf.nest.flatten(compiled_model(inputs))
+        yield {name: output.numpy() for name, output in zip(model.output_names, outputs)}
+
+class Pipeline_mc_nnls(object):
     def __init__(self, mov, template, batch_size, Ab, **kwargs):
         """
         class for processing motion correction, source extraction frame
@@ -575,10 +582,8 @@ class Pipeline_mc_nnls(object):
         self.dim_x, self.dim_y = self.mov.shape[1], self.mov.shape[2]
         self.mc_0 = mov[0:batch_size, :, :, None][None, :]
 
-        # build model, load estimator        
+        # build model
         self.model = get_model(self.template, self.Ab, self.batch_size, **kwargs)
-        self.model.compile(optimizer='rmsprop', loss='mse')   
-        self.estimator = tf.keras.estimator.model_to_estimator(self.model)
         
         # set up queues
         self.frame_input_q = Queue()
@@ -589,7 +594,7 @@ class Pipeline_mc_nnls(object):
         self.frame_input_q.put(self.mc_0)
         self.nnls_input_q.put((self.y_0, self.x_0))
 
-        # start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
+        # start extracting frames: extract runs the model on the outputs from the dataset, which
             #pull from the generator.
         self.extraction_thread = Thread(target=self.extract, daemon=True)
         self.extraction_thread.start()
@@ -616,7 +621,7 @@ class Pipeline_mc_nnls(object):
             
     def extract(self):
         start = time.time()
-        for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
+        for i in run_model(self.model, self.get_dataset()):
             self.nnls_output_q.put(i)
             logging.info(time.time() - start)
             start = time.time()
@@ -678,12 +683,10 @@ class Pipeline(object):
         self.dim_x, self.dim_y = self.mov.shape[1], self.mov.shape[2]
         self.mc_0 = self.mov[0:batch_size, :, :, None][None, :]
 
-        # build model, load estimator        
+        # build model
         self.model = get_model(self.template, self.Ab, self.batch_size, **kwargs)
         #logging.info(f'EAGER {tf.executing_eagerly()}')
-        #self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)   
-        self.model.compile(optimizer='rmsprop', loss='mse')   
-        self.estimator = tf.keras.estimator.model_to_estimator(self.model)
+        #self.model.compile(optimizer='rmsprop', loss='mse', run_eagerly=True)
         self.mc_nnls_times = []
         self.deconv_times = []
         
@@ -697,7 +700,7 @@ class Pipeline(object):
         self.frame_input_q.put(self.mc_0)
         self.nnls_input_q.put((self.y_0, self.x_0))
 
-        #start extracting frames: extract calls the estimator to predict using the outputs from the dataset, which
+        #start extracting frames: extract runs the model on the outputs from the dataset, which
             #pull from the generator.
         self.extraction_thread = Thread(target=self.extract, daemon=True)
         self.extraction_thread.start()
@@ -746,7 +749,7 @@ class Pipeline(object):
             self.flag = self.flag + 1
        
     def extract(self):
-        for i in self.estimator.predict(input_fn=self.get_dataset, yield_single_examples=False):
+        for i in run_model(self.model, self.get_dataset()):
             self.nnls_output_q.put(i)
             self.mc_nnls_times.append(time.time())
 

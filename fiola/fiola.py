@@ -26,7 +26,7 @@ tf.get_logger().setLevel("ERROR")
 tf.autograph.set_verbosity(0)
 
 
-from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline, Pipeline_mc_nnls
+from fiola.gpu_mc_nnls import get_mc_model, get_nnls_model, get_model, Pipeline, Pipeline_mc_nnls, run_model
 from fiola.signal_analysis_online import SignalAnalysisOnlineZ
 from fiola.utilities import signal_filter, to_3D, to_2D, bin_median, hals, normalize, nmf_sequential, local_correlations, quick_annotation, HALS4activity
 
@@ -219,12 +219,9 @@ class FIOLA(object):
                                 use_fft=self.params.mc_nnls['use_fft'], normalize_cc=self.params.mc_nnls['normalize_cc'], 
                                 center_dims=self.params.mc_nnls['center_dims'], return_shifts=True)
         
-        mc_model.compile(optimizer='rmsprop', loss='mse')   
-        estimator = tf.keras.estimator.model_to_estimator(mc_model)
-        # return estimator
         logging.info('beginning motion correction')
         start = timeit.default_timer()
-        for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        for i in run_model(mc_model, get_frs()):
             out[index] = i
             times[index] = (timeit.default_timer()-start)
             index += 1    
@@ -311,14 +308,12 @@ class FIOLA(object):
 
         nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
                                     self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
-        nnls_model.compile(optimizer='rmsprop', loss='mse')   
-        estimator = tf.keras.estimator.model_to_estimator(nnls_model)
-        
+
         logging.info('beginning source extraction')
         start = timeit.default_timer()
 
         count=0
-        for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        for i in run_model(nnls_model, get_frs()):
             # values = list(i.values())
             nnls_q.put(np.concatenate((i['nnls'],i['nnls_1'])))
             # trace[count] = values[-1][0]
@@ -396,13 +391,11 @@ class FIOLA(object):
         num_components = Ab.shape[-1]
         nnls_model = get_nnls_model(dims, Ab, batch_size, self.params.mc_nnls['num_layers'], 
                                     self.params.mc_nnls['n_split'], self.params.mc_nnls['trace_with_neg'])
-        nnls_model.compile(optimizer='rmsprop', loss='mse')   
-        estimator = tf.keras.estimator.model_to_estimator(nnls_model)
-        
+
         logging.info('beginning source extraction')
         start = timeit.default_timer()
         count=0
-        for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        for i in run_model(nnls_model, get_frs()):
             values = list(i.values())
             nnls_q.put((values[0], values[1]))
             trace[count] = values[-1][0]
@@ -487,12 +480,9 @@ class FIOLA(object):
                           num_layers=self.params.mc_nnls['num_layers'], n_split=self.params.mc_nnls['n_split'], 
                           trace_with_neg=self.params.mc_nnls['trace_with_neg'])
 
-        model.compile(optimizer='rmsprop', loss='mse')   
-        estimator = tf.keras.estimator.model_to_estimator(model)
-        
         logging.info('beginning motion correction and source extraction')
         start = timeit.default_timer()
-        for i in estimator.predict(input_fn=get_frs, yield_single_examples=False):
+        for i in run_model(model, get_frs()):
             values = list(i.values())
             nnls_q.put((values[0], values[1]))
             trace.append(values[-1][0])
@@ -586,7 +576,7 @@ class FIOLA(object):
                 s_comp.set_val(new_val)
             
         def update(val):
-            i = np.int(np.round(s_comp.val))
+            i = int(np.round(s_comp.val))
             print(f'component:{i}')
     
             if i < n:
